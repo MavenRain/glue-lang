@@ -28,3 +28,9 @@ field wrap => 1
 field under => 21888242871839275222246405745257275088548364400416034343698204186575808495616
 field rMinusOneSquared => 1
 field polyAt => 33
+paths atStart => 1
+paths atEnd => 1
+paths startOf => fun p => 1
+paths endOf => fun p => 2
+paths reversed => fun p => <i> p @ ~i
+paths mixed => fun p => <i> <j> p @ (i /\ ~j)

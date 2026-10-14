@@ -23,7 +23,8 @@
 typedef struct Scope Scope;
 struct Scope {
   const char *name; /* NULL for the binder of `A -> B` */
-  const Value *type;
+  const Value *type; /* NULL for an interval variable */
+  int interval;      /* 1 for an interval variable (M2) */
   uint32_t level;
   const Scope *next;
 };
@@ -69,7 +70,10 @@ typedef enum {
   RULE_CONG,
   RULE_TRANSPORT,
   RULE_NAT2,
-  RULE_FLAG_IF
+  RULE_FLAG_IF,
+  RULE_INTERVAL,
+  RULE_PATH,
+  RULE_PATHP
 } Rule;
 
 typedef struct {
@@ -124,13 +128,18 @@ static const Builtin BUILTINS[] = {
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
-  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0}
+  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0},
+  {"I", 0, RULE_INTERVAL, OP_NAT, OP_NAT, 0},
+  {"i0", 0, RULE_INTERVAL, OP_NAT, OP_NAT, 0},
+  {"i1", 0, RULE_INTERVAL, OP_NAT, OP_NAT, 0},
+  {"Path", 3, RULE_PATH, OP_PATHP, OP_NAT, 0},
+  {"PathP", 3, RULE_PATHP, OP_PATHP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
 
 /* Names that no declaration can take (rule R4). */
-static const char *const RESERVED[] = {"Bool", "Text"};
+static const char *const RESERVED[] = {"Bool", "Text", "transp", "hcomp", "Glue", "ua", "Partial", "SSet"};
 
 typedef enum {
   HEAD_TERM, /* a local, a definition or another term: plain application */
@@ -190,7 +199,7 @@ static const Core *core_leaf(Checker *c, CoreKind kind, uint64_t nat) {
 
 static const Core *core_bind(Checker *c, CoreKind kind, const char *name, const Core *a, const Core *b) {
   Core *k;
-  if (b == NULL || (a == NULL && kind != CORE_LAM))
+  if (b == NULL || (a == NULL && kind != CORE_LAM && kind != CORE_PLAM))
     return NULL;
   k = new_core(c, kind);
   if (k == NULL)
@@ -276,19 +285,30 @@ static const char *show(Checker *c, const Value *v) {
   return buf;
 }
 
-static int push(Checker *c, const char *name, const Value *type) {
+/* Binds NAME to the variable at the next level: a term variable of TYPE, or
+   an interval variable (INTERVAL 1, TYPE NULL). */
+static int push_var(Checker *c, const char *name, const Value *type, int interval) {
   Scope *s = arena_alloc(c->m->arena, sizeof *s);
-  const Env *e = env_push(c->m, c->env, val_var(c->m, c->level));
-  if (type == NULL || s == NULL || e == NULL)
+  const Env *e = env_push(c->m, c->env, interval ? val_ivl_var(c->m, c->level) : val_var(c->m, c->level));
+  if ((type == NULL && !interval) || s == NULL || e == NULL)
     return c->m->diag->set ? 0 : FAIL(c, "OOM", "out of memory");
   s->name = name;
   s->type = type;
+  s->interval = interval;
   s->level = c->level;
   s->next = c->scope;
   c->scope = s;
   c->env = e;
   c->level++;
   return 1;
+}
+
+static int push(Checker *c, const char *name, const Value *type) {
+  return push_var(c, name, type, 0);
+}
+
+static int push_ivl(Checker *c, const char *name) {
+  return push_var(c, name, NULL, 1);
 }
 
 static void pop(Checker *c) {
@@ -867,6 +887,51 @@ static const Core *rule_flag_if(Call *k) {
   return op3(c, OP_FLAG_IF, 0, 3, b, yes, no);
 }
 
+/* I, i0 and i1 where a term of a type is necessary. */
+static const Core *rule_interval(Call *k) {
+  return nul(FAIL(k->c, "INTERVAL_TERM", "%s is %s, not a term of a type", k->b->name, k->b->name[1] == '\0' ? "the interval" : "an interval end point"));
+}
+
+/* 1 when T is the name I, and no local binder takes that name. */
+static int is_interval_type(const Checker *c, const Term *t) {
+  return t->kind == TERM_VAR && strcmp(t->name, "I") == 0 && find_local(c, "I") == NULL;
+}
+
+/* The line <NAME> A of Path and PathP. A must be in Type n under the fresh
+   interval variable NAME. *LEVEL is n. */
+static const Core *path_line(Checker *c, const char *name, const Term *a, uint64_t *level) {
+  const Value *ty = NULL;
+  const Core *body;
+  if (!push_ivl(c, name))
+    return NULL;
+  body = is_interval_type(c, a) ? nul(FAIL(c, "PATH_TYPE", "the interval I is not a type in Type n, so it cannot be the type of a path")) : infer(c, a, &ty);
+  if (body != NULL && (ty == NULL || ty->kind != VAL_UNIV))
+    body = nul(FAIL(c, "PATH_TYPE", "the type of a path must be in Type n, found a term of type %s", show(c, ty)));
+  pop(c);
+  *level = body == NULL ? 0u : ty->nat;
+  return core_bind(c, CORE_PLAM, name, NULL, body);
+}
+
+/* PathP (<NAME> A) a b, and Path A a b with a line that the lexer cannot
+   name. a : A[i := i0], b : A[i := i1]. */
+static const Core *path_former(Call *k, const char *name, const Term *a) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *line = path_line(c, name, a, &level);
+  const Value *lv = here(c, line);
+  const Core *x = lv == NULL ? NULL : check(c, k->args[1], closure_apply(c->m, lv, val_ivl_end(c->m, 0)));
+  const Core *y = x == NULL ? NULL : check(c, k->args[2], closure_apply(c->m, lv, val_ivl_end(c->m, 1)));
+  k->type = val_univ(c->m, level);
+  return op3(c, OP_PATHP, 0, 3, line, x, y);
+}
+
+static const Core *rule_pathp(Call *k) {
+  const Term *line = k->args[0];
+  if (line->kind != TERM_PLAM)
+    return nul(FAIL(k->c, "PATH_TYPE", "PathP needs a line <i> A as its first argument"));
+  return path_former(k, line->name, line->right);
+}
+
 static const Core *rule(Call *k) {
   switch (k->b->rule) {
   case RULE_TYPE0:
@@ -927,6 +992,12 @@ static const Core *rule(Call *k) {
     return rule_nat2(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
+  case RULE_INTERVAL:
+    return rule_interval(k);
+  case RULE_PATH:
+    return path_former(k, "%i", k->args[0]);
+  case RULE_PATHP:
+    return rule_pathp(k);
   }
   return NULL;
 }
@@ -1144,6 +1215,8 @@ static const Core *apply_rest(Checker *c, const Core *k, const Value *ty, const 
 static const Core *var_core(Checker *c, const char *name, const Value **type) {
   const Scope *s = find_local(c, name);
   uint32_t d = find_def(c->m, name);
+  if (s != NULL && s->interval)
+    return nul(FAIL(c, "INTERVAL_TERM", "%s is an interval variable, not a term of a type", name));
   if (s != NULL) {
     *type = s->type;
     return core_index(c, CORE_VAR, c->level - 1u - s->level);
@@ -1303,6 +1376,99 @@ static const Core *elab_arith(Checker *c, const Term *t, const Value *hint, cons
   return b == NULL ? NULL : finish(c, op3(c, OPS[t->nat < 3u ? t->nat : 0u], 0, 2, a, b, NULL), hint, type);
 }
 
+static const Core *core_ivl(Checker *c, IvlOp op, const Core *a, const Core *b) {
+  Core *k = new_core(c, CORE_IVL);
+  if (k == NULL)
+    return NULL;
+  k->nat = op;
+  k->a = a;
+  k->b = b;
+  return k;
+}
+
+/* An interval term: an interval variable, i0, i1, ~r, r /\ s or r \/ s. */
+static const Core *elab_ivl(Checker *c, const Term *t) {
+  const Scope *s = t->kind == TERM_VAR ? find_local(c, t->name) : NULL;
+  const Core *a;
+  const Core *b;
+  Head h;
+  if (c->depth >= CHECK_DEPTH_LIMIT)
+    return nul(FAIL(c, "CHECK_DEPTH", "the term is nested deeper than %u levels", CHECK_DEPTH_LIMIT));
+  if (s != NULL && s->interval)
+    return core_index(c, CORE_VAR, c->level - 1u - s->level);
+  if (t->kind == TERM_VAR && s == NULL && (strcmp(t->name, "i0") == 0 || strcmp(t->name, "i1") == 0))
+    return core_ivl(c, t->name[1] == '1' ? IVL_ONE : IVL_ZERO, NULL, NULL);
+  if (t->kind == TERM_VAR && !resolve_head(c, t, &h))
+    return NULL;
+  if (t->kind != TERM_IVL)
+    return nul(FAIL(c, "INTERVAL_TERM", "@ needs an interval term (an interval variable, i0, i1, ~, /\\ or \\/), found a term of a type"));
+  c->depth++;
+  a = elab_ivl(c, t->left);
+  b = a == NULL || t->nat == IVL_REV ? NULL : elab_ivl(c, t->right);
+  c->depth--;
+  if (a == NULL || (b == NULL && t->nat != IVL_REV))
+    return NULL;
+  return core_ivl(c, (IvlOp)t->nat, a, b);
+}
+
+/* <i> t against PathP L a b: t : L @ i, t[i := i0] = a, t[i := i1] = b. */
+static const Core *check_plam(Checker *c, const Term *t, const Value *hint, const Value **type) {
+  const Core *body;
+  const Core *k;
+  const Value *v;
+  int one;
+  if (hint == NULL)
+    return nul(FAIL(c, "PATH_EXPECTED", "<%s> ... needs a declared type PathP L a b here", t->name));
+  if (!val_is(hint, OP_PATHP))
+    return nul(FAIL(c, "PATH_EXPECTED", "a path <%s> ... is not a term of type %s", t->name, show(c, hint)));
+  if (!push_ivl(c, t->name))
+    return NULL;
+  body = check(c, t->right, closure_apply(c->m, hint->args[0], c->env->value));
+  pop(c);
+  k = core_bind(c, CORE_PLAM, t->name, NULL, body);
+  v = here(c, k);
+  for (one = 0; v != NULL && one < 2; one++) {
+    const Value *end = closure_apply(c->m, v, val_ivl_end(c->m, one));
+    if (end == NULL)
+      return NULL;
+    if (!conv_values(c->m, c->level, end, hint->args[1 + one]))
+      return nul(FAIL(c, "PATH_BOUNDARY", "the path <%s> ... does not have the end points of its type: at i%d it normalizes to %s, the type needs %s", t->name, one, show(c, end), show(c, hint->args[1 + one])));
+  }
+  *type = hint;
+  return v == NULL ? NULL : k;
+}
+
+/* p @ r, p : PathP L a b. The type is L @ r. The core keeps a and b, so the
+   evaluator can reduce a neutral p at i0 and i1. */
+static const Core *infer_papp(Checker *c, const Term *t, const Value *hint, const Value **type) {
+  const Value *pt = NULL;
+  const Core *p = infer(c, t->left, &pt);
+  const Core *r;
+  const Core **ends;
+  Core *k;
+  if (p == NULL)
+    return NULL;
+  if (!val_is(pt, OP_PATHP))
+    return nul(FAIL(c, "PATH_EXPECTED", "@ needs a path of type PathP L a b, found a term of type %s", show(c, pt)));
+  r = elab_ivl(c, t->right);
+  if (r == NULL)
+    return NULL;
+  ends = arena_alloc(c->m->arena, 2u * sizeof *ends);
+  k = ends == NULL ? NULL : new_core(c, CORE_PAPP);
+  if (k == NULL)
+    return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
+  ends[0] = quote_value(c->m, c->level, pt->args[1]);
+  ends[1] = quote_value(c->m, c->level, pt->args[2]);
+  if (ends[0] == NULL || ends[1] == NULL)
+    return NULL;
+  k->a = p;
+  k->b = r;
+  k->args = ends;
+  k->argc = 2u;
+  *type = closure_apply(c->m, pt->args[0], here(c, r));
+  return finish(c, k, hint, type);
+}
+
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {
   switch (t->kind) {
   case TERM_VAR:
@@ -1330,6 +1496,12 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
     return finish(c, core_leaf(c, CORE_UNIV, t->nat), hint, type);
   case TERM_ARITH:
     return elab_arith(c, t, hint, type);
+  case TERM_PLAM:
+    return check_plam(c, t, hint, type);
+  case TERM_PAPP:
+    return infer_papp(c, t, hint, type);
+  case TERM_IVL:
+    return nul(FAIL(c, "INTERVAL_TERM", "%d:%d: an interval term (~, /\\ or \\/) is not a term of a type", t->line, t->col));
   }
   return NULL;
 }
@@ -1655,6 +1827,9 @@ static int print_result(Machine *m, const char *name, const Value *v, FILE *out,
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_IVL:
+  case VAL_PLAM:
+  case VAL_PAPP:
     break;
   }
   diag_fail(m->diag, "EVAL_ENTRY", name, "the entry did not compute a number");

@@ -178,6 +178,9 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
     case VAL_PI:
     case VAL_SIGMA:
     case VAL_APP:
+    case VAL_IVL:
+    case VAL_PLAM:
+    case VAL_PAPP:
       break;
   }
   return no_circuit_form(l, "a value that is not a Field");

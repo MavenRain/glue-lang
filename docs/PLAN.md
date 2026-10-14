@@ -12,6 +12,10 @@ circuit, a Solidity verifier contract and the deployment scripts.
 | 2026-10-14 | Host language: TinyCC. |
 | 2026-10-14 | Output: option 1, a Plonkish constraint system. The pipeline continues to a halo2 circuit, the verifier contract and the deployment scripts. |
 | 2026-10-14 | Proof irrelevance is prohibited: no `Prop`, no `SProp`, no definitional proof irrelevance. Truncations are HITs with path constructors. |
+| 2026-10-14 | M2 interval: the De Morgan interval (CCHM), with `~`, `/\` and `\/`. |
+| 2026-10-14 | M2 circuits: `==` stays sugar for `Path Field a b`. The IR does not change. |
+| 2026-10-14 | M2: delete F12 and F13 (slice s3). |
+| 2026-10-14 | M2: the face lattice is in M2, as slice s4. |
 
 ## Layout
 

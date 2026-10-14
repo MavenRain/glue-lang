@@ -13,7 +13,10 @@ typedef enum {
   TERM_PI,    /* (name : left) -> right; name is NULL for left -> right */
   TERM_SIGMA, /* Sigma (name : left) right, or (name : left) * right */
   TERM_UNIV,  /* Type nat */
-  TERM_ARITH  /* left OP right, OP = nat: 0 +, 1 -, 2 * (Field) */
+  TERM_ARITH, /* left OP right, OP = nat: 0 +, 1 -, 2 * (Field) */
+  TERM_PLAM,  /* <name> right: a path abstraction */
+  TERM_PAPP,  /* left @ right: a path applied to an interval term */
+  TERM_IVL    /* nat = IvlOp (interval.h): 2 ~left, 3 left /\ right, 4 left \/ right */
 } TermKind;
 
 typedef struct Term Term;

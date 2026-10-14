@@ -59,6 +59,12 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_PUBLIC: return "'public'";
     case TOK_KW_PRIVATE: return "'private'";
     case TOK_KW_RANGE8: return "'range8'";
+    case TOK_LANGLE: return "'<'";
+    case TOK_RANGLE: return "'>'";
+    case TOK_AT: return "'@'";
+    case TOK_TILDE: return "'~'";
+    case TOK_MEET: return "'/\\'";
+    case TOK_JOIN: return "'\\/'";
   }
   return "a token";
 }
@@ -167,6 +173,18 @@ static int lex_symbol(Lexer *lx) {
     case '+': kind = TOK_PLUS; break;
     case '|': kind = TOK_BAR; break;
     case ';': kind = TOK_SEMI; break;
+    case '<': kind = TOK_LANGLE; break;
+    case '>': kind = TOK_RANGLE; break;
+    case '@': kind = TOK_AT; break;
+    case '~': kind = TOK_TILDE; break;
+    case '/':
+      kind = next == '\\' ? TOK_MEET : TOK_EOF;
+      width = 2;
+      break;
+    case '\\':
+      kind = next == '/' ? TOK_JOIN : TOK_EOF;
+      width = 2;
+      break;
     case ':':
       kind = next == '=' ? TOK_DEFINE : TOK_COLON;
       width = next == '=' ? 2 : 1;

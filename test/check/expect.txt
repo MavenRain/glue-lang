@@ -32,3 +32,9 @@ circuit-unconstrained.glue CIRCUIT_UNCONSTRAINED
 circuit-unused-public.glue CIRCUIT_UNUSED_PUBLIC
 circuit-field-range.glue FIELD_RANGE
 circuit-duplicate.glue REFUSE_NAME
+path-expected.lang PATH_EXPECTED
+path-boundary-i0.lang PATH_BOUNDARY
+path-boundary-i1.lang PATH_BOUNDARY
+path-type.lang PATH_TYPE
+interval-term.lang INTERVAL_TERM
+interval-limit.lang INTERVAL_LIMIT

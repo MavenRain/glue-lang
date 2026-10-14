@@ -6,11 +6,14 @@
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
-              | sum ('->' term)?
+              | '<' NAME '>' term                (path abstraction)
+              | join ('->' term)?
+     join    := meet ('\/' meet)*             (interval connections)
+     meet    := sum ('/\' sum)*
      sum     := prod (('+' | '-') prod)*      (Field arithmetic)
      prod    := app ('*' app)*
-     app     := atom atom*
-     atom    := NAME | NAT | 'Type' NAT | 'Sigma' group atom | '(' term ')' */
+     app     := atom (atom | '@' atom)*       (application, path application)
+     atom    := NAME | NAT | 'Type' NAT | 'Sigma' group atom | '(' term ')' | '~' atom */
 #include <string.h>
 
 #include "front/parser.h"
@@ -132,7 +135,13 @@ static int starts_atom(TokKind kind) {
     case TOK_LPAREN:
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
+    case TOK_TILDE:
       return 1;
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
+    case TOK_MEET:
+    case TOK_JOIN:
     case TOK_EOF:
     case TOK_RPAREN:
     case TOK_COLON:
@@ -294,6 +303,19 @@ static const Term *parse_leaf(Parser *p, TermKind kind) {
   return term->name == NULL ? NULL : term;
 }
 
+/* '~' atom: TERM_IVL with nat 2 (IVL_REV). */
+static const Term *parse_rev(Parser *p) {
+  const Token *tok = cur(p);
+  bump(p);
+  const Term *operand = enter(p) ? parse_atom(p) : NULL;
+  p->depth--;
+  Term *t = operand == NULL ? NULL : make_term(p, TERM_IVL, tok->line, tok->col);
+  if (t == NULL) return NULL;
+  t->nat = 2u;
+  t->left = operand;
+  return t;
+}
+
 static const Term *parse_atom(Parser *p) {
   const Token *tok = cur(p);
   switch (tok->kind) {
@@ -302,6 +324,12 @@ static const Term *parse_atom(Parser *p) {
     case TOK_LPAREN: return parse_paren(p);
     case TOK_KW_TYPE: return parse_universe(p);
     case TOK_KW_SIGMA: return parse_sigma(p);
+    case TOK_TILDE: return parse_rev(p);
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
+    case TOK_MEET:
+    case TOK_JOIN:
     case TOK_EOF:
     case TOK_RPAREN:
     case TOK_COLON:
@@ -329,11 +357,13 @@ static const Term *parse_atom(Parser *p) {
   return NULL;
 }
 
+/* Application and '@' share one left-associative level. */
 static const Term *parse_app(Parser *p) {
   const Term *head = parse_atom(p);
-  while (head != NULL && starts_atom(cur(p)->kind)) {
+  while (head != NULL && (at(p, TOK_AT) || starts_atom(cur(p)->kind))) {
+    TermKind kind = eat(p, TOK_AT) ? TERM_PAPP : TERM_APP;
     const Term *arg = parse_atom(p);
-    Term *app = arg == NULL ? NULL : make_term(p, TERM_APP, head->line, head->col);
+    Term *app = arg == NULL ? NULL : make_term(p, kind, head->line, head->col);
     if (app == NULL) return NULL;
     app->left = head;
     app->right = arg;
@@ -342,9 +372,10 @@ static const Term *parse_app(Parser *p) {
   return head;
 }
 
-/* WHICH: 0 +, 1 -, 2 *. The checker allows Field operands only. */
-static const Term *arith(Parser *p, const Term *left, uint64_t which, const Term *right) {
-  Term *t = right == NULL ? NULL : make_term(p, TERM_ARITH, left->line, left->col);
+/* TERM_ARITH: WHICH 0 +, 1 -, 2 *. The checker allows Field operands only.
+   TERM_IVL: WHICH 3 /\, 4 \/. */
+static const Term *binary(Parser *p, TermKind kind, const Term *left, uint64_t which, const Term *right) {
+  Term *t = right == NULL ? NULL : make_term(p, kind, left->line, left->col);
   if (t == NULL) return NULL;
   t->nat = which;
   t->left = left;
@@ -354,7 +385,7 @@ static const Term *arith(Parser *p, const Term *left, uint64_t which, const Term
 
 static const Term *parse_prod(Parser *p) {
   const Term *head = parse_app(p);
-  while (head != NULL && eat(p, TOK_STAR)) head = arith(p, head, 2u, parse_app(p));
+  while (head != NULL && eat(p, TOK_STAR)) head = binary(p, TERM_ARITH, head, 2u, parse_app(p));
   return head;
 }
 
@@ -363,15 +394,42 @@ static const Term *parse_sum(Parser *p) {
   while (head != NULL && (at(p, TOK_PLUS) || at(p, TOK_MINUS))) {
     uint64_t which = at(p, TOK_PLUS) ? 0u : 1u;
     bump(p);
-    head = arith(p, head, which, parse_prod(p));
+    head = binary(p, TERM_ARITH, head, which, parse_prod(p));
   }
   return head;
 }
 
+static const Term *parse_meet(Parser *p) {
+  const Term *head = parse_sum(p);
+  while (head != NULL && eat(p, TOK_MEET)) head = binary(p, TERM_IVL, head, 3u, parse_sum(p));
+  return head;
+}
+
+static const Term *parse_join(Parser *p) {
+  const Term *head = parse_meet(p);
+  while (head != NULL && eat(p, TOK_JOIN)) head = binary(p, TERM_IVL, head, 4u, parse_meet(p));
+  return head;
+}
+
+/* '<' NAME '>' term. */
+static const Term *parse_plam(Parser *p) {
+  const Token *tok = cur(p);
+  bump(p);
+  const char *name = take_name(p, "an interval name");
+  if (name == NULL || !expect(p, TOK_RANGLE, "'>'")) return NULL;
+  const Term *body = parse_term(p);
+  Term *t = body == NULL ? NULL : make_term(p, TERM_PLAM, tok->line, tok->col);
+  if (t == NULL) return NULL;
+  t->name = name;
+  t->right = body;
+  return t;
+}
+
 static const Term *parse_term_body(Parser *p) {
   if (at(p, TOK_KW_FUN)) return parse_fun(p);
+  if (at(p, TOK_LANGLE)) return parse_plam(p);
   if (at_binder_group(p)) return parse_binder_type(p);
-  const Term *head = parse_sum(p);
+  const Term *head = parse_join(p);
   if (head == NULL || !at(p, TOK_ARROW)) return head;
   const Token *arrow = cur(p);
   bump(p);
@@ -542,6 +600,12 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_FUN:
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
+    case TOK_TILDE:
+    case TOK_MEET:
+    case TOK_JOIN:
       break;
   }
   return fail_at(p, tok, "'def', 'axiom', 'family' or 'circuit'");

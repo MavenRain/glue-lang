@@ -8,3 +8,6 @@ fun-no-binder.lang PARSE_EXPECT
 type-no-level.lang PARSE_EXPECT
 deep.lang PARSE_DEPTH
 circuit-no-eq.glue PARSE_EXPECT
+plam-no-rangle.lang PARSE_EXPECT
+papp-no-atom.lang PARSE_EXPECT
+meet-no-left.lang PARSE_EXPECT

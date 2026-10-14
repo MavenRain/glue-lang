@@ -73,6 +73,7 @@ static int ready(Out *o, const Value *v) {
   switch (v->kind) {
   case VAL_NAT:
   case VAL_OP:
+  case VAL_PLAM: /* a Path component; op_json writes null */
     return 1;
   case VAL_TRAP:
     return diag_fail(o->m->diag, "EVAL_OVERFLOW", o->def, "the instance value traps (a Nat overflow)");
@@ -82,9 +83,12 @@ static int ready(Out *o, const Value *v) {
     return refuse(o, "a type");
   case VAL_LAM:
     return refuse(o, "a function");
+  case VAL_IVL:
+    return refuse(o, "an interval");
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     return refuse(o, "a stuck term");
   }
   return internal(o, "an unknown value kind");
@@ -103,7 +107,7 @@ static int sum_json(Out *o, const Value *type, const Value *v) {
 /* none is null, so `some` wraps a value that can be null (ledger rule). */
 static int option_json(Out *o, const Value *type, const Value *v) {
   const Value *elem = type->args[0];
-  int wrap = val_is(elem, OP_OPTION) || val_is(elem, OP_EQ);
+  int wrap = val_is(elem, OP_OPTION) || val_is(elem, OP_EQ) || val_is(elem, OP_PATHP);
   if (val_is(v, OP_NONE))
     return put_text(o, "null");
   if (!val_is(v, OP_SOME))
@@ -183,6 +187,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_UNIT:
     return put_text(o, "{}");
   case OP_EQ:
+  case OP_PATHP:
     return put_text(o, "null");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))
@@ -271,6 +276,9 @@ static int typed_json(Out *o, const Value *type, const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_IVL:
+  case VAL_PLAM:
+  case VAL_PAPP:
     return refuse(o, "a value of a stuck type");
   }
   return internal(o, "an unknown type kind");
@@ -297,7 +305,7 @@ static int is_instance(const DefInfo *d) {
   case VAL_UNIV:
     return 0;
   case VAL_OP:
-    return !val_is(d->type, OP_EQ);
+    return !val_is(d->type, OP_EQ) && !val_is(d->type, OP_PATHP);
   case VAL_SIGMA:
   case VAL_NAT:
   case VAL_TRAP:
@@ -305,6 +313,9 @@ static int is_instance(const DefInfo *d) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_IVL:
+  case VAL_PLAM:
+  case VAL_PAPP:
     return 1;
   }
   return 1;

@@ -12,6 +12,7 @@
 
 #include "front/ast.h"
 #include "front/base.h"
+#include "front/interval.h"
 
 #define EVAL_DEPTH_LIMIT 2000u
 #define EVAL_FUEL_STEPS 20000000u
@@ -69,7 +70,8 @@ typedef enum {
   OP_FIELD_LIT, /* name: the canonical decimal */
   OP_FIELD_ADD,
   OP_FIELD_SUB,
-  OP_FIELD_MUL
+  OP_FIELD_MUL,
+  OP_PATHP /* M2: the line (a PLAM closure), then the two ends */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -89,7 +91,10 @@ typedef enum {
   CORE_PI,     /* (name : a) -> b */
   CORE_SIGMA,  /* Sigma (name : a) b */
   CORE_APP,    /* a b */
-  CORE_OP      /* a core name with all of its arguments */
+  CORE_OP,     /* a core name with all of its arguments */
+  CORE_IVL,    /* M2: an interval term. nat: the IvlOp. a, b: the operands */
+  CORE_PLAM,   /* M2: <name> b */
+  CORE_PAPP    /* M2: a @ b. args[0], args[1]: the ends of the type of a */
 } CoreKind;
 
 typedef struct Core Core;
@@ -119,7 +124,10 @@ typedef enum {
   VAL_OP,   /* a canonical value or a type */
   VAL_VAR,  /* neutral: a variable at a de Bruijn level */
   VAL_APP,  /* neutral: a neutral function applied to a value */
-  VAL_STUCK /* neutral: an operation with a neutral scrutinee */
+  VAL_STUCK, /* neutral: an operation with a neutral scrutinee */
+  VAL_IVL,   /* M2: an interval normal form in ivl */
+  VAL_PLAM,  /* M2: <name> body, a closure */
+  VAL_PAPP   /* M2: neutral: dom @ arg. args: the two ends (or NULL) */
 } ValKind;
 
 typedef struct Value Value;
@@ -140,8 +148,9 @@ struct Value {
   const Value *const *args;
   uint32_t argc;
   const char *name; /* LAM, PI, SIGMA: the binder */
-  const Value *dom; /* PI, SIGMA: the domain. APP: the function. */
-  const Value *arg; /* APP: the argument. A PI with no body: the codomain. */
+  const Value *dom; /* PI, SIGMA: the domain. APP: the function. PAPP: the path. */
+  const Value *arg; /* APP, PAPP: the argument. A PI with no body: the codomain. */
+  const Ivl *ivl;   /* IVL: the normal form */
   const Env *env;   /* LAM, PI, SIGMA: the closure */
   const Core *body;
 };
@@ -230,6 +239,9 @@ const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t fie
 const Value *val_make(Machine *m, Op op, uint32_t inst, uint32_t argc, const Value *a, const Value *b, const Value *c);
 /* A non-dependent function type. */
 const Value *val_arrow(Machine *m, const Value *dom, const Value *cod);
+/* M2: a fresh interval variable at LEVEL, and the end i0 (ONE zero) or i1. */
+const Value *val_ivl_var(Machine *m, uint32_t level);
+const Value *val_ivl_end(Machine *m, int one);
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body);
 int val_is(const Value *v, Op op);
 const Env *env_push(Machine *m, const Env *env, const Value *value);

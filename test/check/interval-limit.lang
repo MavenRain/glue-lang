@@ -1,0 +1,12 @@
+def t1 : Type 0 := Path Nat 0 0
+def q1 : t1 := <x> 0
+def t2 : Type 0 := Path t1 q1 q1
+def q2 : t2 := <x> q1
+def t3 : Type 0 := Path t2 q2 q2
+def q3 : t3 := <x> q2
+def t4 : Type 0 := Path t3 q3 q3
+def q4 : t4 := <x> q3
+def t5 : Type 0 := Path t4 q4 q4
+def q5 : t5 := <x> q4
+def t6 : Type 0 := Path t5 q5 q5
+def wrong : t1 -> t6 := fun p => <a> <b> <c> <d> <e> <f> p @ ((a \/ ~a \/ b) /\ (~b \/ c \/ ~c) /\ (d \/ ~d \/ e) /\ (~e \/ f \/ ~f))

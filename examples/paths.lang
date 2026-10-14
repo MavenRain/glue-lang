@@ -1,0 +1,21 @@
+-- M2 s1: the interval I and Path types (CCHM).
+-- A path at i0 and at i1 gives its end points.
+def constPath : Path Nat 1 1 := <i> 1
+def atStart : Nat := constPath @ i0
+def atEnd : Nat := constPath @ i1
+
+-- A path that is a variable gives the end points of its type.
+def startOf : Path Nat 1 2 -> Nat := fun p => p @ i0
+def endOf : Path Nat 1 2 -> Nat := fun p => p @ i1
+
+-- Application at an interval variable, and at its reversal.
+def middle : Path Nat 1 2 -> Path Nat 1 2 := fun p => <i> p @ i
+def reversed : Path Nat 1 2 -> Path Nat 2 1 := fun p => <i> p @ ~i
+
+-- Squares: the connections /\ and \/.
+def meetSquare : (p : Path Nat 1 2) -> PathP (<i> Path Nat 1 (p @ i)) (<j> 1) p := fun p => <i> <j> p @ (i /\ j)
+def joinSquare : (p : Path Nat 1 2) -> PathP (<i> Path Nat (p @ i) 2) p (<j> 2) := fun p => <i> <j> p @ (i \/ j)
+def mixed : (p : Path Nat 1 2) -> PathP (<i> Path Nat (p @ i) 1) (<j> 1) (<j> p @ ~j) := fun p => <i> <j> p @ (i /\ ~j)
+
+-- PathP over a constant line.
+def viaP : PathP (<i> Nat) 1 1 := <i> 1

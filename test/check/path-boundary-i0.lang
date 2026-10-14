@@ -1,0 +1,1 @@
+def wrong : Path Nat 1 2 := <i> 2

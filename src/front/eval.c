@@ -25,7 +25,7 @@ static const char *const OP_NAMES[] = {
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
   [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
-  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?"
+  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -42,7 +42,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
-  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1
+  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
+  [OP_PATHP] = 3
 };
 
 typedef enum {
@@ -188,7 +189,7 @@ const Value *val_arrow(Machine *m, const Value *dom, const Value *cod) {
 
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body) {
   Value *v;
-  if (body == NULL || (dom == NULL && kind != VAL_LAM))
+  if (body == NULL || (dom == NULL && kind != VAL_LAM && kind != VAL_PLAM))
     return NULL;
   v = new_value(m, kind);
   if (v == NULL)
@@ -244,6 +245,7 @@ static Scrut scrut_of(const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     return SCRUT_NEUTRAL;
   case VAL_NAT:
   case VAL_UNIV:
@@ -251,6 +253,8 @@ static Scrut scrut_of(const Value *v) {
   case VAL_PI:
   case VAL_SIGMA:
   case VAL_OP:
+  case VAL_IVL:
+  case VAL_PLAM:
     return SCRUT_VALUE;
   }
   return SCRUT_VALUE;
@@ -350,6 +354,7 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     v = new_value(m, VAL_APP);
     if (v == NULL)
       return NULL;
@@ -361,6 +366,8 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   case VAL_PI:
   case VAL_SIGMA:
   case VAL_OP:
+  case VAL_IVL:
+  case VAL_PLAM:
     break;
   }
   return internal(m, "an application of a value that is not a function");
@@ -850,6 +857,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_PACK:
   case OP_REFL:
   case OP_CTOR:
+  case OP_PATHP:
     return val_op(m, VAL_OP, op, inst, field, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
@@ -923,6 +931,106 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
   return reduce_op(m, c->op, c->inst, c->field, args, c->argc);
 }
 
+/* M2: the interval and the Path values. */
+static IvlHeap ivl_heap(Machine *m) {
+  IvlHeap h;
+  h.arena = m->arena;
+  h.diag = m->diag;
+  h.def = m->def;
+  return h;
+}
+
+static const Value *val_ivl(Machine *m, const Ivl *ivl) {
+  Value *v;
+  if (ivl == NULL)
+    return NULL;
+  v = new_value(m, VAL_IVL);
+  if (v != NULL)
+    v->ivl = ivl;
+  return v;
+}
+
+const Value *val_ivl_var(Machine *m, uint32_t level) {
+  IvlHeap h = ivl_heap(m);
+  return val_ivl(m, ivl_lit(&h, level, 0));
+}
+
+const Value *val_ivl_end(Machine *m, int one) {
+  IvlHeap h = ivl_heap(m);
+  return val_ivl(m, ivl_const(&h, one));
+}
+
+static const Ivl *ivl_of(Machine *m, const Value *v) {
+  if (v == NULL)
+    return NULL;
+  if (v->kind != VAL_IVL) {
+    internal(m, "an interval operand that is not an interval");
+    return NULL;
+  }
+  return v->ivl;
+}
+
+static const Value *eval_ivl(Machine *m, const Env *env, const Core *c) {
+  IvlHeap h = ivl_heap(m);
+  const Ivl *a;
+  const Ivl *b;
+  switch ((IvlOp)c->nat) {
+  case IVL_ZERO:
+    return val_ivl(m, ivl_const(&h, 0));
+  case IVL_ONE:
+    return val_ivl(m, ivl_const(&h, 1));
+  case IVL_REV:
+    a = ivl_of(m, eval_core(m, env, c->a));
+    return a == NULL ? NULL : val_ivl(m, ivl_rev(&h, a));
+  case IVL_MEET:
+  case IVL_JOIN:
+    a = ivl_of(m, eval_core(m, env, c->a));
+    b = a == NULL ? NULL : ivl_of(m, eval_core(m, env, c->b));
+    if (b == NULL)
+      return NULL;
+    return val_ivl(m, c->nat == IVL_MEET ? ivl_meet(&h, a, b) : ivl_join(&h, a, b));
+  }
+  return internal(m, "an unknown interval operation");
+}
+
+/* P @ R. ENDS: the two ends of the type of P in ENV. They are NULL only in
+   the eta rule of conv, where R is a fresh variable. */
+static const Value *papp_value(Machine *m, const Value *p, const Value *r, const Env *env, const Core *const *ends) {
+  Value *v;
+  const Value **vals;
+  int one;
+  if (p == NULL || r == NULL)
+    return NULL;
+  if (r->kind != VAL_IVL)
+    return internal(m, "a path applied to a value that is not an interval");
+  if (p->kind == VAL_PLAM)
+    return closure_apply(m, p, r);
+  if (p->kind == VAL_TRAP)
+    return p;
+  one = ivl_is_const(r->ivl, 1);
+  if (ends != NULL && (one || ivl_is_const(r->ivl, 0)))
+    return eval_core(m, env, ends[one]);
+  if (scrut_of(p) != SCRUT_NEUTRAL)
+    return internal(m, "an application of a value that is not a path");
+  v = new_value(m, VAL_PAPP);
+  if (v == NULL)
+    return NULL;
+  v->dom = p;
+  v->arg = r;
+  if (ends == NULL)
+    return v;
+  vals = arena_alloc(m->arena, 2u * sizeof *vals);
+  if (vals == NULL)
+    return oom(m);
+  vals[0] = eval_core(m, env, ends[0]);
+  vals[1] = eval_core(m, env, ends[1]);
+  if (vals[0] == NULL || vals[1] == NULL)
+    return NULL;
+  v->args = vals;
+  v->argc = 2u;
+  return v;
+}
+
 static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
   switch (c->kind) {
   case CORE_VAR:
@@ -945,6 +1053,12 @@ static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
     return apply_value(m, eval_core(m, env, c->a), eval_core(m, env, c->b));
   case CORE_OP:
     return eval_op(m, env, c);
+  case CORE_IVL:
+    return eval_ivl(m, env, c);
+  case CORE_PLAM:
+    return val_closure(m, VAL_PLAM, c->name, NULL, env, c->b);
+  case CORE_PAPP:
+    return papp_value(m, eval_core(m, env, c->a), eval_core(m, env, c->b), env, c->argc == 2u ? c->args : NULL);
   }
   return internal(m, "an unknown core term");
 }
@@ -981,11 +1095,23 @@ static int conv_pair(Machine *m, uint32_t level, const Value *pair, const Value 
       && conv_values(m, level, pair->args[1], make(m, VAL_STUCK, second, 0, 1, neutral, NULL, NULL));
 }
 
+/* Path eta: a path is equal to Q when the two agree on a fresh interval
+   variable. The other side must be a path or a neutral. */
+static int conv_path(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *x;
+  if ((a->kind != VAL_PLAM && scrut_of(a) != SCRUT_NEUTRAL) || (b->kind != VAL_PLAM && scrut_of(b) != SCRUT_NEUTRAL))
+    return 0;
+  x = val_ivl_var(m, level);
+  return conv_values(m, level + 1u, papp_value(m, a, x, NULL, NULL), papp_value(m, b, x, NULL, NULL));
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
   uint32_t i;
   while (a != NULL && b != NULL && spend(m, 1)) {
+    if (a->kind == VAL_PLAM || b->kind == VAL_PLAM)
+      return conv_path(m, level, a, b);
     if (a->kind == VAL_LAM || b->kind == VAL_LAM)
       return conv_fun(m, level, a, b);
     if ((val_is(a, OP_PAIR) || val_is(a, OP_PACK)) && scrut_of(b) == SCRUT_NEUTRAL)
@@ -1002,7 +1128,16 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_TRAP:
       return 1;
     case VAL_LAM:
+    case VAL_PLAM:
       return 0;
+    case VAL_IVL:
+      return ivl_equal(a->ivl, b->ivl);
+    case VAL_PAPP:
+      if (a->arg->kind != VAL_IVL || b->arg->kind != VAL_IVL || !ivl_equal(a->arg->ivl, b->arg->ivl))
+        return 0;
+      a = a->dom;
+      b = b->dom;
+      break;
     case VAL_PI:
     case VAL_SIGMA:
       return conv_binder(m, level, a, b);
@@ -1084,10 +1219,12 @@ static const Core *quote_app(Machine *m, uint32_t level, const Value *v) {
 }
 
 static const Core *quote_binder(Machine *m, uint32_t level, const Value *v, CoreKind kind) {
-  const Core *dom = kind == CORE_LAM ? NULL : quote_value(m, level, v->dom);
-  const Core *body = quote_value(m, level + 1u, closure_apply(m, v, val_var(m, level)));
+  int bare = kind == CORE_LAM || kind == CORE_PLAM;
+  const Core *dom = bare ? NULL : quote_value(m, level, v->dom);
+  const Value *x = kind == CORE_PLAM ? val_ivl_var(m, level) : val_var(m, level);
+  const Core *body = quote_value(m, level + 1u, closure_apply(m, v, x));
   Core *c;
-  if (body == NULL || (dom == NULL && kind != CORE_LAM))
+  if (body == NULL || (dom == NULL && !bare))
     return NULL;
   c = new_core(m, kind);
   if (c == NULL)
@@ -1123,6 +1260,80 @@ static const Core *quote_op(Machine *m, uint32_t level, const Value *v) {
   return c;
 }
 
+static const Core *core_ivl(Machine *m, IvlOp op, const Core *a, const Core *b) {
+  Core *c = new_core(m, CORE_IVL);
+  if (c == NULL)
+    return NULL;
+  c->nat = op;
+  c->a = a;
+  c->b = b;
+  return c;
+}
+
+static const Core *quote_lit(Machine *m, uint32_t level, uint32_t lit) {
+  Core *c;
+  if (lit / 2u >= level) {
+    internal(m, "an interval variable above its level");
+    return NULL;
+  }
+  c = new_core(m, CORE_VAR);
+  if (c == NULL)
+    return NULL;
+  c->index = level - 1u - lit / 2u;
+  return (lit & 1u) == 0u ? c : core_ivl(m, IVL_REV, c, NULL);
+}
+
+/* The normal form as a join of meets of literals. */
+static const Core *quote_ivl(Machine *m, uint32_t level, const Ivl *ivl) {
+  const Core *out = NULL;
+  uint32_t k, i;
+  for (k = 0; k < ivl->count; k++) {
+    const Core *conj = NULL;
+    for (i = ivl->starts[k]; i < ivl->starts[k + 1u]; i++) {
+      const Core *lit = quote_lit(m, level, ivl->lits[i]);
+      if (lit == NULL)
+        return NULL;
+      conj = conj == NULL ? lit : core_ivl(m, IVL_MEET, conj, lit);
+      if (conj == NULL)
+        return NULL;
+    }
+    if (conj == NULL)
+      conj = core_ivl(m, IVL_ONE, NULL, NULL);
+    out = out == NULL ? conj : core_ivl(m, IVL_JOIN, out, conj);
+    if (out == NULL)
+      return NULL;
+  }
+  return out != NULL ? out : core_ivl(m, IVL_ZERO, NULL, NULL);
+}
+
+static const Core *quote_papp(Machine *m, uint32_t level, const Value *v) {
+  const Core *p = quote_value(m, level, v->dom);
+  const Core *r = quote_value(m, level, v->arg);
+  const Core **ends;
+  Core *c;
+  if (p == NULL || r == NULL)
+    return NULL;
+  c = new_core(m, CORE_PAPP);
+  if (c == NULL)
+    return NULL;
+  c->a = p;
+  c->b = r;
+  if (v->argc != 2u)
+    return c;
+  ends = arena_alloc(m->arena, 2u * sizeof *ends);
+  if (ends == NULL) {
+    oom(m);
+    return NULL;
+  }
+  ends[0] = quote_value(m, level, v->args[0]);
+  ends[1] = quote_value(m, level, v->args[1]);
+  if (ends[0] == NULL || ends[1] == NULL)
+    return NULL;
+  c->args = ends;
+  c->argc = 2u;
+  return c;
+}
+
 static const Core *quote_inner(Machine *m, uint32_t level, const Value *v) {
   switch (v->kind) {
   case VAL_NAT:
@@ -1144,6 +1355,12 @@ static const Core *quote_inner(Machine *m, uint32_t level, const Value *v) {
   case VAL_OP:
   case VAL_STUCK:
     return quote_op(m, level, v);
+  case VAL_IVL:
+    return quote_ivl(m, level, v->ivl);
+  case VAL_PLAM:
+    return quote_binder(m, level, v, CORE_PLAM);
+  case VAL_PAPP:
+    return quote_papp(m, level, v);
   }
   internal(m, "an unknown value");
   return NULL;
@@ -1212,6 +1429,9 @@ static int is_chain(const Value *v) {
 }
 
 /* A printed binder must not capture another variable or a global name. */
+/* M2: the interval and Path names of the checker. */
+static const char *const PATH_NAMES[] = {"I", "i0", "i1", "Path"};
+
 static int name_used(const Printer *p, const char *name) {
   uint32_t i;
   uint32_t j;
@@ -1225,6 +1445,9 @@ static int name_used(const Printer *p, const char *name) {
       return 1;
   for (i = 0; i < sizeof OP_NAMES / sizeof OP_NAMES[0]; i++)
     if (strcmp(name, OP_NAMES[i]) == 0)
+      return 1;
+  for (i = 0; i < sizeof PATH_NAMES / sizeof PATH_NAMES[0]; i++)
+    if (strcmp(name, PATH_NAMES[i]) == 0)
       return 1;
   for (i = 0; i < p->m->def_count; i++)
     if (strcmp(name, p->m->defs[i].name) == 0)
@@ -1248,7 +1471,8 @@ static void print_binder(Printer *p, const Value *v) {
   const char *name = v->name != NULL ? v->name : "x";
   char fresh[32];
   uint32_t suffix = 0;
-  const Value *body = closure_apply(p->m, v, val_var(p->m, level));
+  const Value *x = v->kind == VAL_PLAM ? val_ivl_var(p->m, level) : val_var(p->m, level);
+  const Value *body = closure_apply(p->m, v, x);
   int binder_dom = v->dom != NULL && (v->dom->kind == VAL_PI || v->dom->kind == VAL_SIGMA || v->dom->kind == VAL_LAM || v->dom->kind == VAL_UNIV);
   while (name_used(p, name)) {
     snprintf(fresh, sizeof fresh, "_x%u", suffix++);
@@ -1279,6 +1503,11 @@ static void print_binder(Printer *p, const Value *v) {
     print_value(p, v->dom, 0);
     put(p, ") ");
     break;
+  case VAL_PLAM:
+    put(p, "<");
+    put(p, name);
+    put(p, "> ");
+    break;
   case VAL_NAT:
   case VAL_TRAP:
   case VAL_UNIV:
@@ -1286,6 +1515,8 @@ static void print_binder(Printer *p, const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_IVL:
+  case VAL_PAPP:
     break;
   }
   if (p->extra_count < PRINT_NAMES_MAX)
@@ -1293,6 +1524,50 @@ static void print_binder(Printer *p, const Value *v) {
   p->extra_count++;
   print_value(p, body, v->kind == VAL_SIGMA);
   p->extra_count--;
+}
+
+/* An interval normal form: a join of meets of literals. */
+static void print_ivl(Printer *p, const Ivl *ivl, int atom) {
+  uint32_t k, i;
+  int wrap = atom && (ivl->count > 1u || (ivl->count == 1u && ivl->starts[1] - ivl->starts[0] > 1u));
+  if (ivl->count == 0u) {
+    put(p, "i0");
+    return;
+  }
+  if (wrap)
+    put(p, "(");
+  for (k = 0; k < ivl->count; k++) {
+    uint32_t len = ivl->starts[k + 1u] - ivl->starts[k];
+    int group = ivl->count > 1u && len > 1u;
+    if (k > 0u)
+      put(p, " \\/ ");
+    if (len == 0u)
+      put(p, "i1");
+    if (group)
+      put(p, "(");
+    for (i = ivl->starts[k]; i < ivl->starts[k + 1u]; i++) {
+      if (i > ivl->starts[k])
+        put(p, " /\\ ");
+      if ((ivl->lits[i] & 1u) != 0u)
+        put(p, "~");
+      put(p, var_name(p, ivl->lits[i] / 2u));
+    }
+    if (group)
+      put(p, ")");
+  }
+  if (wrap)
+    put(p, ")");
+}
+
+/* A when V is PathP over a constant line <i> A, else NULL. The line is
+   constant when it is the same at i0 and at a fresh variable. */
+static const Value *path_line(Printer *p, const Value *v) {
+  uint32_t level = p->name_count + p->extra_count;
+  const Value *a0;
+  if (v->op != OP_PATHP || v->argc != 3u || v->args[0]->kind != VAL_PLAM)
+    return NULL;
+  a0 = closure_apply(p->m, v->args[0], val_ivl_end(p->m, 0));
+  return conv_values(p->m, level + 1u, a0, closure_apply(p->m, v->args[0], val_ivl_var(p->m, level))) ? a0 : NULL;
 }
 
 static void print_other(Printer *p, const Value *v, int atom) {
@@ -1316,11 +1591,16 @@ static void print_other(Printer *p, const Value *v, int atom) {
   case VAL_STUCK:
     put(p, val_is(v, OP_FIELD_LIT) ? v->name : op_name(p->m, v->op, v->inst, v->field));
     return;
+  case VAL_IVL:
+    print_ivl(p, v->ivl, atom);
+    return;
   case VAL_UNIV:
   case VAL_APP:
   case VAL_LAM:
   case VAL_PI:
   case VAL_SIGMA:
+  case VAL_PLAM:
+  case VAL_PAPP:
     break;
   }
   if (atom)
@@ -1335,9 +1615,15 @@ static void print_other(Printer *p, const Value *v, int atom) {
     put(p, " ");
     print_value(p, v->arg, 1);
     break;
+  case VAL_PAPP:
+    print_value(p, v->dom, v->dom->kind != VAL_APP && v->dom->kind != VAL_PAPP && v->dom->kind != VAL_VAR);
+    put(p, " @ ");
+    print_value(p, v->arg, 1);
+    break;
   case VAL_LAM:
   case VAL_PI:
   case VAL_SIGMA:
+  case VAL_PLAM:
     print_binder(p, v);
     break;
   case VAL_NAT:
@@ -1345,6 +1631,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
   case VAL_VAR:
   case VAL_OP:
   case VAL_STUCK:
+  case VAL_IVL:
     break;
   }
   if (atom)
@@ -1354,6 +1641,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
 /* An operation prints as its name and its arguments. The last argument is
    printed in the loop, so a long list does not nest. */
 static void print_value(Printer *p, const Value *v, int atom) {
+  const Value *line;
   uint32_t open = 0;
   uint32_t i;
   if (p->depth >= PRINT_DEPTH_MAX) {
@@ -1367,10 +1655,11 @@ static void print_value(Printer *p, const Value *v, int atom) {
       put(p, "(");
       open++;
     }
-    put(p, op_name(p->m, v->op, v->inst, v->field));
+    line = path_line(p, v);
+    put(p, line != NULL ? "Path" : op_name(p->m, v->op, v->inst, v->field));
     for (i = 0; i + 1u < v->argc; i++) {
       put(p, " ");
-      print_value(p, v->args[i], 1);
+      print_value(p, i == 0u && line != NULL ? line : v->args[i], 1);
     }
     put(p, " ");
     v = v->args[v->argc - 1u];
