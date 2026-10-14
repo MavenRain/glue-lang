@@ -1,0 +1,1 @@
+def same : Eq Nat 0 0 := refl

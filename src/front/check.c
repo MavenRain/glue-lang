@@ -46,7 +46,6 @@ typedef enum {
   RULE_TYPE0,
   RULE_TYPE1,
   RULE_TYPE2,
-  RULE_EQ,
   RULE_VALUE0,
   RULE_PAIR,
   RULE_INJ,
@@ -65,10 +64,7 @@ typedef enum {
   RULE_FILTER,
   RULE_FOLD,
   RULE_UNFOLD,
-  RULE_SYMM,
-  RULE_TRANS,
   RULE_CONG,
-  RULE_TRANSPORT,
   RULE_NAT2,
   RULE_FLAG_IF,
   RULE_INTERVAL,
@@ -97,7 +93,6 @@ static const Builtin BUILTINS[] = {
   {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0},
   {"Option", 1, RULE_TYPE1, OP_OPTION, OP_NAT, 0},
   {"List", 1, RULE_TYPE1, OP_LIST, OP_NAT, 0},
-  {"Eq", 3, RULE_EQ, OP_EQ, OP_NAT, 0},
   {"unit", 0, RULE_VALUE0, OP_UNIT_VAL, OP_UNIT, 0},
   {"flagYes", 0, RULE_VALUE0, OP_FLAG_YES, OP_FLAG, 0},
   {"flagNo", 0, RULE_VALUE0, OP_FLAG_NO, OP_FLAG, 0},
@@ -109,7 +104,7 @@ static const Builtin BUILTINS[] = {
   {"some", 1, RULE_SOME, OP_SOME, OP_OPTION, 0},
   {"cons", 2, RULE_CONS, OP_CONS, OP_LIST, 0},
   {"pack", 2, RULE_PACK, OP_PACK, OP_NAT, 0},
-  {"refl", 0, RULE_REFL, OP_REFL, OP_EQ, 0},
+  {"refl", 0, RULE_REFL, OP_PATHP, OP_NAT, 0},
   {"first", 1, RULE_PART, OP_FIRST, OP_PROD, 0},
   {"second", 1, RULE_PART, OP_SECOND, OP_PROD, 1},
   {"witness", 1, RULE_SIGMA_PART, OP_WITNESS, OP_NAT, 0},
@@ -122,10 +117,7 @@ static const Builtin BUILTINS[] = {
   {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0},
   {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0},
   {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0},
-  {"symm", 1, RULE_SYMM, OP_SYMM, OP_EQ, 0},
-  {"trans", 2, RULE_TRANS, OP_TRANS, OP_EQ, 0},
-  {"cong", 2, RULE_CONG, OP_CONG, OP_EQ, 0},
-  {"transport", 3, RULE_TRANSPORT, OP_TRANSPORT, OP_EQ, 0},
+  {"cong", 2, RULE_CONG, OP_PATHP, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -145,7 +137,7 @@ static const Builtin BUILTINS[] = {
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
 
 /* Names that no declaration can take (rule R4). */
-static const char *const RESERVED[] = {"Bool", "Text", "transp", "hcomp", "Glue", "ua", "Partial", "SSet"};
+static const char *const RESERVED[] = {"Bool", "Text", "trans", "transport", "transp", "hcomp", "Glue", "ua", "Partial", "SSet"};
 
 typedef enum {
   HEAD_TERM, /* a local, a definition or another term: plain application */
@@ -484,13 +476,6 @@ static const Core *not_carrier(Call *k, const Value *type) {
   return nul(FAIL(k->c, "TYPE_MISMATCH", "%s needs a value of type Option A, List A or Sum E A, found a term of type %s", k->b->name, show(k->c, type)));
 }
 
-static const Core *infer_eq(Call *k, uint32_t i, const Value **type) {
-  const Core *e = infer(k->c, k->args[i], type);
-  if (e == NULL)
-    return NULL;
-  return val_is(*type, OP_EQ) ? e : nul(FAIL(k->c, "TYPE_MISMATCH", "%s needs a proof of type Eq A a b, found a term of type %s", k->b->name, show(k->c, *type)));
-}
-
 static const Core *rule_type1(Call *k) {
   uint64_t level = 0;
   const Core *a = check_type(k->c, k->args[0], &level);
@@ -505,17 +490,6 @@ static const Core *rule_type2(Call *k) {
   const Core *b = a == NULL ? NULL : check_type(k->c, k->args[1], &lb);
   k->type = val_univ(k->c->m, la > lb ? la : lb);
   return op3(k->c, k->b->op, 0, 2, a, b, NULL);
-}
-
-static const Core *rule_eq(Call *k) {
-  Checker *c = k->c;
-  uint64_t level = 0;
-  const Core *t = check_type(c, k->args[0], &level);
-  const Value *tv = here(c, t);
-  const Core *a = check(c, k->args[1], tv);
-  const Core *b = a == NULL ? NULL : check(c, k->args[2], tv);
-  k->type = val_univ(c->m, 0);
-  return op3(c, OP_EQ, 0, 3, t, a, b);
 }
 
 static const Core *rule_pair(Call *k) {
@@ -578,16 +552,7 @@ static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
 static const Core *rule_refl(Call *k) {
-  Checker *c = k->c;
-  const Value *e = k->hint;
-  if (val_is(e, OP_PATHP))
-    return refl_path(k);
-  if (!val_is(e, OP_EQ))
-    return need_type(k, "Eq A a b or Path A a b");
-  if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
-    return nul(FAIL(c, "TYPE_REFL", "refl cannot prove the equality: the left side normalizes to %s, the right side normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
-  k->type = e;
-  return op3(c, OP_REFL, 0, 0, NULL, NULL, NULL);
+  return val_is(k->hint, OP_PATHP) ? refl_path(k) : need_type(k, "Path A a b");
 }
 
 static const Core *rule_part(Call *k) {
@@ -820,69 +785,16 @@ static const Core *rule_unfold(Call *k) {
   return op3(c, OP_UNFOLD, 0, 3, g, limit, seed);
 }
 
-static const Core *rule_symm(Call *k) {
-  const Value *et = NULL;
-  const Core *e = infer_eq(k, 0, &et);
-  if (e == NULL)
-    return NULL;
-  k->type = tyop(k->c, OP_EQ, 3, et->args[0], et->args[2], et->args[1]);
-  return op3(k->c, OP_SYMM, 0, 1, e, NULL, NULL);
-}
-
-static const Core *rule_trans(Call *k) {
-  Checker *c = k->c;
-  const Value *t1 = NULL;
-  const Value *t2 = NULL;
-  const Core *e1 = infer_eq(k, 0, &t1);
-  const Core *e2 = e1 == NULL ? NULL : infer_eq(k, 1, &t2);
-  if (e2 == NULL)
-    return NULL;
-  if (!conv_values(c->m, c->level, t1->args[0], t2->args[0]) || !conv_values(c->m, c->level, t1->args[2], t2->args[1]))
-    return nul(FAIL(c, "TYPE_MISMATCH", "trans needs the right side of the first proof, %s, to equal the left side of the second, %s", show(c, t1->args[2]), show(c, t2->args[1])));
-  k->type = tyop(c, OP_EQ, 3, t1->args[0], t1->args[1], t2->args[2]);
-  return op3(c, OP_TRANS, 0, 2, e1, e2, NULL);
-}
-
-/* cong f e */
+/* cong f p */
 static const Core *rule_cong(Call *k) {
   Checker *c = k->c;
-  const Value *et = NULL;
-  const Value *bt = NULL;
-  const Value *fv;
-  const Value *hint_type = val_is(k->hint, OP_EQ) ? k->hint->args[0] : NULL;
-  const Core *e = infer(c, k->args[1], &et);
-  const Core *f;
-  if (e != NULL && val_is(et, OP_PATHP))
-    return cong_path(k, e, et);
-  if (e != NULL && !val_is(et, OP_EQ))
-    return nul(FAIL(c, "TYPE_MISMATCH", "cong needs a proof of type Eq A a b or a path of type Path A a b, found a term of type %s", show(c, et)));
-  f = e == NULL ? NULL : fn_into(c, k->args[0], et->args[0], hint_type, &bt);
-  if (f == NULL)
-    return NULL;
-  fv = here(c, f);
-  k->type = tyop(c, OP_EQ, 3, bt, apply_value(c->m, fv, et->args[1]), apply_value(c->m, fv, et->args[2]));
-  return op3(c, OP_CONG, 0, 2, f, e, NULL);
-}
-
-/* transport P e u */
-static const Core *rule_transport(Call *k) {
-  Checker *c = k->c;
-  const Value *et = NULL;
   const Value *pt = NULL;
-  const Value *cod;
-  const Value *pv;
-  const Core *e = infer_eq(k, 1, &et);
-  const Core *p = e == NULL ? NULL : infer(c, k->args[0], &pt);
-  const Core *u;
+  const Core *p = infer(c, k->args[1], &pt);
   if (p == NULL)
     return NULL;
-  cod = pt != NULL && pt->kind == VAL_PI ? closure_apply(c->m, pt, val_var(c->m, c->level)) : NULL;
-  if (cod == NULL || cod->kind != VAL_UNIV || !conv_values(c->m, c->level, pt->dom, et->args[0]))
-    return nul(FAIL(c, "TYPE_MISMATCH", "transport needs a family of types over %s, found a term of type %s", show(c, et->args[0]), show(c, pt)));
-  pv = here(c, p);
-  u = check(c, k->args[2], apply_value(c->m, pv, et->args[1]));
-  k->type = apply_value(c->m, pv, et->args[2]);
-  return op3(c, OP_TRANSPORT, 0, 3, p, e, u);
+  if (!val_is(pt, OP_PATHP))
+    return nul(FAIL(c, "PATH_EXPECTED", "cong needs a path of type Path A a b, found a term of type %s", show(c, pt)));
+  return cong_path(k, p, pt);
 }
 
 static const Core *rule_nat2(Call *k) {
@@ -1220,8 +1132,6 @@ static const Core *rule(Call *k) {
     return rule_type1(k);
   case RULE_TYPE2:
     return rule_type2(k);
-  case RULE_EQ:
-    return rule_eq(k);
   case RULE_PAIR:
     return rule_pair(k);
   case RULE_INJ:
@@ -1256,14 +1166,8 @@ static const Core *rule(Call *k) {
     return rule_fold(k);
   case RULE_UNFOLD:
     return rule_unfold(k);
-  case RULE_SYMM:
-    return rule_symm(k);
-  case RULE_TRANS:
-    return rule_trans(k);
   case RULE_CONG:
     return rule_cong(k);
-  case RULE_TRANSPORT:
-    return rule_transport(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FLAG_IF:
@@ -1944,6 +1848,12 @@ static int circuit_binders(Checker *c, const Field *fs, size_t n, const char **n
   return 1;
 }
 
+/* M2 ruling b: a == b is the type Path Field a b. */
+static const Core *field_path(Checker *c, const Core *a, const Core *b) {
+  const Core *line = core_bind(c, CORE_PLAM, "i", NULL, op3(c, OP_FIELD, 0, 0, NULL, NULL, NULL));
+  return a == NULL || b == NULL ? NULL : op3(c, OP_PATHP, 0, 3, line, a, b);
+}
+
 static int check_circuit(Checker *c, const Decl *d) {
   Machine *m = c->m;
   CircuitInfo *info = &m->circuits[m->circuit_count];
@@ -1962,12 +1872,13 @@ static int check_circuit(Checker *c, const Decl *d) {
   for (i = 0; i < d->constraint_count; i++) {
     const Constraint *k = &d->constraints[i];
     int eq = k->kind == CONSTRAINT_EQ;
+    const Core *lhs = field_term(c, k->lhs, eq ? "EQ_FIELD" : "RANGE8_FIELD", eq ? "== needs Field sides" : "range8 needs a Field operand");
+    const Core *rhs = eq && lhs != NULL ? field_term(c, k->rhs, "EQ_FIELD", "== needs Field sides") : NULL;
     ks[i].kind = k->kind;
     ks[i].line = k->line;
     ks[i].col = k->col;
-    ks[i].lhs = field_term(c, k->lhs, eq ? "EQ_FIELD" : "RANGE8_FIELD", eq ? "== needs Field sides" : "range8 needs a Field operand");
-    ks[i].rhs = eq && ks[i].lhs != NULL ? field_term(c, k->rhs, "EQ_FIELD", "== needs Field sides") : NULL;
-    if (ks[i].lhs == NULL || (eq && ks[i].rhs == NULL))
+    ks[i].term = eq ? field_path(c, lhs, rhs) : lhs;
+    if (ks[i].term == NULL)
       return 0;
   }
   info->name = d->name;

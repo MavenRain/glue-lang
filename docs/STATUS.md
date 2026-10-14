@@ -178,3 +178,60 @@ The plan is docs/M2-PLAN.md. Each slice is one session (section 10).
   The e2e target passed using the existing halo2 binary (33 Forge tests).
   Generated verifiers match the index byte for byte. The repository's
   original proof fixtures were preserved.
+
+### s3: Path replaces F12 and F13; `==` is Path Field (2026-10-14)
+
+- Removed: the core names `Eq`, `symm`, `trans` and `transport`, and the
+  ops OP_EQ, OP_REFL, OP_SYMM, OP_TRANS, OP_TRANSPORT and OP_CONG (core.h,
+  the eval.c tables and dispatch, reduce_proof, json.c). `refl` and `cong`
+  keep only the Path rules (refl_path, cong_path). Their BUILTINS rows use
+  OP_PATHP as a placeholder op. `cong` with an argument that is not a path
+  gives PATH_EXPECTED (M1 gave TYPE_MISMATCH). `Eq` is an unknown name
+  (NAME_UNKNOWN). `trans` and `transport` are reserved names (REFUSE_NAME,
+  D8).
+- Circuits (ruling b): for each constraint `a == b`, the checker forms the
+  core type `Path Field a b` (check.c field_path). ConstraintInfo has one
+  core term: the Path type for EQ, the operand for RANGE8. The lowering
+  (circuit.c lower_check) evaluates the term and reads the two ends of the
+  Path value. EQ_FIELD stays for a side that is not Field.
+- Examples: equality.lang uses `Path` and `sym` (`same`, `back`,
+  `bumped`). laws.lang and sigma.lang use `Path`. field.lang has `sqRel :
+  Field -> Field -> Type 0` and `sqThree : sqRel three nine := refl`.
+- Goldens: test/json/sigma.json has the type text `Sigma (n : Nat) (Path
+  Nat n 1200)`. The equality, laws and field JSON did not change. Eval
+  rows: `sigma offer` gives `pack 1200 (<i> 1200)`. The row `equality
+  moved` is removed. New rows: `equality back` (`<i> 1200`), `equality
+  bumped` (`<i> 1201`), `field sqThree` (`<i> 9`), `field sqRel`.
+  bad-refl.lang and bad-eta.lang use `Path`. test/gate.sh checks the Path
+  message `the start normalizes to 1201, the end normalizes to 1200`. New
+  check rows: unknown-eq.lang (NAME_UNKNOWN), reserved-trans.lang and
+  reserved-transport.lang (REFUSE_NAME), bad-sqrel.lang (TYPE_REFL for
+  `sqRel three ten`). In the old node harnesses test/regressions.js and
+  test/printer-regressions.js, only the strings changed (`Eq` to `Path`).
+- FORMERS F12 and F13 (text and matrix) change in s5 (close).
+- M3 tests (removed in s3; they come back with `hcomp` and `transp`):
+  1. `round : Path Nat price price := trans same back`
+     (examples/equality.lang).
+  2. `moved : (P : (n : Nat) -> Type 0) -> (u : P price) -> P cost :=
+     fun P u => transport P same u`, with the eval row `equality moved =>
+     fun P => fun u => u`.
+- Gates: `make check` exit 0 (examples 15, parse refusals 13, check
+  refusals 47, evals 41, json 12, build refusals 2, circuits 3, circuit
+  refusals 10, satcheck refusals 6, native circuit regressions 9 and 0
+  failed, native path regressions 12 and 0 failed, gate 0 failures,
+  regressions 6 and 0 failed, printer 2). `make check-clang` clean. `forge
+  build --root contracts --sizes` exit 0. `make e2e` exit 0 (33 Forge
+  tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. The IR and the verifiers did not change. contracts/test/fixtures
+  is restored from HEAD, and `forge test --root contracts` passes again
+  (33 passed, 0 failed).
+- Mutants (`make -B` for each, source restored after): 2 KILLED, 0
+  SURVIVED.
+  1. The lowering reads the ends swapped (circuit.c lower_check, `args[2]`
+     as the left side, `args[1]` as the right side): KILLED, 4 gate
+     failures (the 3 circuit goldens and the circuit row with no `-o`).
+     satcheck does not find this mutant, because a copy is symmetric.
+  2. `Eq` as an alias of `Path` (check.c BUILTINS row `{"Eq", 3,
+     RULE_PATH, OP_PATHP, OP_NAT, 0}`): KILLED, 1 gate failure
+     (unknown-eq.lang exits 0).

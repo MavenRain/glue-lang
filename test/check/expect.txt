@@ -41,3 +41,7 @@ interval-limit.lang INTERVAL_LIMIT
 no-proof-irrelevance.lang TYPE_REFL
 de-morgan.lang TYPE_REFL
 reserved-sym.lang REFUSE_NAME
+unknown-eq.lang NAME_UNKNOWN
+reserved-trans.lang REFUSE_NAME
+reserved-transport.lang REFUSE_NAME
+bad-sqrel.lang TYPE_REFL

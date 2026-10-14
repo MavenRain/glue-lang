@@ -72,7 +72,7 @@ function test(name, fn) {
 try {
   test('Sum bind preserves its error type', () => {
     refused('def s : Sum Flag Nat := inl flagNo\ndef bad : Sum Nat Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
-    refused('def s : Sum (Eq Nat 0 0) Nat := inl refl\ndef bad : Sum (Eq Nat 0 1) Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
+    refused('def s : Sum (Path Nat 0 0) Nat := inl refl\ndef bad : Sum (Path Nat 0 1) Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
     refused('def s : Sum (Type 1) Nat := inl (Type 0)\ndef bad : Sum (Type 0) Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
     const doc = built('def s : Sum Flag Nat := inl flagNo\ndef keep : Sum Flag Unit := bind s (fun (n : Nat) => inr unit)\ndef success : Sum Flag Nat := bind (inr 3) (fun (n : Nat) => inr (natAdd n 1))');
     assert.deepEqual(doc.instances[1].value, {inl: false});
@@ -84,7 +84,7 @@ try {
       ['def T : Nat -> Type 0 := fun (n : Nat) => Sigma (x : Nat) (Lot n)\n', 'Sigma (x : Nat) (T x)', 'pack 3 (pack 4 (makeLot 3 9))'],
       ['def T : Type 0 := Nat\n', 'Sigma (Nat : Nat) T', 'pack 3 4'],
       ['def _x0 : Type 0 := Nat\ndef T : Nat -> Type 0 := fun (n : Nat) => Sigma (x : Nat) (Lot n)\n', 'Sigma (x : Nat) (T x)', 'pack 3 (pack 4 (makeLot 3 9))'],
-      ['def plus : Nat -> Nat := natAdd 1\n', 'Option (Eq (Nat -> Nat) plus plus)', 'some refl'],
+      ['def plus : Nat -> Nat := natAdd 1\n', 'Option (Path (Nat -> Nat) plus plus)', 'some refl'],
     ];
     for (const [prefix, type, value] of cases) {
       const original = built(`${prefix}def holder : ${type} := ${value}`).instances[0];
@@ -95,10 +95,10 @@ try {
 
   test('more than 64 dependent binders print safely', () => {
     const n = 66;
-    const type = Array.from({length: n}, (_, i) => `Sigma (n${i} : Nat) `).join('') + `(Eq Nat n${n - 1} n${n - 1})`;
+    const type = Array.from({length: n}, (_, i) => `Sigma (n${i} : Nat) `).join('') + `(Path Nat n${n - 1} n${n - 1})`;
     const value = 'pack 0 ('.repeat(n) + 'refl' + ')'.repeat(n);
     const instance = built(`def deep : ${type} := ${value}`).instances[0];
-    assert(instance.type.includes(`Eq Nat n${n - 1} n${n - 1}`), instance.type);
+    assert(instance.type.includes(`Path Nat n${n - 1} n${n - 1}`), instance.type);
     built(`def replay : ${instance.type} := ${value}`);
   });
 

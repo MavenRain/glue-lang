@@ -26,7 +26,6 @@ typedef enum {
   OP_SUM,
   OP_OPTION,
   OP_LIST,
-  OP_EQ,
   OP_FAMILY,
   OP_UNIT_VAL,
   OP_FLAG_YES,
@@ -39,7 +38,6 @@ typedef enum {
   OP_NIL,
   OP_CONS,
   OP_PACK,
-  OP_REFL,
   OP_CTOR,
   OP_FIRST,
   OP_SECOND,
@@ -55,10 +53,6 @@ typedef enum {
   OP_FILTER,
   OP_WITNESS,
   OP_PAYLOAD,
-  OP_SYMM,
-  OP_TRANS,
-  OP_TRANSPORT,
-  OP_CONG,
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,
@@ -192,8 +186,9 @@ typedef struct {
    context of all binders. */
 typedef struct {
   ConstraintKind kind;
-  const Core *lhs;
-  const Core *rhs; /* NULL for RANGE8 */
+  /* EQ: the type Path Field a b (M2 ruling b); the lowering reads its two
+     ends. RANGE8: the operand. */
+  const Core *term;
   int line;
   int col;
 } ConstraintInfo;

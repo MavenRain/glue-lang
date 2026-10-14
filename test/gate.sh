@@ -41,7 +41,7 @@ refusals test/check check
 
 # A refl refusal shows both normal forms.
 build/langc check test/check/bad-refl.lang 2>"$tmp/err" >/dev/null || true
-if ! rg -q -F 'the left side normalizes to 1201, the right side normalizes to 1200' "$tmp/err"; then
+if ! rg -q -F 'the start normalizes to 1201, the end normalizes to 1200' "$tmp/err"; then
   echo "FAIL bad-refl.lang: the message does not show both normal forms"
   fail=$((fail + 1))
 fi

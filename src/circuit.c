@@ -188,17 +188,23 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
 
 static int lower_check(Lower *l, const Env *env, const ConstraintInfo *k) {
   Check *ch = &l->checks[l->check_count];
+  const Value *v;
   Row row;
   Cell cell;
   ch->kind = k->kind;
   ch->line = k->line;
   ch->col = k->col;
-  if (!lower_value(l, eval_core(l->m, env, k->lhs), &ch->lhs)) return 0;
-  l->check_count++;
+  v = eval_core(l->m, env, k->term);
   switch (k->kind) {
     case CONSTRAINT_EQ:
-      return lower_value(l, eval_core(l->m, env, k->rhs), &ch->rhs);
+      /* M2 ruling b: the term is the type Path Field a b; read its ends. */
+      if (!val_is(v, OP_PATHP)) return no_circuit_form(l, "a type that is not Path Field");
+      if (!lower_value(l, v->args[1], &ch->lhs)) return 0;
+      l->check_count++;
+      return lower_value(l, v->args[2], &ch->rhs);
     case CONSTRAINT_RANGE8:
+      if (!lower_value(l, v, &ch->lhs)) return 0;
+      l->check_count++;
       l->ranged = 1;
       /* A wire in column a is a binder row: set qrange on that row. */
       if (ch->lhs.col == COL_A) {

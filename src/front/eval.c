@@ -11,17 +11,16 @@
 
 static const char *const OP_NAMES[] = {
   [OP_NAT] = "Nat", [OP_FLAG] = "Flag", [OP_UNIT] = "Unit", [OP_PROD] = "Prod",
-  [OP_SUM] = "Sum", [OP_OPTION] = "Option", [OP_LIST] = "List", [OP_EQ] = "Eq",
+  [OP_SUM] = "Sum", [OP_OPTION] = "Option", [OP_LIST] = "List",
   [OP_FAMILY] = "?", [OP_UNIT_VAL] = "unit", [OP_FLAG_YES] = "flagYes",
   [OP_FLAG_NO] = "flagNo", [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
-  [OP_PACK] = "pack", [OP_REFL] = "refl", [OP_CTOR] = "?", [OP_FIRST] = "first",
+  [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
-  [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
-  [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
+  [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
   [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
@@ -32,15 +31,14 @@ static const char *const OP_NAMES[] = {
    family tables. */
 static const unsigned char OP_ARITY[] = {
   [OP_NAT] = 0, [OP_FLAG] = 0, [OP_UNIT] = 0, [OP_PROD] = 2, [OP_SUM] = 2,
-  [OP_OPTION] = 1, [OP_LIST] = 1, [OP_EQ] = 3, [OP_FAMILY] = VARIES,
+  [OP_OPTION] = 1, [OP_LIST] = 1, [OP_FAMILY] = VARIES,
   [OP_UNIT_VAL] = 0, [OP_FLAG_YES] = 0, [OP_FLAG_NO] = 0, [OP_PAIR] = 2,
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
-  [OP_CONS] = 2, [OP_PACK] = 2, [OP_REFL] = 0, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
+  [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
-  [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
-  [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
+  [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3
@@ -690,16 +688,6 @@ static const Value *reduce_filter(Machine *m, uint32_t inst, const Value *const 
   return internal(m, "a filter with no instance");
 }
 
-/* symm, trans, cong and transport compute when each proof argument is refl. */
-static const Value *reduce_proof(Machine *m, Op op, const Value *const *a, uint32_t n, uint32_t first, uint32_t count, const Value *result) {
-  const Value *out;
-  uint32_t i;
-  for (i = first; i < first + count; i++)
-    if (blocked(m, a[i], op, 0, 0, a, n, &out))
-      return out;
-  return result;
-}
-
 /* 1 when both arguments are numbers. Else *OUT is the trap or the stuck
    operation. */
 /* glue-lang: a Field literal holds its canonical decimal in name. */
@@ -842,7 +830,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_SUM:
   case OP_OPTION:
   case OP_LIST:
-  case OP_EQ:
   case OP_FAMILY:
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
@@ -855,7 +842,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_NIL:
   case OP_CONS:
   case OP_PACK:
-  case OP_REFL:
   case OP_CTOR:
   case OP_PATHP:
     return val_op(m, VAL_OP, op, inst, field, a, n);
@@ -887,14 +873,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_unfold(m, a, n);
   case OP_FILTER:
     return reduce_filter(m, inst, a, n);
-  case OP_SYMM:
-    return reduce_proof(m, op, a, n, 0, 1, constant(m, OP_REFL));
-  case OP_TRANS:
-    return reduce_proof(m, op, a, n, 0, 2, constant(m, OP_REFL));
-  case OP_CONG:
-    return reduce_proof(m, op, a, n, 1, 1, constant(m, OP_REFL));
-  case OP_TRANSPORT:
-    return reduce_proof(m, op, a, n, 1, 1, a[2]);
   case OP_FIELD_ADD:
   case OP_FIELD_SUB:
   case OP_FIELD_MUL:

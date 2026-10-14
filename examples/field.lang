@@ -7,3 +7,6 @@ def under : Field := 0 - 1
 def rMinusOneSquared : Field := rMinusOne * rMinusOne
 def poly : Field -> Field := fun x => x * x + 3 * x - 7
 def polyAt : Field := poly 5
+-- M2 ruling b: a circuit relation as a family of Path types.
+def sqRel : Field -> Field -> Type 0 := fun x y => Path Field (x * x) y
+def sqThree : sqRel three nine := refl

@@ -15,8 +15,11 @@ inventory stockRed => 30
 inventory pileDepth => 2
 inventory lot => makeLot 3 250
 inventory lotCost => 250
-sigma offer => pack 1200 refl
-equality moved => fun P => fun u => u
+sigma offer => pack 1200 (<i> 1200)
+equality back => <i> 1200
+equality bumped => <i> 1201
+field sqThree => <i> 9
+field sqRel => fun x => fun y => Path Field (fieldMul x x) y
 universes Endo => (A : Type 0) -> (x : A) -> A
 algebra down => cons 5 (cons 4 (cons 3 nil))
 algebra stop => nil

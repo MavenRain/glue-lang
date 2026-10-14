@@ -107,7 +107,7 @@ static int sum_json(Out *o, const Value *type, const Value *v) {
 /* none is null, so `some` wraps a value that can be null (ledger rule). */
 static int option_json(Out *o, const Value *type, const Value *v) {
   const Value *elem = type->args[0];
-  int wrap = val_is(elem, OP_OPTION) || val_is(elem, OP_EQ) || val_is(elem, OP_PATHP);
+  int wrap = val_is(elem, OP_OPTION) || val_is(elem, OP_PATHP);
   if (val_is(v, OP_NONE))
     return put_text(o, "null");
   if (!val_is(v, OP_SOME))
@@ -186,7 +186,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     return val_is(v, OP_FIELD_LIT) ? put_string(o, v->name) : internal(o, "a Field value that is not a literal");
   case OP_UNIT:
     return put_text(o, "{}");
-  case OP_EQ:
   case OP_PATHP:
     return put_text(o, "null");
   case OP_PROD:
@@ -217,7 +216,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NIL:
   case OP_CONS:
   case OP_PACK:
-  case OP_REFL:
   case OP_CTOR:
   case OP_FIRST:
   case OP_SECOND:
@@ -233,10 +231,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FILTER:
   case OP_WITNESS:
   case OP_PAYLOAD:
-  case OP_SYMM:
-  case OP_TRANS:
-  case OP_TRANSPORT:
-  case OP_CONG:
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
@@ -305,7 +299,7 @@ static int is_instance(const DefInfo *d) {
   case VAL_UNIV:
     return 0;
   case VAL_OP:
-    return !val_is(d->type, OP_EQ) && !val_is(d->type, OP_PATHP);
+    return !val_is(d->type, OP_PATHP);
   case VAL_SIGMA:
   case VAL_NAT:
   case VAL_TRAP:
