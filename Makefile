@@ -37,8 +37,12 @@ check-clang: build/domain.c
 build/circuit-regressions: test/circuit-regressions.c $(FRONT) src/circuit.c $(HEADERS) build/domain.c
 	$(TCC) $(CFLAGS) -o $@ test/circuit-regressions.c $(FRONT) src/circuit.c build/domain.c
 
-check: build/langc build/circuit-regressions check-clang
+build/path-regressions: test/path-regressions.c $(FRONT) $(HEADERS) build/domain.c
+	$(TCC) $(CFLAGS) -o $@ test/path-regressions.c $(FRONT) build/domain.c
+
+check: build/langc build/circuit-regressions build/path-regressions check-clang
 	build/circuit-regressions
+	build/path-regressions
 	sh test/gate.sh
 	TCC="$(TCC)" node test/regressions.js
 	node test/printer-regressions.js

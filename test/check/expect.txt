@@ -38,3 +38,6 @@ path-boundary-i1.lang PATH_BOUNDARY
 path-type.lang PATH_TYPE
 interval-term.lang INTERVAL_TERM
 interval-limit.lang INTERVAL_LIMIT
+no-proof-irrelevance.lang TYPE_REFL
+de-morgan.lang TYPE_REFL
+reserved-sym.lang REFUSE_NAME

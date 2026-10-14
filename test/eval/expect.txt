@@ -34,3 +34,5 @@ paths startOf => fun p => 1
 paths endOf => fun p => 2
 paths reversed => fun p => <i> p @ ~i
 paths mixed => fun p => <i> <j> p @ (i /\ ~j)
+paths symStart => fun p => 2
+paths happlyFunExt => fun f => fun g => fun h => fun x => <i> h x @ i

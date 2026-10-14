@@ -73,7 +73,10 @@ typedef enum {
   RULE_FLAG_IF,
   RULE_INTERVAL,
   RULE_PATH,
-  RULE_PATHP
+  RULE_PATHP,
+  RULE_SYM,
+  RULE_FUNEXT,
+  RULE_HAPPLY
 } Rule;
 
 typedef struct {
@@ -133,7 +136,10 @@ static const Builtin BUILTINS[] = {
   {"i0", 0, RULE_INTERVAL, OP_NAT, OP_NAT, 0},
   {"i1", 0, RULE_INTERVAL, OP_NAT, OP_NAT, 0},
   {"Path", 3, RULE_PATH, OP_PATHP, OP_NAT, 0},
-  {"PathP", 3, RULE_PATHP, OP_PATHP, OP_NAT, 0}
+  {"PathP", 3, RULE_PATHP, OP_PATHP, OP_NAT, 0},
+  {"sym", 1, RULE_SYM, OP_PATHP, OP_NAT, 0},
+  {"funExt", 1, RULE_FUNEXT, OP_PATHP, OP_NAT, 0},
+  {"happly", 2, RULE_HAPPLY, OP_PATHP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -567,11 +573,17 @@ static const Core *rule_pack(Call *k) {
   return op3(c, OP_PACK, 0, 2, w, p, NULL);
 }
 
+static const Core *core_ivl(Checker *c, IvlOp op, const Core *a, const Core *b);
+static const Core *refl_path(Call *k);
+static const Core *cong_path(Call *k, const Core *p, const Value *pt);
+
 static const Core *rule_refl(Call *k) {
   Checker *c = k->c;
   const Value *e = k->hint;
+  if (val_is(e, OP_PATHP))
+    return refl_path(k);
   if (!val_is(e, OP_EQ))
-    return need_type(k, "Eq A a b");
+    return need_type(k, "Eq A a b or Path A a b");
   if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
     return nul(FAIL(c, "TYPE_REFL", "refl cannot prove the equality: the left side normalizes to %s, the right side normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
   k->type = e;
@@ -838,8 +850,13 @@ static const Core *rule_cong(Call *k) {
   const Value *bt = NULL;
   const Value *fv;
   const Value *hint_type = val_is(k->hint, OP_EQ) ? k->hint->args[0] : NULL;
-  const Core *e = infer_eq(k, 1, &et);
-  const Core *f = e == NULL ? NULL : fn_into(c, k->args[0], et->args[0], hint_type, &bt);
+  const Core *e = infer(c, k->args[1], &et);
+  const Core *f;
+  if (e != NULL && val_is(et, OP_PATHP))
+    return cong_path(k, e, et);
+  if (e != NULL && !val_is(et, OP_EQ))
+    return nul(FAIL(c, "TYPE_MISMATCH", "cong needs a proof of type Eq A a b or a path of type Path A a b, found a term of type %s", show(c, et)));
+  f = e == NULL ? NULL : fn_into(c, k->args[0], et->args[0], hint_type, &bt);
   if (f == NULL)
     return NULL;
   fv = here(c, f);
@@ -932,6 +949,265 @@ static const Core *rule_pathp(Call *k) {
   return path_former(k, line->name, line->right);
 }
 
+/* M2 s2: refl, sym, cong, funExt and happly write ordinary core path terms
+   (M2-PLAN D4 and section 4). The evaluator has no rule for them. */
+
+/* K with each free variable (index >= CUT) moved BY binders out. */
+static const Core *core_shift(Checker *c, const Core *k, uint32_t by, uint32_t cut) {
+  Core *n;
+  const Core **args;
+  uint32_t i;
+  int binds;
+  if (k == NULL)
+    return NULL;
+  switch (k->kind) {
+  case CORE_VAR:
+    return k->index < cut ? k : core_index(c, CORE_VAR, k->index + by);
+  case CORE_GLOBAL:
+  case CORE_NAT:
+  case CORE_TRAP:
+  case CORE_UNIV:
+    return k;
+  case CORE_LAM:
+  case CORE_PI:
+  case CORE_SIGMA:
+  case CORE_APP:
+  case CORE_OP:
+  case CORE_IVL:
+  case CORE_PLAM:
+  case CORE_PAPP:
+    break;
+  }
+  n = new_core(c, k->kind);
+  if (n == NULL)
+    return NULL;
+  *n = *k;
+  binds = k->kind == CORE_LAM || k->kind == CORE_PI || k->kind == CORE_SIGMA || k->kind == CORE_PLAM;
+  if (k->kind != CORE_OP) {
+    n->a = core_shift(c, k->a, by, cut);
+    n->b = core_shift(c, k->b, by, binds ? cut + 1u : cut);
+  }
+  if (k->kind == CORE_OP || k->kind == CORE_PAPP) {
+    args = arena_alloc(c->m->arena, ((size_t)k->argc + 1u) * sizeof *args);
+    if (args == NULL)
+      return nul(FAIL(c, "OOM", "out of memory"));
+    for (i = 0; i < k->argc; i++)
+      args[i] = core_shift(c, k->args[i], by, cut);
+    n->args = args;
+  }
+  return c->m->diag->set ? NULL : n;
+}
+
+/* The core term P @ R, P : PT = PathP L a b, in a context of LEVEL binders.
+   The core keeps a and b, so the evaluator can reduce a neutral P at i0 and
+   i1 (D5). */
+static const Core *core_papp(Checker *c, uint32_t level, const Core *p, const Value *pt, const Core *r) {
+  const Core **ends;
+  Core *k;
+  if (p == NULL || r == NULL)
+    return NULL;
+  ends = arena_alloc(c->m->arena, 2u * sizeof *ends);
+  k = ends == NULL ? NULL : new_core(c, CORE_PAPP);
+  if (k == NULL)
+    return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
+  ends[0] = quote_value(c->m, level, pt->args[1]);
+  ends[1] = quote_value(c->m, level, pt->args[2]);
+  if (ends[0] == NULL || ends[1] == NULL)
+    return NULL;
+  k->a = p;
+  k->b = r;
+  k->args = ends;
+  k->argc = 2u;
+  return k;
+}
+
+/* The closure of KIND (VAL_LAM, VAL_PI or VAL_PLAM) with the body BODY, a
+   value in which the bound variable is the level c->level. */
+static const Value *close_over(Checker *c, ValKind kind, const char *name, const Value *dom, const Value *body) {
+  const Core *k = body == NULL ? NULL : quote_value(c->m, c->level + 1u, body);
+  return k == NULL ? NULL : val_closure(c->m, kind, name, dom, c->env, k);
+}
+
+/* The value of the interval core K under one more binder: the interval
+   variable at the level c->level. */
+static const Value *under_ivl(Checker *c, const Core *k) {
+  return k == NULL ? NULL : eval_core(c->m, env_push(c->m, c->env, val_ivl_var(c->m, c->level)), k);
+}
+
+/* A when the line L of a path type is constant (L @ i = A for each i), else
+   NULL. */
+static const Value *line_type(Checker *c, const Value *line) {
+  const Value *a = closure_apply(c->m, line, val_ivl_end(c->m, 0));
+  const Value *ai = closure_apply(c->m, line, val_ivl_var(c->m, c->level));
+  return a != NULL && ai != NULL && conv_values(c->m, c->level + 1u, a, ai) ? a : NULL;
+}
+
+/* refl against PathP L a b: L is constant and a = b. The core is <i> a. */
+static const Core *refl_path(Call *k) {
+  Checker *c = k->c;
+  const Value *e = k->hint;
+  if (line_type(c, e->args[0]) == NULL)
+    return nul(FAIL(c, "TYPE_REFL", "refl needs a path type with a constant line, found %s", show(c, e)));
+  if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
+    return nul(FAIL(c, "TYPE_REFL", "refl cannot prove the path: the start normalizes to %s, the end normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
+  k->type = e;
+  return core_bind(c, CORE_PLAM, "i", NULL, quote_value(c->m, c->level + 1u, e->args[1]));
+}
+
+/* sym p, p : PathP L a b, gives PathP (<i> L @ ~i) b a. The core is
+   <i> p @ ~i. */
+static const Core *rule_sym(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  const Core *rev;
+  const Value *line;
+  if (p == NULL)
+    return NULL;
+  if (!val_is(pt, OP_PATHP))
+    return nul(FAIL(c, "PATH_EXPECTED", "sym needs a path of type PathP L a b, found a term of type %s", show(c, pt)));
+  rev = core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 0u), NULL);
+  line = close_over(c, VAL_PLAM, "i", NULL, closure_apply(c->m, pt->args[0], under_ivl(c, rev)));
+  if (line == NULL)
+    return NULL;
+  k->type = tyop(c, OP_PATHP, 3, line, pt->args[2], pt->args[1]);
+  return core_bind(c, CORE_PLAM, "i", NULL, core_papp(c, c->level + 1u, core_shift(c, p, 1u, 0u), pt, rev));
+}
+
+/* cong f p, p : Path A a b, f : (x : A) -> B x, gives
+   PathP (<i> B (p @ i)) (f a) (f b). The core is <i> f (p @ i). */
+static const Core *cong_path(Call *k, const Core *p, const Value *pt) {
+  Checker *c = k->c;
+  const Value *a = line_type(c, pt->args[0]);
+  const Value *b = val_is(k->hint, OP_PATHP) ? line_type(c, k->hint->args[0]) : NULL;
+  const Value *ft = NULL;
+  const Value *fv;
+  const Value *line;
+  const Core *f;
+  const Core *at;
+  if (a == NULL)
+    return nul(FAIL(c, "TYPE_MISMATCH", "cong needs a path of type Path A a b with a constant line, found a term of type %s", show(c, pt)));
+  /* A constant result path can come from a dependent function at refl.
+     Preserve its inferred type before using the hint to check a lambda. */
+  f = b == NULL ? infer(c, k->args[0], &ft) : try_infer(c, k->args[0], &ft);
+  if (f == NULL && b != NULL) {
+    ft = val_arrow(c->m, a, b);
+    f = check(c, k->args[0], ft);
+  }
+  if (f == NULL)
+    return NULL;
+  if (ft == NULL || ft->kind != VAL_PI)
+    return nul(FAIL(c, "TYPE_NOT_FUNCTION", "cong needs a function, found a term of type %s", show(c, ft)));
+  if (!expect(c, a, ft->dom))
+    return NULL;
+  at = core_papp(c, c->level + 1u, core_shift(c, p, 1u, 0u), pt, core_index(c, CORE_VAR, 0u));
+  line = close_over(c, VAL_PLAM, "i", NULL, closure_apply(c->m, ft, under_ivl(c, at)));
+  fv = here(c, f);
+  if (line == NULL || fv == NULL)
+    return NULL;
+  k->type = tyop(c, OP_PATHP, 3, line, apply_value(c->m, fv, pt->args[1]), apply_value(c->m, fv, pt->args[2]));
+  return core_bind(c, CORE_PLAM, "i", NULL, core_app(c, core_shift(c, f, 1u, 0u), at));
+}
+
+/* The type (x : A) -> Path (B x) (f x) (g x) that funExt h needs of h
+   against Path FN F G, FN = (x : A) -> B x. */
+static const Value *funext_arg(Checker *c, const Value *fn, const Value *f, const Value *g) {
+  const Value *x;
+  const Value *line;
+  const Value *path = NULL;
+  if (!push(c, NULL, fn->dom))
+    return NULL;
+  x = c->env->value;
+  line = close_over(c, VAL_PLAM, "i", NULL, closure_apply(c->m, fn, x));
+  if (line != NULL)
+    path = tyop(c, OP_PATHP, 3, line, apply_value(c->m, f, x), apply_value(c->m, g, x));
+  pop(c);
+  return close_over(c, VAL_PI, "x", fn->dom, path);
+}
+
+/* The type Path ((x : A) -> B x) f g of funExt h, from the type HT of h,
+   (x : A) -> Path (B x) (f x) (g x). NULL when HT has another form. */
+static const Value *funext_type(Checker *c, const Value *ht) {
+  const Value *cod;
+  const Value *bx;
+  const Value *fn;
+  const Value *f;
+  const Value *g;
+  const Value *line;
+  if (ht == NULL || ht->kind != VAL_PI || !push(c, NULL, ht->dom))
+    return NULL;
+  cod = closure_apply(c->m, ht, c->env->value);
+  bx = val_is(cod, OP_PATHP) ? line_type(c, cod->args[0]) : NULL;
+  pop(c);
+  if (bx == NULL)
+    return NULL;
+  fn = close_over(c, VAL_PI, "x", ht->dom, bx);
+  f = close_over(c, VAL_LAM, "x", NULL, cod->args[1]);
+  g = close_over(c, VAL_LAM, "x", NULL, cod->args[2]);
+  line = fn == NULL ? NULL : close_over(c, VAL_PLAM, "i", NULL, fn);
+  return line == NULL || f == NULL || g == NULL ? NULL : tyop(c, OP_PATHP, 3, line, f, g);
+}
+
+/* <i> fun x => h x @ i, h : HT. Under <i> and fun x, h is two binders out
+   and x is the level c->level + 1. */
+static const Core *funext_core(Checker *c, const Core *h, const Value *ht) {
+  const Value *cod = closure_apply(c->m, ht, val_var(c->m, c->level + 1u));
+  const Core *hx = core_app(c, core_shift(c, h, 2u, 0u), core_index(c, CORE_VAR, 0u));
+  if (!val_is(cod, OP_PATHP))
+    return nul(FAIL(c, "TYPE_MISMATCH", "funExt needs a function of type (x : A) -> Path (B x) (f x) (g x)"));
+  return core_bind(c, CORE_PLAM, "i", NULL, core_bind(c, CORE_LAM, "x", NULL, core_papp(c, c->level + 2u, hx, cod, core_index(c, CORE_VAR, 1u))));
+}
+
+/* funExt h, h : (x : A) -> Path (B x) (f x) (g x), gives
+   Path ((x : A) -> B x) f g. With no expected type, f and g are the ends of
+   the codomain of h. funExt is a theorem with a body, not an axiom. */
+static const Core *rule_funext(Call *k) {
+  Checker *c = k->c;
+  const Value *want = k->hint;
+  const Value *fn = val_is(want, OP_PATHP) ? line_type(c, want->args[0]) : NULL;
+  const Value *ht = NULL;
+  const Core *h;
+  if (want != NULL && (fn == NULL || fn->kind != VAL_PI))
+    return nul(FAIL(c, "TYPE_MISMATCH", "funExt needs a type Path ((x : A) -> B x) f g, found %s", show(c, want)));
+  if (want != NULL) {
+    ht = funext_arg(c, fn, want->args[1], want->args[2]);
+    h = ht == NULL ? NULL : check(c, k->args[0], ht);
+    k->type = want;
+  } else {
+    h = infer(c, k->args[0], &ht);
+    k->type = h == NULL ? NULL : funext_type(c, ht);
+    if (h != NULL && k->type == NULL)
+      return nul(FAIL(c, "TYPE_MISMATCH", "funExt needs a function of type (x : A) -> Path (B x) (f x) (g x), found a term of type %s", show(c, ht)));
+  }
+  return h == NULL ? NULL : funext_core(c, h, ht);
+}
+
+/* happly p x, p : Path ((x : A) -> B x) f g, gives Path (B x) (f x) (g x).
+   The core is <i> (p @ i) x. */
+static const Core *rule_happly(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  const Value *fn;
+  const Value *xv;
+  const Value *line;
+  const Core *x;
+  if (p == NULL)
+    return NULL;
+  if (!val_is(pt, OP_PATHP))
+    return nul(FAIL(c, "PATH_EXPECTED", "happly needs a path of type Path ((x : A) -> B x) f g, found a term of type %s", show(c, pt)));
+  fn = line_type(c, pt->args[0]);
+  if (fn == NULL || fn->kind != VAL_PI)
+    return nul(FAIL(c, "TYPE_MISMATCH", "happly needs a path of type Path ((x : A) -> B x) f g, found a term of type %s", show(c, pt)));
+  x = check(c, k->args[1], fn->dom);
+  xv = here(c, x);
+  line = xv == NULL ? NULL : close_over(c, VAL_PLAM, "i", NULL, closure_apply(c->m, fn, xv));
+  if (line == NULL)
+    return NULL;
+  k->type = tyop(c, OP_PATHP, 3, line, apply_value(c->m, pt->args[1], xv), apply_value(c->m, pt->args[2], xv));
+  return core_bind(c, CORE_PLAM, "i", NULL, core_app(c, core_papp(c, c->level + 1u, core_shift(c, p, 1u, 0u), pt, core_index(c, CORE_VAR, 0u)), core_shift(c, x, 1u, 0u)));
+}
+
 static const Core *rule(Call *k) {
   switch (k->b->rule) {
   case RULE_TYPE0:
@@ -998,6 +1274,12 @@ static const Core *rule(Call *k) {
     return path_former(k, "%i", k->args[0]);
   case RULE_PATHP:
     return rule_pathp(k);
+  case RULE_SYM:
+    return rule_sym(k);
+  case RULE_FUNEXT:
+    return rule_funext(k);
+  case RULE_HAPPLY:
+    return rule_happly(k);
   }
   return NULL;
 }
@@ -1444,27 +1726,15 @@ static const Core *infer_papp(Checker *c, const Term *t, const Value *hint, cons
   const Value *pt = NULL;
   const Core *p = infer(c, t->left, &pt);
   const Core *r;
-  const Core **ends;
-  Core *k;
+  const Core *k;
   if (p == NULL)
     return NULL;
   if (!val_is(pt, OP_PATHP))
     return nul(FAIL(c, "PATH_EXPECTED", "@ needs a path of type PathP L a b, found a term of type %s", show(c, pt)));
   r = elab_ivl(c, t->right);
-  if (r == NULL)
-    return NULL;
-  ends = arena_alloc(c->m->arena, 2u * sizeof *ends);
-  k = ends == NULL ? NULL : new_core(c, CORE_PAPP);
+  k = core_papp(c, c->level, p, pt, r);
   if (k == NULL)
-    return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
-  ends[0] = quote_value(c->m, c->level, pt->args[1]);
-  ends[1] = quote_value(c->m, c->level, pt->args[2]);
-  if (ends[0] == NULL || ends[1] == NULL)
     return NULL;
-  k->a = p;
-  k->b = r;
-  k->args = ends;
-  k->argc = 2u;
   *type = closure_apply(c->m, pt->args[0], here(c, r));
   return finish(c, k, hint, type);
 }

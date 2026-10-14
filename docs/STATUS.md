@@ -24,8 +24,8 @@ cubical part is M2. M2 is in progress: see `## M2`.
 
 ## Remaining work
 
-1. M2: the cubical part (docs/M2-PLAN.md). Slice s1 is done. Slices s2
-   to s5 remain (docs/M2-PLAN.md section 10).
+1. M2: the cubical part (docs/M2-PLAN.md). Slices s1 and s2 are done.
+   Slices s3 to s5 remain (docs/M2-PLAN.md section 10).
 
 ## Known limits
 
@@ -112,3 +112,69 @@ The plan is docs/M2-PLAN.md. Each slice is one session (section 10).
      PATH_BOUNDARY (`p @ i0` does not reduce to `1`). examples/paths.lang,
      the 6 paths eval rows (`startOf` is one of them) and the paths JSON
      build fail.
+
+### s2: refl, sym, cong, funExt and happly (2026-10-14)
+
+- New core names: `sym` (1 argument), `funExt` (1), `happly` (2). Each is
+  a checker rule (D4). There is no new Op. `refl` checks against a PathP
+  with a constant line and equal ends. `cong` accepts a Path argument. The
+  M1 `Eq` cases of `refl` and `cong` and the M1 `symm` stay (s3 removes
+  them).
+- Core terms: `refl` writes `<i> a`, `sym p` writes `<i> p @ ~i`, `cong f
+  p` writes `<i> f (p @ i)`, `funExt h` writes `<i> fun x => h x @ i`,
+  `happly p x` writes `<i> (p @ i) x`. `funExt` checks against a constant
+  Path over a Pi type. With no expected type, it reads `f` and `g` from the
+  ends of the codomain of `h`.
+- Helpers in check.c: core_shift (de Bruijn weakening), core_papp
+  (infer_papp uses it too), close_over, under_ivl, line_type.
+- Limits: a path abstraction needs a declared type, so `sym (<i> 1)` gives
+  PATH_EXPECTED. Thus the law `sym refl = refl` uses the definition
+  `reflOne : Path Nat 1 1 := refl`. `happly` takes 2 arguments, so the law
+  `funExt (happly p) = p` writes `fun x => happly p x`.
+- Tests: examples/paths.lang has each law of M2-PLAN section 4 as a
+  `refl` (14 new definitions). test/json/paths.json does not change,
+  because a Path definition writes no instance. 3 check refusals:
+  no-proof-irrelevance.lang (TYPE_REFL), de-morgan.lang (TYPE_REFL,
+  `i /\ ~i` is not `i0`), reserved-sym.lang (REFUSE_NAME). 2 eval rows:
+  `symStart` (`sym p @ i0` gives 2) and `happlyFunExt`.
+- Gates: `make check` exit 0 (examples 15, parse refusals 13, check
+  refusals 43, evals 38, json 12, build refusals 2, circuits 3, circuit
+  refusals 10, satcheck refusals 6, native circuit regressions 9 and 0
+  failed, gate 0 failures, regressions 6 and 0 failed, printer 2).
+  `make check-clang` clean. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (square, range, poly; 33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. The IR and the verifiers did not change. contracts/test/fixtures
+  is restored from HEAD, and `forge test --root contracts` passes again
+  (33 passed, 0 failed).
+- Mutants (`make -B` for each, source restored and compared after): 3
+  KILLED, 0 SURVIVED.
+  1. `sym` with no `~` (check.c rule_sym, `rev = core_index(c, CORE_VAR,
+     0u)`): KILLED, 1 gate failure. The eval row `symStart` gives
+     `fun p => 1`, not `fun p => 2`.
+  2. `cong` with no application of `f` (check.c cong_path, `core_bind(c,
+     CORE_PLAM, "i", NULL, at)`): KILLED, 10 gate failures. The checker
+     refuses `congRefl` with TYPE_REFL (`<i> 1` against `<i> f 1`).
+     examples/paths.lang, the 8 paths eval rows and the paths JSON build
+     fail. `congId` and `congComp` do not find this mutant, because each
+     side becomes `p`.
+  3. `funExt` with `f` and `g` exchanged (check.c funext_type, `tyop(c,
+     OP_PATHP, 3, line, g, f)`): KILLED, 10 gate failures. The checker
+     refuses `happlyFunExt` with TYPE_MISMATCH (`Path Nat (g x) (f x)`
+     against `Path Nat (f x) (g x)`). The same 10 rows fail.
+     `funExtRefl` does not find this mutant, because its ends are equal.
+
+#### Staged review (2026-10-14)
+
+- Fixed dependent `cong` against a constant expected path. For example,
+  `cong f refl` with `f : (x : A) -> B x` must check at
+  `Path (B a) (f a) (f a)`. The rule now preserves an inferred dependent
+  function type before using the expected path to check a lambda.
+- Added test/path-regressions.c to `make check`: 12 native C cases for
+  dependent path operations and refusal of invalid `cong` arguments. Three
+  cases reproduce the defect on the original staged checker.
+- Validation on an isolated copy of the index: `make check` passed,
+  including the 12 new cases; the new C harness passed strict Clang checks.
+  The e2e target passed using the existing halo2 binary (33 Forge tests).
+  Generated verifiers match the index byte for byte. The repository's
+  original proof fixtures were preserved.

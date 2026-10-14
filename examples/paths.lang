@@ -19,3 +19,32 @@ def mixed : (p : Path Nat 1 2) -> PathP (<i> Path Nat (p @ i) 1) (<j> 1) (<j> p 
 
 -- PathP over a constant line.
 def viaP : PathP (<i> Nat) 1 1 := <i> 1
+
+-- M2 s2: refl, sym, cong, funExt and happly. Each law is a refl, so each
+-- one holds by computation (docs/M2-PLAN.md section 4).
+def reflOne : Path Nat 1 1 := refl
+def symStart : Path Nat 1 2 -> Nat := fun p => sym p @ i0
+
+-- sym (sym p) = p, and sym refl = refl.
+def symSym : (p : Path Nat 1 2) -> Path (Path Nat 1 2) (sym (sym p)) p := fun p => refl
+def symRefl : Path (Path Nat 1 1) (sym reflOne) reflOne := refl
+
+-- cong id p = p, cong g (cong f p) = cong (g . f) p, and cong f refl = refl.
+def congId : (p : Path Nat 1 2) -> Path (Path Nat 1 2) (cong (fun x => x) p) p := fun p => refl
+def congComp : (f g : Nat -> Nat) -> (p : Path Nat 1 2) -> Path (Path Nat (g (f 1)) (g (f 2))) (cong g (cong f p)) (cong (fun x => g (f x)) p) := fun f g p => refl
+def congRefl : (f : Nat -> Nat) -> Path (Path Nat (f 1) (f 1)) (cong f reflOne) refl := fun f => refl
+
+-- funExt (fun x => refl) = refl, happly (funExt h) x = h x, and
+-- funExt (happly p) = p. happly takes two arguments, so the last law
+-- writes happly p as fun x => happly p x.
+def funExtRefl : (f : Nat -> Nat) -> Path (Path (Nat -> Nat) f f) (funExt (fun x => refl)) refl := fun f => refl
+def happlyFunExt : (f g : Nat -> Nat) -> (h : (x : Nat) -> Path Nat (f x) (g x)) -> (x : Nat) -> Path Nat (f x) (g x) := fun f g h x => happly (funExt h) x
+def happlyLaw : (f g : Nat -> Nat) -> (h : (x : Nat) -> Path Nat (f x) (g x)) -> (x : Nat) -> Path (Path Nat (f x) (g x)) (happly (funExt h) x) (h x) := fun f g h x => refl
+def funExtLaw : (f g : Nat -> Nat) -> (p : Path (Nat -> Nat) f g) -> Path (Path (Nat -> Nat) f g) (funExt (fun x => happly p x)) p := fun f g p => refl
+
+-- The endpoint rule: p @ i0 = a and p @ i1 = b for a variable p.
+def startLaw : (p : Path Nat 1 2) -> Path Nat (p @ i0) 1 := fun p => refl
+def endLaw : (p : Path Nat 1 2) -> Path Nat (p @ i1) 2 := fun p => refl
+
+-- The connection square, with refl as its left side.
+def connection : (p : Path Nat 1 2) -> PathP (<i> Path Nat 1 (p @ i)) refl p := fun p => <i> <j> p @ (i /\ j)
