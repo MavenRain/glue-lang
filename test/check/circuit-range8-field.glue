@@ -1,0 +1,3 @@
+-- range8 needs a Field operand.
+def one : Nat := 1
+circuit c private (x : Field) := range8 one; x * x == 4

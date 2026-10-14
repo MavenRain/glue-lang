@@ -37,7 +37,7 @@ refuses any other form (sign, leading zeros, hex, a JSON number).
 | Key | Meaning |
 |---|---|
 | `k` | The domain has `2^k` rows. |
-| `rows` | The number of rows that the circuit uses, from row 0. The back end refuses the document when `rows` is more than the usable rows of `2^k` (halo2 keeps the last rows for blinding). The compiler selects the smallest `k` with `rows + 16 <= 2^k`, and `2^k` at least each lookup table length. |
+| `rows` | The number of rows that the circuit uses, from row 0. The back end refuses the document when `rows` is more than the usable rows of `2^k` (halo2 keeps the last rows for blinding). The compiler selects the smallest `k` with `max(rows, L) + 16 <= 2^k`, where `L` is the length of the longest lookup table (0 when there is no lookup). A table column must also fit in the usable rows, so `2^k >= L` is not sufficient. |
 | `advice`, `fixed`, `instance` | The number of columns of each kind. |
 | `gates` | Each poly must be zero on every row of the domain. A gate uses fixed columns as selectors, so a poly is zero on rows that the gate does not use. |
 | `lookups` | For each row, the tuple of `inputs` must be equal to the tuple of `tables` on some row. `inputs` and `tables` have the same length. Tables use fixed columns only. Each table must contain the tuple of zeros, so that rows with a zero selector pass. |
@@ -91,6 +91,13 @@ Advice columns `a`, `b`, `c` (0, 1, 2). Fixed columns `ql`, `qr`, `qo`,
 The verifier contract that the back end writes has this function:
 
     function verifyProof(bytes calldata proof, uint256[] calldata instances)
-        external returns (bool);
+        public view returns (bool);
 
-`instances` is instance column 0, in row order, of length `public`.
+`instances` is instance column 0, in row order, of length `public`. The
+function returns true or reverts. The selector and the ABI encoding of the
+arguments are those of `verifyProof(bytes,uint256[])`, so a caller can use
+an `external view` interface.
+
+The verifier requires the canonical ABI layout emitted by
+`abi.encodeWithSelector` and the CLI. It rejects redirected proof or
+instance offsets, so the assembly checks the arguments Solidity decoded.

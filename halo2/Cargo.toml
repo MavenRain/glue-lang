@@ -1,0 +1,31 @@
+[package]
+name = "glue-halo2"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "halo2 back end for glue-lang: Plonkish IR v1 to keys, proofs and a Solidity verifier"
+publish = false
+
+[lib]
+name = "glue_halo2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "glue-halo2"
+path = "src/main.rs"
+
+[dependencies]
+# The verifier rev declares halo2_proofs with tag v0.3.0. Cargo treats a tag
+# and a rev as two sources, so this crate names the same tag to share ONE
+# halo2_proofs. Cargo.lock pins it to 73408a140737d8336490452193b21f5a7a94e7de.
+halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
+halo2_solidity_verifier = { git = "https://github.com/privacy-scaling-explorations/halo2-solidity-verifier", rev = "9e99730a12f9203d46d9b056662440de2d305ca8" }
+comp-cat-rs = "0.5"
+serde_json = "1"
+hex = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }
+rand_chacha = "0.3"
+
+# Proving in a debug build is slow. Optimize the dependencies only.
+[profile.dev.package."*"]
+opt-level = 3

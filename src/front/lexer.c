@@ -25,6 +25,10 @@ static const struct {
   {"axiom", TOK_KW_AXIOM},
   {"Type", TOK_KW_TYPE},
   {"Sigma", TOK_KW_SIGMA},
+  {"circuit", TOK_KW_CIRCUIT},
+  {"public", TOK_KW_PUBLIC},
+  {"private", TOK_KW_PRIVATE},
+  {"range8", TOK_KW_RANGE8},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -47,6 +51,14 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_AXIOM: return "'axiom'";
     case TOK_KW_TYPE: return "'Type'";
     case TOK_KW_SIGMA: return "'Sigma'";
+    case TOK_PLUS: return "'+'";
+    case TOK_MINUS: return "'-'";
+    case TOK_EQEQ: return "'=='";
+    case TOK_SEMI: return "';'";
+    case TOK_KW_CIRCUIT: return "'circuit'";
+    case TOK_KW_PUBLIC: return "'public'";
+    case TOK_KW_PRIVATE: return "'private'";
+    case TOK_KW_RANGE8: return "'range8'";
   }
   return "a token";
 }
@@ -131,13 +143,12 @@ static int lex_nat(Lexer *lx) {
     value = value * 10u + digit;
     advance(lx, 1);
   }
-  if (overflow) {
-    return diag_fail(lx->diag, "LEX_NAT_RANGE", NULL, "%s:%d:%d: a Nat literal is larger than 2^64 - 1", lx->source, line, col);
-  }
   if (is_ident_start(peek(lx, 0))) {
     return diag_fail(lx->diag, "LEX_CHAR", NULL, "%s:%d:%d: a letter follows a Nat literal", lx->source, lx->line, lx->col);
   }
-  push(lx, TOK_NAT, start, line, col)->nat = value;
+  Token *tok = push(lx, TOK_NAT, start, line, col);
+  tok->nat = value;
+  tok->big = overflow; /* the checker refuses it as a Nat (LEX_NAT_RANGE) */
   return 1;
 }
 
@@ -153,17 +164,19 @@ static int lex_symbol(Lexer *lx) {
     case '(': kind = TOK_LPAREN; break;
     case ')': kind = TOK_RPAREN; break;
     case '*': kind = TOK_STAR; break;
+    case '+': kind = TOK_PLUS; break;
     case '|': kind = TOK_BAR; break;
+    case ';': kind = TOK_SEMI; break;
     case ':':
       kind = next == '=' ? TOK_DEFINE : TOK_COLON;
       width = next == '=' ? 2 : 1;
       break;
     case '-':
-      kind = next == '>' ? TOK_ARROW : TOK_EOF;
-      width = 2;
+      kind = next == '>' ? TOK_ARROW : TOK_MINUS;
+      width = next == '>' ? 2 : 1;
       break;
     case '=':
-      kind = next == '>' ? TOK_FATARROW : TOK_EOF;
+      kind = next == '>' ? TOK_FATARROW : next == '=' ? TOK_EQEQ : TOK_EOF;
       width = 2;
       break;
     default: break;

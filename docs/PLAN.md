@@ -40,7 +40,7 @@ reads a ceremony SRS file.
 | M | Scope | Status |
 |---|---|---|
 | M0 | Seed: template (tcc-json host), design, plan, IR contract | DONE |
-| M1 | Vertical slice. `Field` base type with `+ - *` and literals. `circuit` declarations with public and witness binders. Constraints: Field paths `a == b` (equality) and `range8 x` (lookup). Lowering to IR v1, witness generation. `glue-halo2` keygen, prove, verify, Solidity verifier. Foundry deploy script and Forge test. `make e2e` runs the whole chain. | IN PROGRESS |
+| M1 | Vertical slice. `Field` base type with `+ - *` and literals. `circuit` declarations with public and witness binders. Constraints: Field paths `a == b` (equality) and `range8 x` (lookup). Lowering to IR v1, witness generation. `glue-halo2` keygen, prove, verify, Solidity verifier. Foundry deploy script and Forge test. `make e2e` runs the whole chain. | DONE 2026-10-14 |
 | M2 | Path types: interval `I`, `Path A a b` replaces the template equality formers F12 and F13. `refl`, `sym`, `cong`, `funExt` by computation. The checker gets interval variables and the face lattice. | PLANNED |
 | M3 | Kan operations `transp` and `hcomp` for Pi, Sigma, Path, universes, coproducts. Glue types, `ua`, uaBeta by computation. | PLANNED |
 | M4 | HITs: point and path constructors, higher constructors, `hcomp` values. Smoke: circle, propositional truncation, set quotient `A / R` with `[_]`, `eq/`, `squash/`, `rec`. | PLANNED |

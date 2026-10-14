@@ -3,7 +3,7 @@
 set -eu
 fail=0
 count=0
-for prog in examples/*.lang; do
+for prog in examples/*.lang examples/*.glue; do
   out=$(build/langc check "$prog" 2>&1) || true
   count=$((count + 1))
   if [ "$out" != "ok" ]; then
@@ -105,7 +105,7 @@ for prog in examples/*.lang; do
     fail=$((fail + 1))
   fi
 done
-if ! node -e 'for (const f of process.argv.slice(1)) JSON.parse(require("fs").readFileSync(f, "utf8"))' test/json/*.json; then
+if ! node -e 'for (const f of process.argv.slice(1)) JSON.parse(require("fs").readFileSync(f, "utf8"))' test/json/*.json test/circuit/*.json; then
   echo "FAIL: a JSON golden does not parse"
   fail=$((fail + 1))
 fi
@@ -131,6 +131,74 @@ build/langc build test/emit/trap.lang -o "$tmp/no.json" 2>/dev/null || true
 status=0
 build/langc build examples/formers.lang -x 2>/dev/null >/dev/null || status=$?
 [ "$status" -eq 2 ] || { echo "FAIL build usage: want exit 2, got $status"; fail=$((fail + 1)); }
+
+# Circuits. Each line of test/circuit/expect.txt is `PROG NAME BINDER=VALUE...`.
+# `langc circuit` and `langc witness` must equal test/circuit/NAME.circuit.json
+# and NAME.witness.json byte for byte, and `langc satcheck` must print ok. A
+# copy of the witness with one changed advice value (the mutant) must be refused.
+circuits=0
+while read -r prog name args; do
+  circuits=$((circuits + 1))
+  golden="test/circuit/$name"
+  if ! build/langc circuit "examples/$prog.glue" "$name" -o "$tmp/c.json" 2>"$tmp/err" || ! cmp -s "$tmp/c.json" "$golden.circuit.json"; then
+    echo "FAIL circuit $name: the output differs from $golden.circuit.json"
+    fail=$((fail + 1))
+  fi
+  if ! build/langc witness "examples/$prog.glue" "$name" $args -o "$tmp/w.json" 2>"$tmp/err" || ! cmp -s "$tmp/w.json" "$golden.witness.json"; then
+    echo "FAIL witness $name: the output differs from $golden.witness.json"
+    fail=$((fail + 1))
+  fi
+  out=$(build/langc satcheck "$golden.circuit.json" "$golden.witness.json" 2>&1) || true
+  [ "$out" = "ok" ] || { echo "FAIL satcheck $name: $out"; fail=$((fail + 1)); }
+  awk '!done && /^\["/ { sub(/^\["/, "[\"1"); done = 1 } { print }' "$golden.witness.json" >"$tmp/mutant.json"
+  status=0
+  build/langc satcheck "$golden.circuit.json" "$tmp/mutant.json" 2>"$tmp/err" >/dev/null || status=$?
+  case "$status:$(head -n 1 "$tmp/err")" in
+    "1:langc: SAT_"*) ;;
+    *) echo "FAIL mutant $name: want exit 1 and a SAT_ refusal, got exit $status"; fail=$((fail + 1)) ;;
+  esac
+done <test/circuit/expect.txt
+echo "circuits: $circuits checked"
+
+# Without -o, circuit and witness write NAME.circuit.json and NAME.witness.json
+# in the current directory.
+root=$(pwd)
+mkdir -p "$tmp/cwd"
+(cd "$tmp/cwd" && "$root/build/langc" circuit "$root/examples/square.glue" square && "$root/build/langc" witness "$root/examples/square.glue" square y=9 x=3) >/dev/null 2>&1 \
+  && cmp -s "$tmp/cwd/square.circuit.json" test/circuit/square.circuit.json && cmp -s "$tmp/cwd/square.witness.json" test/circuit/square.witness.json \
+  || { echo "FAIL circuit, witness: the files without -o differ from the goldens"; fail=$((fail + 1)); }
+
+# Each line of test/circuit/refuse.txt is `STATUS CODE COMMAND PROG NAME [ARGS]`.
+# The command must exit STATUS, print `langc: CODE: ...` and write no file.
+refused=0
+while read -r want_status code command prog name args; do
+  refused=$((refused + 1))
+  status=0
+  build/langc "$command" "examples/$prog.glue" "$name" $args -o "$tmp/no.json" 2>"$tmp/err" >/dev/null || status=$?
+  case "$status:$(head -n 1 "$tmp/err")" in
+    "$want_status:langc: $code: "*) ;;
+    *) echo "FAIL $command $name $args: want exit $want_status and $code, got exit $status"; fail=$((fail + 1)) ;;
+  esac
+  [ ! -e "$tmp/no.json" ] || { echo "FAIL $command $name $args: a refusal wrote a file"; fail=$((fail + 1)); rm -f "$tmp/no.json"; }
+done <test/circuit/refuse.txt
+echo "circuit refusals: $refused checked"
+
+# Each line of test/satcheck/expect.txt is `CIRCUIT WITNESS CODE`, with paths
+# from test/satcheck. `langc satcheck` must exit 1 and print `langc: CODE: ...`.
+sats=0
+while read -r circuit witness code; do
+  sats=$((sats + 1))
+  status=0
+  build/langc satcheck "test/satcheck/$circuit" "test/satcheck/$witness" 2>"$tmp/err" >/dev/null || status=$?
+  case "$status:$(head -n 1 "$tmp/err")" in
+    "1:langc: $code: "*) ;;
+    *) echo "FAIL satcheck $circuit $witness: want exit 1 and $code, got exit $status: $(head -n 1 "$tmp/err")"; fail=$((fail + 1)) ;;
+  esac
+done <test/satcheck/expect.txt
+echo "satcheck refusals: $sats checked"
+status=0
+build/langc satcheck test/circuit/square.circuit.json 2>/dev/null >/dev/null || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL satcheck usage: want exit 2, got $status"; fail=$((fail + 1)); }
 
 rm -rf "$tmp"
 

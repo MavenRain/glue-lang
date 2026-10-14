@@ -178,6 +178,8 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     if (val_is(v, OP_FLAG_YES))
       return put_text(o, "true");
     return val_is(v, OP_FLAG_NO) ? put_text(o, "false") : internal(o, "a Flag value that is not yes or no");
+  case OP_FIELD:
+    return val_is(v, OP_FIELD_LIT) ? put_string(o, v->name) : internal(o, "a Field value that is not a literal");
   case OP_UNIT:
     return put_text(o, "{}");
   case OP_EQ:
@@ -195,6 +197,10 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     return list_json(o, type, v);
   case OP_FAMILY:
     return family_json(o, type, v);
+  case OP_FIELD_LIT:
+  case OP_FIELD_ADD:
+  case OP_FIELD_SUB:
+  case OP_FIELD_MUL:
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
   case OP_FLAG_NO:

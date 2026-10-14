@@ -1,0 +1,6 @@
+bad-json.circuit.json ../circuit/square.witness.json SAT_JSON
+bad-version.circuit.json ../circuit/square.witness.json SAT_IR
+../circuit/square.circuit.json other-name.witness.json SAT_IR
+../circuit/square.circuit.json gate.witness.json SAT_GATE
+../circuit/range.circuit.json lookup.witness.json SAT_LOOKUP
+../circuit/square.circuit.json copy.witness.json SAT_COPY

@@ -1,6 +1,7 @@
 /* The evaluator, the conversion test, quote and the printer (see
    front/core.h). SHARED by the tcc kits. */
 #include "front/core.h"
+#include "front/fr.h"
 
 #include <string.h>
 
@@ -22,6 +23,8 @@ static const char *const OP_NAMES[] = {
   [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
   [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
+  [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
+  [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?"
 };
 
@@ -38,6 +41,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
+  [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1
 };
 
@@ -691,6 +695,39 @@ static const Value *reduce_proof(Machine *m, Op op, const Value *const *a, uint3
 
 /* 1 when both arguments are numbers. Else *OUT is the trap or the stuck
    operation. */
+/* glue-lang: a Field literal holds its canonical decimal in name. */
+static const Value *val_field(Machine *m, const char *text) {
+  Value *v = new_value(m, VAL_OP);
+  char *copy = v == NULL || text == NULL ? NULL : arena_strndup(m->arena, text, strlen(text));
+  if (copy == NULL)
+    return oom(m);
+  v->op = OP_FIELD_LIT;
+  v->name = copy;
+  return v;
+}
+
+/* glue-lang: Field arithmetic modulo r. A neutral argument gives the stuck
+   operation, which the circuit lowering reads. */
+static const Value *field_op(Machine *m, Op op, const Value *const *a, uint32_t n) {
+  typedef void (*FrOp)(Fr *, const Fr *, const Fr *);
+  FrOp f = op == OP_FIELD_SUB ? fr_sub : op == OP_FIELD_MUL ? fr_mul : fr_add;
+  const Value *out;
+  char text[FR_TEXT_MAX];
+  Fr x;
+  Fr y;
+  Fr z;
+  if (a[0]->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
+    return a[0]->kind == VAL_TRAP ? a[0] : a[1];
+  if (blocked(m, a[0], op, 0, 0, a, n, &out) || blocked(m, a[1], op, 0, 0, a, n, &out))
+    return out;
+  if (!val_is(a[0], OP_FIELD_LIT) || !val_is(a[1], OP_FIELD_LIT)
+      || !fr_parse(a[0]->name, strlen(a[0]->name), &x) || !fr_parse(a[1]->name, strlen(a[1]->name), &y))
+    return internal(m, "a Field operation on a value that is not a Field literal");
+  f(&z, &x, &y);
+  fr_print(&z, text);
+  return val_field(m, text);
+}
+
 static int nat_args(Machine *m, Op op, const Value *const *a, uint32_t n, uint64_t *x, uint64_t *y, const Value **out) {
   *out = a[0]->kind == VAL_TRAP ? a[0] : a[1];
   if (a[0]->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
@@ -790,6 +827,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return internal(m, "an operation with the wrong number of arguments");
   switch (op) {
   case OP_NAT:
+  case OP_FIELD:
+  case OP_FIELD_LIT:
   case OP_FLAG:
   case OP_UNIT:
   case OP_PROD:
@@ -848,6 +887,10 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_proof(m, op, a, n, 1, 1, constant(m, OP_REFL));
   case OP_TRANSPORT:
     return reduce_proof(m, op, a, n, 1, 1, a[2]);
+  case OP_FIELD_ADD:
+  case OP_FIELD_SUB:
+  case OP_FIELD_MUL:
+    return field_op(m, op, a, n);
   case OP_NAT_ADD:
     return nat_add(m, a, n);
   case OP_NAT_SUB:
@@ -870,6 +913,8 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
   uint32_t i;
   if (args == NULL)
     return oom(m);
+  if (c->op == OP_FIELD_LIT)
+    return val_field(m, c->name);
   for (i = 0; i < c->argc; i++) {
     args[i] = eval_core(m, env, c->args[i]);
     if (args[i] == NULL)
@@ -971,6 +1016,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_STUCK:
       if (!same_head(a, b))
         return 0;
+      if (a->op == OP_FIELD_LIT)
+        return strcmp(a->name, b->name) == 0;
       if (a->argc == 0)
         return 1;
       for (i = 0; i + 1u < a->argc; i++)
@@ -1070,6 +1117,7 @@ static const Core *quote_op(Machine *m, uint32_t level, const Value *v) {
   c->op = v->op;
   c->inst = v->inst;
   c->field = v->field;
+  c->name = v->name; /* OP_FIELD_LIT: the digits */
   c->args = args;
   c->argc = v->argc;
   return c;
@@ -1266,7 +1314,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
     return;
   case VAL_OP:
   case VAL_STUCK:
-    put(p, op_name(p->m, v->op, v->inst, v->field));
+    put(p, val_is(v, OP_FIELD_LIT) ? v->name : op_name(p->m, v->op, v->inst, v->field));
     return;
   case VAL_UNIV:
   case VAL_APP:

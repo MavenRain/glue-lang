@@ -64,7 +64,12 @@ typedef enum {
   OP_NAT_EQ,
   OP_NAT_LE,
   OP_FLAG_IF,
-  OP_PROJ
+  OP_PROJ,
+  OP_FIELD,     /* glue-lang: the BN254 Fr type */
+  OP_FIELD_LIT, /* name: the canonical decimal */
+  OP_FIELD_ADD,
+  OP_FIELD_SUB,
+  OP_FIELD_MUL
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -173,6 +178,26 @@ typedef struct {
   const Value *value; /* computed when first used */
 } DefInfo;
 
+/* glue-lang: a checked circuit. Binder i is de Bruijn level i: the public
+   binders first, then the private binders. Each constraint core is in the
+   context of all binders. */
+typedef struct {
+  ConstraintKind kind;
+  const Core *lhs;
+  const Core *rhs; /* NULL for RANGE8 */
+  int line;
+  int col;
+} ConstraintInfo;
+
+typedef struct {
+  const char *name;
+  const char *const *binders;
+  uint32_t public_count;
+  uint32_t private_count;
+  const ConstraintInfo *constraints;
+  uint32_t constraint_count;
+} CircuitInfo;
+
 /* The checked program and the evaluation state. No global state: every
    function gets this context. */
 typedef struct {
@@ -188,6 +213,9 @@ typedef struct {
   CtorInfo *ctors;
   uint32_t ctor_count;
   uint32_t ctor_cap;
+  CircuitInfo *circuits;
+  uint32_t circuit_count;
+  uint32_t circuit_cap;
   unsigned depth;
   uint64_t fuel;
   int overflowed;

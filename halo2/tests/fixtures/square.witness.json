@@ -1,0 +1,6 @@
+{
+  "glue-lang-witness": 1,
+  "name": "square",
+  "advice": [["3"], ["3"], ["9"]],
+  "instance": [["9"]]
+}

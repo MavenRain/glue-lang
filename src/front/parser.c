@@ -6,7 +6,9 @@
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
-              | app ('->' term)?
+              | sum ('->' term)?
+     sum     := prod (('+' | '-') prod)*      (Field arithmetic)
+     prod    := app ('*' app)*
      app     := atom atom*
      atom    := NAME | NAT | 'Type' NAT | 'Sigma' group atom | '(' term ')' */
 #include <string.h>
@@ -138,6 +140,14 @@ static int starts_atom(TokKind kind) {
     case TOK_ARROW:
     case TOK_FATARROW:
     case TOK_STAR:
+    case TOK_PLUS:
+    case TOK_MINUS:
+    case TOK_EQEQ:
+    case TOK_SEMI:
+    case TOK_KW_CIRCUIT:
+    case TOK_KW_PUBLIC:
+    case TOK_KW_PRIVATE:
+    case TOK_KW_RANGE8:
     case TOK_BAR:
     case TOK_KW_DEF:
     case TOK_KW_REC:
@@ -242,6 +252,7 @@ static const Term *parse_universe(Parser *p) {
   Term *term = make_term(p, TERM_UNIV, tok->line, tok->col);
   if (term == NULL) return NULL;
   term->nat = cur(p)->nat;
+  term->big = cur(p)->big;
   bump(p);
   return term;
 }
@@ -277,9 +288,10 @@ static const Term *parse_leaf(Parser *p, TermKind kind) {
   Term *term = make_term(p, kind, tok->line, tok->col);
   if (term == NULL) return NULL;
   term->nat = tok->nat;
-  term->name = kind == TERM_VAR ? token_text(p, tok) : NULL;
+  term->big = tok->big;
+  term->name = token_text(p, tok);
   bump(p);
-  return kind == TERM_VAR && term->name == NULL ? NULL : term;
+  return term->name == NULL ? NULL : term;
 }
 
 static const Term *parse_atom(Parser *p) {
@@ -297,6 +309,14 @@ static const Term *parse_atom(Parser *p) {
     case TOK_ARROW:
     case TOK_FATARROW:
     case TOK_STAR:
+    case TOK_PLUS:
+    case TOK_MINUS:
+    case TOK_EQEQ:
+    case TOK_SEMI:
+    case TOK_KW_CIRCUIT:
+    case TOK_KW_PUBLIC:
+    case TOK_KW_PRIVATE:
+    case TOK_KW_RANGE8:
     case TOK_BAR:
     case TOK_KW_DEF:
     case TOK_KW_REC:
@@ -322,10 +342,36 @@ static const Term *parse_app(Parser *p) {
   return head;
 }
 
+/* WHICH: 0 +, 1 -, 2 *. The checker allows Field operands only. */
+static const Term *arith(Parser *p, const Term *left, uint64_t which, const Term *right) {
+  Term *t = right == NULL ? NULL : make_term(p, TERM_ARITH, left->line, left->col);
+  if (t == NULL) return NULL;
+  t->nat = which;
+  t->left = left;
+  t->right = right;
+  return t;
+}
+
+static const Term *parse_prod(Parser *p) {
+  const Term *head = parse_app(p);
+  while (head != NULL && eat(p, TOK_STAR)) head = arith(p, head, 2u, parse_app(p));
+  return head;
+}
+
+static const Term *parse_sum(Parser *p) {
+  const Term *head = parse_prod(p);
+  while (head != NULL && (at(p, TOK_PLUS) || at(p, TOK_MINUS))) {
+    uint64_t which = at(p, TOK_PLUS) ? 0u : 1u;
+    bump(p);
+    head = arith(p, head, which, parse_prod(p));
+  }
+  return head;
+}
+
 static const Term *parse_term_body(Parser *p) {
   if (at(p, TOK_KW_FUN)) return parse_fun(p);
   if (at_binder_group(p)) return parse_binder_type(p);
-  const Term *head = parse_app(p);
+  const Term *head = parse_sum(p);
   if (head == NULL || !at(p, TOK_ARROW)) return head;
   const Token *arrow = cur(p);
   bump(p);
@@ -416,6 +462,53 @@ static int parse_family(Parser *p, Decl *d) {
   return 1;
 }
 
+/* glue-lang: KW followed by binder groups, or nothing. */
+static int parse_binders(Parser *p, TokKind kw, const Field **out, size_t *count) {
+  *out = NULL;
+  *count = 0;
+  return eat(p, kw) ? parse_fields(p, out, count) : 1;
+}
+
+/* constraint := sum `==` sum | `range8` sum */
+static int parse_constraint(Parser *p, Constraint *k) {
+  k->line = cur(p)->line;
+  k->col = cur(p)->col;
+  k->rhs = NULL;
+  if (eat(p, TOK_KW_RANGE8)) {
+    k->kind = CONSTRAINT_RANGE8;
+    k->lhs = parse_sum(p);
+    return k->lhs != NULL;
+  }
+  k->kind = CONSTRAINT_EQ;
+  k->lhs = parse_sum(p);
+  if (k->lhs == NULL || !expect(p, TOK_EQEQ, "'=='")) return 0;
+  k->rhs = parse_sum(p);
+  return k->rhs != NULL;
+}
+
+/* circuit NAME [public BINDERS] [private BINDERS] := constraint (; constraint)* */
+static int parse_circuit(Parser *p, Decl *d) {
+  bump(p);
+  d->kind = DECL_CIRCUIT;
+  d->name = take_name(p, "a circuit name");
+  if (d->name == NULL) return 0;
+  p->def = d->name;
+  if (!parse_binders(p, TOK_KW_PUBLIC, &d->params, &d->param_count)) return 0;
+  if (!parse_binders(p, TOK_KW_PRIVATE, &d->privates, &d->private_count)) return 0;
+  if (!expect(p, TOK_DEFINE, "':='")) return 0;
+  Constraint *items = NULL;
+  size_t count = 0;
+  size_t cap = 0;
+  do {
+    items = grow(p, items, count, &cap, sizeof *items);
+    if (items == NULL || !parse_constraint(p, &items[count])) return 0;
+    count++;
+  } while (eat(p, TOK_SEMI));
+  d->constraints = items;
+  d->constraint_count = count;
+  return 1;
+}
+
 static int parse_decl(Parser *p, Decl *d) {
   const Token *tok = cur(p);
   p->def = NULL;
@@ -426,6 +519,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_DEF: return parse_def(p, d);
     case TOK_KW_AXIOM: return parse_axiom(p, d);
     case TOK_KW_FAMILY: return parse_family(p, d);
+    case TOK_KW_CIRCUIT: return parse_circuit(p, d);
     case TOK_EOF:
     case TOK_IDENT:
     case TOK_NAT:
@@ -436,6 +530,13 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_ARROW:
     case TOK_FATARROW:
     case TOK_STAR:
+    case TOK_PLUS:
+    case TOK_MINUS:
+    case TOK_EQEQ:
+    case TOK_SEMI:
+    case TOK_KW_PUBLIC:
+    case TOK_KW_PRIVATE:
+    case TOK_KW_RANGE8:
     case TOK_BAR:
     case TOK_KW_REC:
     case TOK_KW_FUN:
@@ -443,7 +544,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_SIGMA:
       break;
   }
-  return fail_at(p, tok, "'def', 'axiom' or 'family'");
+  return fail_at(p, tok, "'def', 'axiom', 'family' or 'circuit'");
 }
 
 int parse_source(Arena *arena, const char *source, Origin origin, const TokenList *toks, DeclList *list, Diag *diag) {

@@ -1,0 +1,2 @@
+def n : Nat := 2
+def bad : Field := n + 1

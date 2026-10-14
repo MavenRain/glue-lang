@@ -1,0 +1,3 @@
+-- Both sides of == must be Field.
+def one : Nat := 1
+circuit c private (x : Field) := x == one

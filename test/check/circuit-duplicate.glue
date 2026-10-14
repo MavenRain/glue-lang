@@ -1,0 +1,3 @@
+-- Two circuits with one name.
+circuit c public (y : Field) := y == 1
+circuit c public (y : Field) := y == 2

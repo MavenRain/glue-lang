@@ -1,0 +1,2 @@
+-- A circuit binder must have type Field.
+circuit c public (n : Nat) private (x : Field) := x * x == x

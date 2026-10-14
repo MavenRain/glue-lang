@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+#include "front/fr.h"
+
 #define CHECK_DEPTH_LIMIT 2000u
 #define SPINE_MAX 64u
 #define SHOW_MAX 512u
@@ -82,6 +84,7 @@ typedef struct {
 static const Builtin BUILTINS[] = {
   {"Nat", 0, RULE_TYPE0, OP_NAT, OP_NAT, 0},
   {"Flag", 0, RULE_TYPE0, OP_FLAG, OP_NAT, 0},
+  {"Field", 0, RULE_TYPE0, OP_FIELD, OP_NAT, 0},
   {"Unit", 0, RULE_TYPE0, OP_UNIT, OP_NAT, 0},
   {"Prod", 2, RULE_TYPE2, OP_PROD, OP_NAT, 0},
   {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0},
@@ -1254,12 +1257,62 @@ static const Core *elab_binder(Checker *c, const Term *t, CoreKind kind, const V
   return finish(c, core_bind(c, kind, t->name, a, b), hint, type);
 }
 
+static const Value *field_type(Checker *c) {
+  return tyop(c, OP_FIELD, 0, NULL, NULL, NULL);
+}
+
+/* glue-lang: a Field literal, the canonical decimal of a value below r. */
+static const Core *field_literal(Checker *c, const Term *t, const Value **type) {
+  char text[FR_TEXT_MAX];
+  Fr x;
+  Core *k;
+  if (!fr_parse(t->name, strlen(t->name), &x))
+    return nul(FAIL(c, "FIELD_RANGE", "%d:%d: the Field literal %s is not a decimal below r (BN254 Fr)", t->line, t->col, t->name));
+  fr_print(&x, text);
+  k = new_core(c, CORE_OP);
+  if (k == NULL)
+    return NULL;
+  k->op = OP_FIELD_LIT;
+  k->name = arena_strndup(c->m->arena, text, strlen(text));
+  *type = field_type(c);
+  return k->name == NULL ? nul(FAIL(c, "OOM", "out of memory")) : k;
+}
+
+/* An operand of + - *: a literal is a Field literal; any other term must
+   have type Field. */
+static const Core *field_term(Checker *c, const Term *t, const char *code, const char *what) {
+  const Value *type = NULL;
+  const Core *k;
+  if (t->kind == TERM_NAT)
+    return field_literal(c, t, &type);
+  k = infer(c, t, &type);
+  if (k != NULL && !val_is(type, OP_FIELD))
+    return nul(FAIL(c, code, "%d:%d: %s, found a term of type %s", t->line, t->col, what, show(c, type)));
+  return k;
+}
+
+static const Core *field_operand(Checker *c, const Term *t) {
+  return field_term(c, t, "FIELD_ARITH", "+ - * need Field operands");
+}
+
+static const Core *elab_arith(Checker *c, const Term *t, const Value *hint, const Value **type) {
+  static const Op OPS[] = {OP_FIELD_ADD, OP_FIELD_SUB, OP_FIELD_MUL};
+  const Core *a = field_operand(c, t->left);
+  const Core *b = a == NULL ? NULL : field_operand(c, t->right);
+  *type = field_type(c);
+  return b == NULL ? NULL : finish(c, op3(c, OPS[t->nat < 3u ? t->nat : 0u], 0, 2, a, b, NULL), hint, type);
+}
+
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {
   switch (t->kind) {
   case TERM_VAR:
   case TERM_APP:
     return elab_spine(c, t, hint, type);
   case TERM_NAT:
+    if (hint != NULL && val_is(hint, OP_FIELD))
+      return field_literal(c, t, type);
+    if (t->big)
+      return nul(FAIL(c, "LEX_NAT_RANGE", "%d:%d: a Nat literal is larger than 2^64 - 1", t->line, t->col));
     *type = nat_type(c);
     return finish(c, core_leaf(c, CORE_NAT, t->nat), hint, type);
   case TERM_LAM:
@@ -1269,10 +1322,14 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
   case TERM_SIGMA:
     return elab_binder(c, t, CORE_SIGMA, hint, type);
   case TERM_UNIV:
+    if (t->big)
+      return nul(FAIL(c, "TYPE_UNIVERSE", "the universe level is above the largest universe Type %u", UNIVERSE_MAX - 1u));
     if (t->nat >= UNIVERSE_MAX)
       return nul(FAIL(c, "TYPE_UNIVERSE", "Type %llu is above the largest universe Type %u", (unsigned long long)t->nat, UNIVERSE_MAX - 1u));
     *type = val_univ(c->m, t->nat + 1u);
     return finish(c, core_leaf(c, CORE_UNIV, t->nat), hint, type);
+  case TERM_ARITH:
+    return elab_arith(c, t, hint, type);
   }
   return NULL;
 }
@@ -1311,6 +1368,10 @@ static const char *name_owner(const Checker *c, const char *name) {
     }
     if (strcmp(m->ctors[i].name, name) == 0)
       return "a domain constructor";
+  }
+  for (i = 0; i < m->circuit_count; i++) {
+    if (strcmp(m->circuits[i].name, name) == 0)
+      return "already a circuit";
   }
   i = find_def(m, name);
   if (i == NO_DEF)
@@ -1423,6 +1484,60 @@ static int check_def(Checker *c, const Decl *d) {
   return 1;
 }
 
+/* glue-lang: each binder has type Field. Binder number *AT goes to level *AT. */
+static int circuit_binders(Checker *c, const Field *fs, size_t n, const char **names, uint32_t *at) {
+  size_t i;
+  for (i = 0; i < n; i++) {
+    uint64_t level = 0;
+    const Core *t = check_type(c, fs[i].type, &level);
+    const Value *tv = t == NULL ? NULL : here(c, t);
+    if (tv == NULL)
+      return 0;
+    if (!val_is(tv, OP_FIELD))
+      return FAIL(c, "CIRCUIT_BINDER", "%d:%d: the circuit binder %s has type %s; M1 allows Field only", fs[i].line, fs[i].col, fs[i].name, show(c, tv));
+    if (!push(c, fs[i].name, tv))
+      return 0;
+    names[(*at)++] = fs[i].name;
+  }
+  return 1;
+}
+
+static int check_circuit(Checker *c, const Decl *d) {
+  Machine *m = c->m;
+  CircuitInfo *info = &m->circuits[m->circuit_count];
+  uint32_t n = (uint32_t)(d->param_count + d->private_count);
+  const char **names = arena_alloc(m->arena, (n + 1u) * sizeof *names);
+  ConstraintInfo *ks = arena_alloc(m->arena, (d->constraint_count + 1u) * sizeof *ks);
+  uint32_t at = 0;
+  size_t i;
+  for (i = 0; i < m->circuit_count; i++)
+    if (strcmp(m->circuits[i].name, d->name) == 0)
+      return FAIL(c, "REFUSE_NAME", "%s is a circuit already", d->name);
+  if (names == NULL || ks == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  if (!circuit_binders(c, d->params, d->param_count, names, &at) || !circuit_binders(c, d->privates, d->private_count, names, &at))
+    return 0;
+  for (i = 0; i < d->constraint_count; i++) {
+    const Constraint *k = &d->constraints[i];
+    int eq = k->kind == CONSTRAINT_EQ;
+    ks[i].kind = k->kind;
+    ks[i].line = k->line;
+    ks[i].col = k->col;
+    ks[i].lhs = field_term(c, k->lhs, eq ? "EQ_FIELD" : "RANGE8_FIELD", eq ? "== needs Field sides" : "range8 needs a Field operand");
+    ks[i].rhs = eq && ks[i].lhs != NULL ? field_term(c, k->rhs, "EQ_FIELD", "== needs Field sides") : NULL;
+    if (ks[i].lhs == NULL || (eq && ks[i].rhs == NULL))
+      return 0;
+  }
+  info->name = d->name;
+  info->binders = names;
+  info->public_count = (uint32_t)d->param_count;
+  info->private_count = (uint32_t)d->private_count;
+  info->constraints = ks;
+  info->constraint_count = (uint32_t)d->constraint_count;
+  m->circuit_count++;
+  return 1;
+}
+
 static int check_decl(Checker *c, const Decl *d) {
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
     return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can");
@@ -1432,6 +1547,8 @@ static int check_decl(Checker *c, const Decl *d) {
     return FAIL(c, "REFUSE_REC", "def rec is refused (rule R3); use fold or unfold");
   if (!name_free(c, d->name))
     return 0;
+  if (d->kind == DECL_CIRCUIT)
+    return check_circuit(c, d);
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
 }
 
@@ -1448,11 +1565,13 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   m->defs = arena_alloc(arena, (decls->count + 1u) * sizeof *m->defs);
   m->families = arena_alloc(arena, (decls->count + 1u) * sizeof *m->families);
   m->ctors = arena_alloc(arena, (ctors + 1u) * sizeof *m->ctors);
-  if (m->defs == NULL || m->families == NULL || m->ctors == NULL)
+  m->circuits = arena_alloc(arena, (decls->count + 1u) * sizeof *m->circuits);
+  if (m->defs == NULL || m->families == NULL || m->ctors == NULL || m->circuits == NULL)
     return diag_fail(diag, "OOM", NULL, "out of memory");
   m->def_cap = (uint32_t)decls->count;
   m->family_cap = (uint32_t)decls->count;
   m->ctor_cap = (uint32_t)ctors;
+  m->circuit_cap = (uint32_t)decls->count;
   memset(&c, 0, sizeof c);
   c.m = m;
   c.decls = decls;
@@ -1482,7 +1601,7 @@ int entry_of(Machine *m, const Value *type, Entry *out) {
     out->param_count++;
   }
   out->result_flag = val_is(t, OP_FLAG);
-  return val_is(t, OP_NAT) || val_is(t, OP_FLAG);
+  return val_is(t, OP_NAT) || val_is(t, OP_FLAG) || val_is(t, OP_FIELD);
 }
 
 static int parse_u64(const char *s, uint64_t *out) {
@@ -1522,6 +1641,10 @@ static int print_result(Machine *m, const char *name, const Value *v, FILE *out,
   case VAL_OP:
     if (val_is(v, OP_FLAG_YES) || val_is(v, OP_FLAG_NO)) {
       fprintf(out, "%d\n", val_is(v, OP_FLAG_YES));
+      return 0;
+    }
+    if (val_is(v, OP_FIELD_LIT)) {
+      fprintf(out, "%s\n", v->name);
       return 0;
     }
     break;

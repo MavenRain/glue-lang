@@ -1,0 +1,9 @@
+-- Field (BN254 Fr) literals and arithmetic modulo r.
+def three : Field := 3
+def nine : Field := three * three
+def rMinusOne : Field := 21888242871839275222246405745257275088548364400416034343698204186575808495616
+def wrap : Field := rMinusOne + 2
+def under : Field := 0 - 1
+def rMinusOneSquared : Field := rMinusOne * rMinusOne
+def poly : Field -> Field := fun x => x * x + 3 * x - 7
+def polyAt : Field := poly 5

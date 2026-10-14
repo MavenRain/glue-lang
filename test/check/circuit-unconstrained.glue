@@ -1,0 +1,2 @@
+-- The private binder z is in no constraint, so the proof does not constrain it.
+circuit c public (y : Field) private (x : Field) (z : Field) := x * x == y

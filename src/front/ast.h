@@ -12,7 +12,8 @@ typedef enum {
   TERM_LAM,   /* fun (name : left) => right; left is NULL for a bare binder */
   TERM_PI,    /* (name : left) -> right; name is NULL for left -> right */
   TERM_SIGMA, /* Sigma (name : left) right, or (name : left) * right */
-  TERM_UNIV   /* Type nat */
+  TERM_UNIV,  /* Type nat */
+  TERM_ARITH  /* left OP right, OP = nat: 0 +, 1 -, 2 * (Field) */
 } TermKind;
 
 typedef struct Term Term;
@@ -22,6 +23,7 @@ struct Term {
   int col;
   const char *name;
   uint64_t nat;
+  int big; /* NAT: the literal is above 2^64 - 1. name: the digits */
   const Term *left;
   const Term *right;
 };
@@ -45,8 +47,23 @@ typedef struct {
 typedef enum {
   DECL_DEF,    /* def [rec] name : type := body */
   DECL_AXIOM,  /* axiom name : type */
-  DECL_FAMILY  /* family name params := ctor | ... */
+  DECL_FAMILY, /* family name params := ctor | ... */
+  DECL_CIRCUIT /* glue-lang: circuit name public binders private binders := constraints */
 } DeclKind;
+
+/* glue-lang: a circuit constraint. EQ: lhs == rhs. RANGE8: range8 lhs. */
+typedef enum {
+  CONSTRAINT_EQ,
+  CONSTRAINT_RANGE8
+} ConstraintKind;
+
+typedef struct {
+  ConstraintKind kind;
+  const Term *lhs;
+  const Term *rhs; /* NULL for RANGE8 */
+  int line;
+  int col;
+} Constraint;
 
 /* A family is legal only in the domain file (rule R1). */
 typedef enum {
@@ -67,6 +84,11 @@ typedef struct {
   size_t param_count;
   const Ctor *ctors;
   size_t ctor_count;
+  /* DECL_CIRCUIT: params are the public binders. */
+  const Field *privates;
+  size_t private_count;
+  const Constraint *constraints;
+  size_t constraint_count;
 } Decl;
 
 /* Domain declarations come first, then the program. */

@@ -22,7 +22,15 @@ typedef enum {
   TOK_KW_FAMILY,
   TOK_KW_AXIOM,
   TOK_KW_TYPE,
-  TOK_KW_SIGMA
+  TOK_KW_SIGMA,
+  TOK_PLUS,
+  TOK_MINUS,
+  TOK_EQEQ, /* == */
+  TOK_SEMI,
+  TOK_KW_CIRCUIT,
+  TOK_KW_PUBLIC,
+  TOK_KW_PRIVATE,
+  TOK_KW_RANGE8
 } TokKind;
 
 typedef struct {
@@ -30,6 +38,7 @@ typedef struct {
   const char *text;
   size_t len;
   uint64_t nat;
+  int big; /* NAT: above 2^64 - 1 (a Field literal can be) */
   int line;
   int col;
 } Token;

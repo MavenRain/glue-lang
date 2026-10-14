@@ -1,0 +1,3 @@
+-- A byte and its successor: the prover knows a byte b with b + 1 == next.
+-- range8 b is a lookup in the table 0 to 255.
+circuit range public (next : Field) private (b : Field) := range8 b; b + 1 == next

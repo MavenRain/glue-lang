@@ -22,3 +22,13 @@ dependent-result.lang TYPE_MISMATCH
 cumulative.lang TYPE_MISMATCH
 type2.lang TYPE_UNIVERSE
 bad-eta.lang TYPE_REFL
+field-range.lang FIELD_RANGE
+field-arith.lang FIELD_ARITH
+field-digits.lang FIELD_RANGE
+circuit-binder.glue CIRCUIT_BINDER
+circuit-eq-field.glue EQ_FIELD
+circuit-range8-field.glue RANGE8_FIELD
+circuit-unconstrained.glue CIRCUIT_UNCONSTRAINED
+circuit-unused-public.glue CIRCUIT_UNUSED_PUBLIC
+circuit-field-range.glue FIELD_RANGE
+circuit-duplicate.glue REFUSE_NAME

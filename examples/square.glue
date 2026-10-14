@@ -1,0 +1,2 @@
+-- A square root: the prover knows x with x * x == y. y is public.
+circuit square public (y : Field) private (x : Field) := x * x == y

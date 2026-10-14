@@ -1,0 +1,4 @@
+-- A root of a cubic: the prover knows x with x * x * x + a * x + 5 == y.
+-- The circuit calls a helper definition, which inlines at lowering.
+def cubic : Field -> Field -> Field := fun a => fun t => t * t * t + a * t + 5
+circuit poly public (a : Field) (y : Field) private (x : Field) := cubic a x == y

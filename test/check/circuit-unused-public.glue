@@ -1,0 +1,2 @@
+-- The public binder u is in no constraint.
+circuit c public (y : Field) (u : Field) private (x : Field) := x * x == y

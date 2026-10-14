@@ -1,0 +1,2 @@
+-- A constraint needs == or range8.
+circuit c public (y : Field) := y
