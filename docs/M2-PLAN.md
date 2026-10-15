@@ -1,6 +1,6 @@
 # M2 plan: Path types and the interval
 
-Status: KICKOFF 2026-10-14. M1 is commit 503431c. The USER rules on the
+Status: DONE 2026-10-14 (slices s1 to s5). M1 is commit 503431c. The USER rules on the
 questions of section 9 before slice s1 starts. No code changes in the kickoff.
 
 ## 1. Sources
@@ -321,7 +321,7 @@ Each slice is one session. Each prompt is in ~/Documents.
 | s2 | `refl` over Path (beside `Eq`), `sym`, `cong`, `funExt`, `happly`; the law table; the guards. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s2-PROMPT.md |
 | s3 | F12/F13 per ruling c; circuits per ruling b; examples, goldens, old harness strings; reserved names; IR unchanged. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s3-PROMPT.md |
 | s4 | Face lattice (face.c), interval binders, `SSet`, `Partial`, systems, the s4 codes and tests. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s4-PROMPT.md |
-| s5 | Close: SPEC 2, 3 and 9, FORMERS F12/F13 and matrix, PLAN M2 DONE, STATUS, mutant roll-up, M3 kickoff prompt. | glue-lang-M2-s5-PROMPT.md |
+| s5 | Close: SPEC 2, 3 and 9, FORMERS F12/F13 and matrix, PLAN M2 DONE, STATUS, mutant roll-up, M3 kickoff prompt. DONE 2026-10-14 (docs/STATUS.md `### s5`). | glue-lang-M2-s5-PROMPT.md |
 
 Gates for each slice (all GREEN before staging): `make check`, `make
 check-clang`, `make e2e` (last, before staging), `forge build --root

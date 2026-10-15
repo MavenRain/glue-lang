@@ -22,12 +22,13 @@ binder scope and domain declarations.
 | F9 | Non-dependent Pi | DONE: `examples/functions.lang` |
 | F10 | Dependent Pi | DONE: `examples/functions.lang`, `examples/universes.lang` |
 | F11 | Sigma | DONE: `pack`, `witness`, `payload`; `examples/sigma.lang` |
-| F12 | Eq refl/symm/trans | DONE: `examples/equality.lang`, `examples/laws.lang` |
-| F13 | Eq transport/cong | DONE: `examples/equality.lang` |
+| F12 | Path refl/sym/trans | PARTIAL (M2): `Path A x y`, `refl` and `sym`; `examples/paths.lang`, `examples/equality.lang`, `examples/laws.lang`. `trans` is reserved until M3 (`hcomp`); `test/check/reserved-trans.lang`. |
+| F13 | Path transport/cong | PARTIAL (M2): `cong` over Path; `examples/paths.lang`, `examples/equality.lang`. `transport` is reserved until M3 (`transp`); `test/check/reserved-transport.lang`. |
 | F14 | Universes | DONE: `Type 0` and `Type 1`, without cumulativity; `examples/universes.lang`, `test/check/cumulative.lang`, `test/check/type2.lang` |
 | F15 | Generic indexed family | DONE in `domain/` only (rule R1): `Lot` in `domain/domain.lang`, `examples/inventory.lang` |
 
 JSON output of each former: `README.md`, section The JSON document.
-Functions, types, families and equality proofs are not instances. Thus
+Functions, types, families and Path proofs are not instances. Thus
 F9, F10, F14 and the F12 and F13 proofs have no JSON value of their own.
-A Sigma payload of `Eq` type is `null`.
+A Sigma payload of Path type is `null`. `Eq` and `symm` are no longer core
+names (SPEC.md section 2.4).

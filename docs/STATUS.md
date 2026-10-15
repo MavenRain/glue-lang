@@ -2,8 +2,8 @@
 
 The build implements milestone M1 of docs/PLAN.md: the vertical slice from
 a `circuit` declaration to a Solidity verifier. It has the lang-template
-core of M0 (the sample domain, the former checker, the JSON target). The
-cubical part is M2. M2 is in progress: see `## M2`.
+core of M0 (the sample domain, the former checker, the JSON target). M2
+(the interval, Path types and the face lattice) is DONE: see `## M2`.
 
 ## Implemented
 
@@ -24,8 +24,9 @@ cubical part is M2. M2 is in progress: see `## M2`.
 
 ## Remaining work
 
-1. M2: the cubical part (docs/M2-PLAN.md). Slices s1 and s2 are done.
-   Slices s3 to s5 remain (docs/M2-PLAN.md section 10).
+1. M3: the Kan operations `transp` and `hcomp`, Glue, `ua` and uaBeta,
+   application of a partial element, and the tests `round` and `moved`
+   (docs/PLAN.md, M3 row; `### s3` below).
 
 ## Known limits
 
@@ -337,3 +338,67 @@ The plan is docs/M2-PLAN.md. Each slice is one session (section 10).
   `forge build --root contracts --sizes` and `make e2e` pass. The IR and
   verifier diff is empty. After restoring the generated proof fixtures,
   `forge test --root contracts` passes all 33 tests again.
+
+### s5: close (2026-10-14)
+
+Summary of M2. glue-lang has the De Morgan interval `I` (`i0`, `i1`, `~`,
+`/\`, `\/`), the dependent path type `PathP (<i> A) a b` with the sugar
+`Path A a b`, path abstraction `<i> t` and path application `p @ r`.
+`refl`, `sym`, `cong`, `funExt` and `happly` are checker rules that write
+ordinary path terms, so their laws hold by computation. `Path` replaces the
+template formers F12 and F13. `a == b` in a circuit is the type
+`Path Field a b`, and the IR did not change. The face lattice gives
+`Partial phi A`, systems and interval binders in the sort `SSet`. SPEC.md
+section 2.4 is the reference. No definitional proof irrelevance: two
+different variables of one path type do not convert.
+
+- Docs: SPEC.md 2.2 (`==` is `Path Field a b`), 2.4 (new: syntax, interval
+  values, typing rules, evaluation and conversion, derived operations,
+  faces, JSON, M2 refusal codes), 3 (F12 and F13 rows), 9 (O1 closed; O5,
+  O6 and O7 new). formers/FORMERS.md: the glue-lang text of F12 and F13
+  and their tcc-json matrix cells. docs/PLAN.md: M2 DONE; the M3 row lists
+  application of a partial element and the tests `round` and `moved`.
+- Mutant roll-up (each with `make -B`, source restored after): 11 KILLED,
+  0 SURVIVED.
+
+| Slice | Mutant | Result |
+|---|---|---|
+| s1 | boundary check off (check_plam) | KILLED |
+| s1 | `~` as the identity (eval_ivl) | KILLED |
+| s1 | end point rule off (papp_value) | KILLED |
+| s2 | `sym` with no `~` (rule_sym) | KILLED |
+| s2 | `cong` with no application of `f` (cong_path) | KILLED |
+| s2 | `funExt` with `f` and `g` exchanged (funext_type) | KILLED |
+| s3 | the lowering reads the ends swapped (lower_check) | KILLED |
+| s3 | `Eq` as an alias of `Path` (BUILTINS) | KILLED |
+| s4 | agreement check off (branches_agree) | KILLED |
+| s4 | cover check off (check_sys) | KILLED |
+| s4 | face_norm keeps `i /\ ~i` (conj_consistent) | KILLED |
+
+- Review of the M2 diff (`git diff 503431c..HEAD -- src`). The two review
+  agents stopped on API errors, so the review is a targeted read in the
+  main session. Result: no defect found.
+  1. Proof irrelevance: conv_loop, conv_path, conv_sys and value_on_face
+     (eval.c) compare values by their structure. A neutral path converts
+     to a path abstraction only by path eta. VAL_PAPP compares the interval
+     values and then the paths. Two systems convert when their covers are
+     equal and their bodies convert under each conjunction of each overlap.
+     A neutral partial element does not convert to a system. No rule reads
+     the type of the two values.
+  2. Switch cases: `make check-clang` uses `-Wswitch-enum -Werror`. The
+     only `default:` arms in src are lexer.c (a switch on a character) and
+     circuit.c fixed_cell (M1, not in the M2 diff).
+  3. Boundaries: path_former (check.c) checks `a` against the line at `i0`
+     and `b` against the line at `i1`. check_plam converts both ends
+     (mutant s1-1). check_sys checks FACE_COVER and then FACE_AGREE for
+     each conjunction (mutants s4-1 and s4-2, the s4 review fixes).
+- Gates: `make -B check` exit 0 (examples 16, parse refusals 15, check
+  refusals 54, evals 49, json 13, build refusals 3, circuits 3, circuit
+  refusals 10, satcheck refusals 6, native circuit regressions 9, native
+  path regressions 12, native face regressions 20, each with 0 failed;
+  gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0. `make
+  e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).

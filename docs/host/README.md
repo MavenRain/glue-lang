@@ -48,11 +48,11 @@ data. These definitions are checked, but they are not instances:
 
 - functions (a Pi type, dependent or not);
 - types and families (a universe type);
-- equality proofs (an `Eq` type);
+- path proofs (a `Path` or `PathP` type);
 - the definitions in `domain/domain.lang`.
 
 `type` is the normal form of the definition type in source syntax, for
-example `Sigma (n : Nat) (Eq Nat n 1200)`. Binder names are freshened when
+example `Sigma (n : Nat) (Path Nat n 1200)`. Binder names are freshened when
 needed to preserve scope. The complete text must fit a 4096-byte buffer;
 the build refuses a type that exceeds this size or the printer depth of
 200, rather than emitting an abbreviated type.
@@ -67,10 +67,10 @@ starts again for each instance.
 | `Unit` | `{}` |
 | `Prod A B` | `{"first": a, "second": b}` |
 | `Sum A B` | `{"inl": a}` or `{"inr": b}` |
-| `Option A` | `null` or the value. When `A` is an `Option` or an `Eq` type, `some v` is `{"some": v}`. |
+| `Option A` | `null` or the value. When `A` is an `Option`, `Path` or `PathP` type, `some v` is `{"some": v}`. |
 | `List A` | An array |
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
-| `Eq A x y` | `null` |
+| `Path A x y`, `PathP L x y` | `null` when a component of a data value (SPEC.md section 2.4). |
 | A family whose constructors have no fields | The constructor name, as a string |
 | A family with one constructor | An object of the fields |
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |
