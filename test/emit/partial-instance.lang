@@ -1,1 +1,1 @@
-def px : Partial i1 Nat := [ i1 -> 0 ]
+def px : Partial i0 Nat := [ i0 -> 0 ]

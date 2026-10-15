@@ -1,4 +1,4 @@
-/* Native regressions for interval binders and restricted system bodies. */
+/* Native regressions for interval binders, restricted systems and transport. */
 #include <stdio.h>
 #include <string.h>
 
@@ -25,6 +25,48 @@ typedef struct {
   "def t : (p : Path Nat 0 1) -> (i : I) -> (j : I) -> Partial (i \\/ j) (Path Nat (p @ (i /\\ j)) (p @ (i /\\ j))) := fun p i j => [ i \\/ j -> refl ]\n"
 
 static const Case CASES[] = {
+  {"Pi transport with a dependent codomain",
+   "def test : (A : I -> Type 0) -> (B : (i : I) -> A i -> Type 0) -> (f : (x : A i0) -> B i0 x) -> "
+   "Path ((y : A i1) -> B i1 y) (transp (<i> (x : A i) -> B i x) i0 f) "
+   "(fun y => transp (<i> B i (transp (<j> A (~j \\/ i)) i y)) i0 (f (transp (<j> A (~j)) i0 y))) := fun A B f => refl\n",
+   CHECK, NULL, NULL},
+  {"Sigma transport with a dependent second component",
+   "def test : (A : I -> Type 0) -> (B : (i : I) -> A i -> Type 0) -> (p : Sigma (x : A i0) (B i0 x)) -> "
+   "Path (Sigma (x : A i1) (B i1 x)) (transp (<i> Sigma (x : A i) (B i x)) i0 p) "
+   "(pack (transp (<i> A i) i0 (witness p)) (transp (<i> B i (transp (<j> A (i /\\ j)) ~i (witness p))) i0 (payload p))) := fun A B p => refl\n",
+   CHECK, NULL, NULL},
+  {"Prod transport with two varying components",
+   "def test : (A : I -> Type 0) -> (B : I -> Type 0) -> (p : Prod (A i0) (B i0)) -> "
+   "Path (Prod (A i1) (B i1)) (transp (<i> Prod (A i) (B i)) i0 p) "
+   "(pair (transp (<i> A i) i0 (first p)) (transp (<i> B i) i0 (second p))) := fun A B p => refl\n",
+   CHECK, NULL, NULL},
+  {"full-face Partial system keeps checking",
+   "def test : Partial i1 Nat := [ i1 -> 2 ]\n",
+   PRINT_VALUE, "2", NULL},
+  {"full-face Partial system as an argument",
+   "def test : (f : Partial i1 Nat -> Nat) -> Nat := fun f => f [ i1 -> 2 ]\n",
+   PRINT_VALUE, "fun f => f 2", NULL},
+  {"full-face Partial system checks path boundaries",
+   "def test : Partial i1 (Path Nat 2 2) := [ i1 -> refl ]\n",
+   PRINT_VALUE, "<i> 2", NULL},
+  {"full-face system checks at the reduced type",
+   "def test : Nat := [ i1 -> 2 ]\n",
+   PRINT_VALUE, "2", NULL},
+  {"full-face system under a restricted branch",
+   "def test : (i : I) -> Partial i Nat := fun i => [ i -> [ i -> 2 ] ]\n",
+   CHECK, NULL, NULL},
+  {"full-face system still rejects disagreement",
+   "def test : Partial i1 Nat := [ i1 -> 0, i1 -> 1 ]\n",
+   CHECK, NULL, "FACE_AGREE"},
+  {"full-face system still checks branch types",
+   "def test : Partial i1 Nat := [ i1 -> unit ]\n",
+   CHECK, NULL, "TYPE_MISMATCH"},
+  {"empty system needs a Partial type",
+   "def test : Nat := [ i0 -> 2 ]\n",
+   CHECK, NULL, "PARTIAL_EXPECTED"},
+  {"non-total system needs a Partial type",
+   "def test : (i : I) -> Nat := fun i => [ i -> 2 ]\n",
+   CHECK, NULL, "PARTIAL_EXPECTED"},
   {"dependent interval Pi conversion", DEPENDENT_PI
    "def test : (i : I) -> Partial i Nat := f\n", CHECK, NULL, NULL},
   {"dependent interval Pi printing", DEPENDENT_PI,

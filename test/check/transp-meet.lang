@@ -1,0 +1,1 @@
+def bad : (A : I -> Type 0) -> (j : I) -> A i0 -> A j := fun A => fun j => fun a => transp (<i> A (i /\ j)) j a

@@ -1,1 +1,1 @@
-def bare : Nat := [ i1 -> 0 ]
+def bare : Nat := [ i0 -> 0 ]

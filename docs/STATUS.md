@@ -402,3 +402,99 @@ different variables of one path type do not convert.
 - IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
   exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
   --root contracts` passes again (33 passed, 0 failed).
+
+## M3
+
+### s1: transp, Partial at i1, and the M3 plan (2026-10-14)
+
+- Plan: docs/M3-PLAN.md (new) is the M3 plan with the USER rulings
+  applied.
+- D10 names: `transp` is a checker rule (BUILTINS row, RULE_TRANSP), so it
+  is not in RESERVED. RESERVED adds the 14 names of the later slices:
+  `comp`, `hfill`, `subst`, `transportRefl`, `J`, `JRefl`, `isContr`,
+  `fiber`, `isEquiv`, `Equiv`, `idEquiv`, `glue`, `unglue`, `uaBeta`. A def
+  with one of these names, or with the name `transp`, gives REFUSE_NAME
+  (one test/check/reserved-NAME.lang file each).
+- Core: core.h adds OP_TRANSP, OP_KAN_DOM and OP_KAN_COD. eval.c has their
+  names, arities and reduce_op cases. src/front/kan.c and kan.h (new) have
+  kan_transp, kan_dom and kan_cod. Each rule is a core term (D7). The
+  Makefile FRONT list and test/regressions.js have kan.
+- Typing (check.c rule_transp): `transp (<i> A) phi a`. The first argument
+  must be a line `<i> A` with `A` in Type n (PATH_TYPE if not, also for a
+  line in I). `a` has the type `A[i0]`. The line must be constant on each
+  conjunction of `phi` (TRANSP_CONSTANT). The type is `A[i1]`.
+- Evaluator (kan.c kan_transp): the face `i1` gives `a`. Only the head of
+  the line at a fresh interval variable is read. Type n, Nat, Field, Unit
+  and Flag give `a`. Pi, Sigma and Prod give the rule terms of M3-PLAN 3.4.
+  Each other head gives a stuck `transp`.
+- D4 (eval.c reduce_partial): `Partial i1 A` is `A`. restrict_ctx evaluates
+  each type again under the face. check_sys accepts total systems against
+  the reduced expected type `A`, preserving branch typing and agreement.
+- Conversion: no new code. The VAL_STUCK case of conv_loop compares the
+  arguments: the line by path eta at a fresh interval variable, the face by
+  its normal form. Row: stuckEq in examples/kan.lang.
+- Quote and print: no new code. A stuck value prints as
+  `transp (<i> A) phi a`.
+- JSON: json.c gives INTERNAL for a Kan operation as a type former (a type
+  is never one). A stuck `transp` in an instance value gives JSON_VALUE
+  ("the instance holds a stuck term"). Row: test/emit/stuck-transp.lang.
+  SPEC section 9 gets this code in s6.
+- Guest tests: examples/kan.lang (new) and test/json/kan.json. The example
+  has `transp` at the face `i1`; on Nat, Field, Type 0, Pi (eta, and a
+  domain that changes), Sigma and Prod; the 4 s1 laws of M3-PLAN section 4
+  as `refl` rows; a stuck `transp` with a variable line; two equal stuck
+  values that convert; `transp (<i> A (i /\ j)) ~j a`; the D4 rows d4Var
+  (`u i` under the face of `u`) and d4Path (`(u i) @ j`). 13 eval rows
+  (kan). Check rows: transp-constant.lang and transp-meet.lang
+  (TRANSP_CONSTANT), transp-interval.lang (PATH_TYPE), transp-guard.lang
+  (TYPE_REFL: `refl : Path Nat (transp (<_> Nat) i0 x) y` is refused).
+  Build row: stuck-transp.lang (JSON_VALUE).
+- The Pi line with a domain that changes has this normal form:
+  `fun P => fun x => fun y => fun p => fun f => fun _x0 => f (transp (<j> P (p @ ~j)) i0 _x0)`.
+  `f` gets a `transp` of its argument, not the argument.
+- D4 changed one guest row. test/emit/partial-instance.lang was
+  `def px : Partial i1 Nat := [ i1 -> 0 ]`. With D4 its type is Nat and
+  the instance emits `0`. The refusal fixture is now
+  `def px : Partial i0 Nat := [ i0 -> 0 ]` (SORT_FIBRANT, exit 1, no
+  stdout: the same row intent). test/check/partial-expected.lang also uses
+  `i0`, so an incomplete system against Nat still gives PARTIAL_EXPECTED.
+  Full-face systems are positive native C regressions.
+- Mutants (each with `make -B check`, source restored after): 3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| TRANSP_CONSTANT check off (rule_transp) | check transp-constant.lang and transp-meet.lang |
+| Pi rule passes `y` for `w i0` (kan.c pi_rule) | eval kan piLine |
+| `Partial i1 A = A` rule off (reduce_partial) | examples/kan.lang (d4Var: TYPE_MISMATCH) |
+
+- The Pi mutant is `app(m, var(m, 1u), (zero(m), var(m, 0)))`. Without the
+  call to `zero`, `make check-clang` stops on an unused function, and no
+  guest row runs.
+- Gates: `make -B check` exit 0 (examples 17, parse refusals 15, check
+  refusals 73, evals 62, json 14, build refusals 4, circuits 3,
+  circuit refusals 10, satcheck refusals 6, native circuit regressions 9,
+  native path regressions 12, native face regressions 20, each with 0
+  failed; gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0. `make
+  e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).
+- Open items:
+  - O8 (new, M3-PLAN 3.4): `transp` stays stuck at Sum, Option and List
+    (rule in s3), at PathP (rule in s2), and at Family and the fold and
+    unfold families (stuck in M3).
+  - For the USER: `def px : (i : I) -> Partial i Nat := fun i => [ i -> 0 ]`
+    gives exit 0 for `langc build`. Maybe a def with a type in SSet is not
+    refused when the type is a Pi over I. Not in s1 scope.
+
+- Review fixes (2026-10-14): total systems had failed with PARTIAL_EXPECTED
+  after their expected Partial type reduced to its base type. check_sys
+  now handles that reduction. Twelve added C cases cover full-face
+  systems, application, path boundaries, nested restriction, disagreement,
+  wrong branch types, incomplete systems, and dependent Pi, Sigma and Prod
+  transport. Native face regressions: 32 checked, 0 failed. `make -B check`
+  and `make check-clang` pass. The end-to-end gate passes all 33 Forge
+  tests using the unchanged Halo2 binary. Circuit IR and verifiers remain
+  unchanged.

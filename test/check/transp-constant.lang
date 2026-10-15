@@ -1,0 +1,1 @@
+def bad : (P : Nat -> Type 0) -> (x : Nat) -> (y : Nat) -> Path Nat x y -> P x -> P y := fun P => fun x => fun y => fun p => fun u => transp (<i> P (p @ i)) i1 u

@@ -1,0 +1,3 @@
+-- PathP is s2, so the transp of a path of types stays stuck.
+def q : Path (Type 0) Nat Nat := transp (<_> Path (Type 0) Nat Nat) i0 (<j> Nat)
+def stuck : Nat := transp (<i> q @ i) i0 0

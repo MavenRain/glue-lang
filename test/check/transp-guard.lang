@@ -1,0 +1,1 @@
+def bad : (x : Nat) -> (y : Nat) -> Path Nat (transp (<_> Nat) i0 x) y := fun x => fun y => refl

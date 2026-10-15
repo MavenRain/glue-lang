@@ -69,7 +69,10 @@ typedef enum {
   OP_INTERVAL, /* M2 s4: I as the domain of a Pi. No term has this type */
   OP_SSET,     /* M2 s4: the sort of I, Partial and each Pi over them */
   OP_PARTIAL,  /* M2 s4: Partial phi A. args: the face, then A */
-  OP_SYS       /* M2 s4: [ phi -> t, ... ]. inst: the branch count. args: face, body, ... */
+  OP_SYS,      /* M2 s4: [ phi -> t, ... ]. inst: the branch count. args: face, body, ... */
+  OP_TRANSP,   /* M3 s1: transp L phi a. args: the line (a PLAM closure), the face, a */
+  OP_KAN_DOM,  /* M3 s1: kan.c only. args: L, r. The domain of L @ r */
+  OP_KAN_COD   /* M3 s1: kan.c only. args: L, r, x. The codomain of L @ r at x */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

@@ -1,0 +1,34 @@
+-- M3 s1: transp (CCHM), the face i1 rule and Partial i1 A = A (D4).
+-- transp L i1 a = a: the face i1 rule.
+def natAt1 : Nat := transp (<i> Nat) i1 5
+def lawAt1 : (P : Nat -> Type 0) -> (n : Nat) -> (u : P n) -> Path (P n) (transp (<i> P n) i1 u) u := fun P => fun n => fun u => refl
+
+-- The closed types give a: Nat, Field, Type 0.
+def natT : Nat := transp (<_> Nat) i0 5
+def fieldT : Field := transp (<_> Field) i0 3
+def typeT : Type 0 := transp (<_> Type 0) i0 Nat
+def lawNat : (n : Nat) -> (i : I) -> Path Nat (transp (<_> Nat) i n) n := fun n => fun i => refl
+
+-- Pi: the function on Nat is the function (function eta).
+def etaNat : (Nat -> Nat) -> Nat -> Nat := fun f => transp (<i> Nat -> Nat) i0 f
+def lawPi : (f : Nat -> Nat) -> Path (Nat -> Nat) (transp (<_> Nat -> Nat) i0 f) f := fun f => refl
+
+-- Pi with a domain that changes: f gets a transp of its argument back along the line.
+def piLine : (P : Nat -> Type 0) -> (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (P x -> Nat) -> P y -> Nat := fun P => fun x => fun y => fun p => fun f => transp (<i> P (p @ i) -> Nat) i0 f
+
+-- Sigma and Prod: the rule goes into each component.
+def sigmaT : Sigma (n : Nat) Nat := transp (<_> Sigma (n : Nat) Nat) i0 (pack 2 3)
+def prodT : Prod Nat Field := transp (<_> Prod Nat Field) i0 (pair 1 2)
+def sigmaLine : Sigma (n : Nat) (Path Nat n n) -> Sigma (n : Nat) (Path Nat n n) := fun p => transp (<i> Sigma (n : Nat) (Path Nat n n)) i0 p
+def lawSigma : (p : Sigma (n : Nat) (Path Nat n n)) -> Path (Sigma (n : Nat) (Path Nat n n)) (transp (<_> Sigma (n : Nat) (Path Nat n n)) i0 p) (pack (witness p) (transp (<_> Path Nat (witness p) (witness p)) i0 (payload p))) := fun p => refl
+
+-- A line with a variable type stays stuck. Two equal stuck transps are equal.
+def stuckP : (P : Nat -> Type 0) -> (n : Nat) -> P n -> P n := fun P => fun n => fun u => transp (<i> P n) i0 u
+def stuckEq : (P : Nat -> Type 0) -> (n : Nat) -> (i : I) -> (u : P n) -> Path (P n) (transp (<i> P n) (i /\ i) u) (transp (<j> P n) i u) := fun P => fun n => fun i => fun u => refl
+
+-- The line is constant on ~j, so transp accepts the face ~j.
+def meetLine : (A : I -> Type 0) -> (j : I) -> A i0 -> A j := fun A => fun j => fun a => transp (<i> A (i /\ j)) ~j a
+
+-- D4: Partial i1 A is A. Under the face i, u i has the type Nat.
+def d4Var : ((i : I) -> Partial i Nat) -> (i : I) -> Partial i Nat := fun u => fun i => [ i -> u i ]
+def d4Path : ((i : I) -> Partial i (Path Nat 0 1)) -> (i : I) -> (j : I) -> Partial i Nat := fun u => fun i => fun j => [ i -> (u i) @ j ]

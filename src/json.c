@@ -193,6 +193,10 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_PARTIAL:
   case OP_SYS:
     return internal(o, "a value of a type in SSet");
+  case OP_TRANSP:
+  case OP_KAN_DOM:
+  case OP_KAN_COD:
+    return internal(o, "a Kan operation as a type former");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))
       return internal(o, "a Prod value that is not a pair");

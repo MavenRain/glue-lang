@@ -75,7 +75,8 @@ typedef enum {
   RULE_FUNEXT,
   RULE_HAPPLY,
   RULE_PARTIAL,
-  RULE_SSET
+  RULE_SSET,
+  RULE_TRANSP
 } Rule;
 
 typedef struct {
@@ -136,13 +137,19 @@ static const Builtin BUILTINS[] = {
   {"funExt", 1, RULE_FUNEXT, OP_PATHP, OP_NAT, 0},
   {"happly", 2, RULE_HAPPLY, OP_PATHP, OP_NAT, 0},
   {"Partial", 2, RULE_PARTIAL, OP_PARTIAL, OP_NAT, 0},
-  {"SSet", 0, RULE_SSET, OP_SSET, OP_NAT, 0}
+  {"SSet", 0, RULE_SSET, OP_SSET, OP_NAT, 0},
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
 
-/* Names that no declaration can take (rule R4). */
-static const char *const RESERVED[] = {"Bool", "Text", "trans", "transport", "transp", "hcomp", "Glue", "ua"};
+/* Names that no declaration can take (rule R4). M3 D10: each Kan, Glue and
+   univalence name is reserved from s1, and its slice moves it to BUILTINS. */
+static const char *const RESERVED[] = {
+  "Bool", "Text", "trans", "transport", "hcomp", "Glue", "ua",
+  "comp", "hfill", "subst", "transportRefl", "J", "JRefl", "isContr", "fiber",
+  "isEquiv", "Equiv", "idEquiv", "glue", "unglue", "uaBeta"
+};
 
 typedef enum {
   HEAD_TERM, /* a local, a definition or another term: plain application */
@@ -569,6 +576,7 @@ static const Core *rule_pack(Call *k) {
 
 static const Core *core_ivl(Checker *c, IvlOp op, const Core *a, const Core *b);
 static const Core *elab_ivl(Checker *c, const Term *t);
+static const Core *rule_transp(Call *k);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -1221,6 +1229,8 @@ static const Core *rule(Call *k) {
     return rule_partial(k);
   case RULE_SSET:
     return nul(FAIL(k->c, "SORT_FIBRANT", "SSet is a sort, not a type in Type n: it cannot be a binder type"));
+  case RULE_TRANSP:
+    return rule_transp(k);
   }
   return NULL;
 }
@@ -1762,12 +1772,51 @@ static int branches_agree(Checker *c, const Core *const *args, const Ivl *const 
   return 1;
 }
 
+/* M3 s1: transp (<i> A) phi a : A[i := i1]. The line is a PathP line;
+   a : A[i := i0];  on each conjunction of phi, A at a fresh i converts to
+   A[i := i0] (TRANSP_CONSTANT). The line binder is not in the context, so
+   the restriction changes only the context variables. */
+static const Core *rule_transp(Call *k) {
+  Checker *c = k->c;
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Term *t = k->args[0];
+  uint64_t level = 0;
+  const Core *line;
+  const Value *lv;
+  const Core *face;
+  const Value *fv;
+  const Ivl *norm;
+  const Core *a;
+  uint32_t j;
+  if (t->kind != TERM_PLAM)
+    return nul(FAIL(c, "PATH_TYPE", "transp needs a line <i> A as its first argument"));
+  line = path_line(c, t->name, t->right, &level);
+  lv = here(c, line);
+  face = lv == NULL ? NULL : elab_ivl(c, k->args[1]);
+  fv = here(c, face);
+  norm = fv == NULL || fv->kind != VAL_IVL ? NULL : face_norm(&h, fv->ivl);
+  a = norm == NULL ? NULL : check(c, k->args[2], closure_apply(c->m, lv, val_ivl_end(c->m, 0)));
+  if (a == NULL)
+    return NULL;
+  for (j = 0; j < norm->count; j++) {
+    const Value *lr = eval_restricted(c, line, norm, j);
+    const Value *x = closure_apply(c->m, lr, val_ivl_var(c->m, c->level));
+    const Value *y = closure_apply(c->m, lr, val_ivl_end(c->m, 0));
+    if (!conv_values(c->m, c->level + 1u, x, y))
+      return c->m->diag->set ? NULL : nul(FAIL(c, "TRANSP_CONSTANT", "transp needs a line that is constant on %s, but the line goes from %s to %s there", show(c, val_ivl(c->m, face_conj(&h, norm, j))), show(c, y), show(c, closure_apply(c->m, lr, val_ivl_end(c->m, 1)))));
+  }
+  k->type = closure_apply(c->m, lv, val_ivl_end(c->m, 1));
+  return op3(c, OP_TRANSP, 0, 3, line, face, a);
+}
+
 /* M2 s4: [ phi1 -> t1, ... ] against Partial phi A. Each ti : A under each
    conjunction of phi_i;  FACE_AGREE on each meet;  FACE_COVER: the join of
    the faces is phi. */
 static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const Value **type) {
   IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
   const Ivl *cover = ivl_const(&h, 0);
+  const Value *base;
+  const Value *required;
   const Core **args;
   const Ivl **faces;
   const Ivl **branch_faces;
@@ -1777,8 +1826,14 @@ static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const
   uint32_t at = 0;
   uint32_t k;
   uint32_t l;
-  if (!val_is(hint, OP_PARTIAL) || hint->args[0]->kind != VAL_IVL)
+  if (hint == NULL)
     return nul(FAIL(c, "PARTIAL_EXPECTED", "%d:%d: a system [ ... ] needs a declared type Partial phi A here, found %s", t->line, t->col, hint == NULL ? "no type" : show(c, hint)));
+  /* Partial i1 A reduces to A before checking its system. A total system
+     therefore checks against A directly, with the same agreement checks. */
+  base = val_is(hint, OP_PARTIAL) ? hint->args[1] : hint;
+  required = val_is(hint, OP_PARTIAL) ? hint->args[0] : val_ivl_end(c->m, 1);
+  if (required == NULL || required->kind != VAL_IVL)
+    return NULL;
   for (b = t; b != NULL; b = b->next)
     branches++;
   branch_faces = arena_alloc(c->m->arena, ((size_t)branches + 1u) * sizeof *branch_faces);
@@ -1798,6 +1853,8 @@ static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const
   }
   if (cover == NULL)
     return NULL;
+  if (!val_is(hint, OP_PARTIAL) && !ivl_is_const(cover, 1))
+    return nul(FAIL(c, "PARTIAL_EXPECTED", "%d:%d: a system [ ... ] needs a declared type Partial phi A here, found %s", t->line, t->col, show(c, hint)));
   args = arena_alloc(c->m->arena, (2u * (size_t)n + 1u) * sizeof *args);
   faces = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *faces);
   if (args == NULL || faces == NULL)
@@ -1811,13 +1868,13 @@ static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const
       faces[at] = face->count == 0u ? face : face_conj(&h, face, l);
       args[2u * at] = faces[at] == NULL ? NULL : quote_value(c->m, c->level, val_ivl(c->m, faces[at]));
       args[2u * at + 1u] = args[2u * at] == NULL ? NULL : face->count == 0u
-        ? check(c, b->right, hint->args[1]) : check_restricted(c, b->right, hint->args[1], face, l);
+        ? check(c, b->right, base) : check_restricted(c, b->right, base, face, l);
       if (args[2u * at + 1u] == NULL)
         return NULL;
     }
   }
-  if (!face_equal(cover, hint->args[0]->ivl))
-    return nul(FAIL(c, "FACE_COVER", "the faces of the system join to %s, but the type needs the face %s", show(c, val_ivl(c->m, cover)), show(c, hint->args[0])));
+  if (!face_equal(cover, required->ivl))
+    return nul(FAIL(c, "FACE_COVER", "the faces of the system join to %s, but the type needs the face %s", show(c, val_ivl(c->m, cover)), show(c, required)));
   for (k = 0; k < n; k++)
     for (l = k + 1u; l < n; l++)
       if (!branches_agree(c, args, faces, k, l))

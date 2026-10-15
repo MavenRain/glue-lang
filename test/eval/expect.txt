@@ -47,3 +47,16 @@ faces ivlAt0 => 3
 faces ivlAt1 => 3
 faces ivlRev => fun i => 3
 faces sysRev => fun i => [ i -> 0, ~i -> 1 ]
+kan natAt1 => 5
+kan lawAt1 => fun P => fun n => fun u => <i> u
+kan natT => 5
+kan fieldT => 3
+kan typeT => Nat
+kan etaNat => fun f => fun y => f y
+kan piLine => fun P => fun x => fun y => fun p => fun f => fun _x0 => f (transp (<j> P (p @ ~j)) i0 _x0)
+kan sigmaT => pack 2 3
+kan prodT => pair 1 2
+kan sigmaLine => fun p => pack (witness p) (transp (<i> Path Nat (witness p) (witness p)) i0 (payload p))
+kan stuckP => fun P => fun n => fun u => transp (<i> P n) i0 u
+kan meetLine => fun A => fun j => fun a => transp (<i> A (j /\ i)) ~j a
+kan d4Path => fun u => fun i => fun j => [ i -> u i @ j ]

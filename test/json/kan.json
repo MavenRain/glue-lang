@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"natAt1","type":"Nat","value":5},{"name":"natT","type":"Nat","value":5},{"name":"fieldT","type":"Field","value":"3"},{"name":"sigmaT","type":"Sigma (n : Nat) Nat","value":{"witness":2,"payload":3}},{"name":"prodT","type":"Prod Nat Field","value":{"first":1,"second":"2"}}]}

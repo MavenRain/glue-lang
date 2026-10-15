@@ -3,6 +3,7 @@
 #include "front/core.h"
 #include "front/face.h"
 #include "front/fr.h"
+#include "front/kan.h"
 
 #include <string.h>
 
@@ -26,7 +27,8 @@ static const char *const OP_NAMES[] = {
   [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
   [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
-  [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?"
+  [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
+  [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -44,7 +46,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
-  [OP_SYS] = VARIES
+  [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3
 };
 
 typedef enum {
@@ -850,9 +852,13 @@ static const Value *reduce_sys(Machine *m, uint32_t inst, const Value *const *a,
   return val_op(m, VAL_OP, OP_SYS, inst, 0, out, n);
 }
 
+/* M3 D4: Partial i1 A is A. Under a system branch the restriction makes the
+   face i1, so a partial element there has the type A. */
 static const Value *reduce_partial(Machine *m, const Value *const *a) {
   const Value *face = face_value(m, a[0]);
-  return face == NULL ? NULL : val_make(m, OP_PARTIAL, 0, 2u, face, a[1], NULL);
+  if (face == NULL)
+    return NULL;
+  return ivl_is_const(face->ivl, 1) ? a[1] : val_make(m, OP_PARTIAL, 0, 2u, face, a[1], NULL);
 }
 
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -889,6 +895,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_partial(m, a);
   case OP_SYS:
     return reduce_sys(m, inst, a, n);
+  case OP_TRANSP:
+    return kan_transp(m, a[0], face_value(m, a[1]), a[2]);
+  case OP_KAN_DOM:
+    return kan_dom(m, a[0], a[1]);
+  case OP_KAN_COD:
+    return kan_cod(m, a[0], a[1], a[2]);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:

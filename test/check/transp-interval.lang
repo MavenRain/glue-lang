@@ -1,0 +1,1 @@
+def bad : Nat := transp (<i> I) i0 i0
