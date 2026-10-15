@@ -592,3 +592,134 @@ different variables of one path type do not convert.
   - O8 (s2, new): hcomp stays stuck at Type n, Sum, List, Option and a
     stuck type. A transp of a system value along a stuck line stays
     stuck.
+
+### s3: coproduct Kan rules, trans, transport, subst and J (2026-10-15)
+
+- Files: src/front/core.h, eval.c, check.c and kan.c, and src/json.c. Guest
+  tests: examples/derived.lang and test/json/derived.json (new),
+  examples/equality.lang (`round` and `moved`), test/emit/stuck-transp.lang
+  (the comment on line 1 only) and test/eval/expect.txt. test/check/ and
+  test/json/equality.json do not change.
+- Core: core.h adds OP_KAN_FIELD (kan.c only; args: x; inst: the field
+  index of the constructor x). eval.c reduce_field gives field `inst` of a
+  constructor value. A neutral value gives a stuck value. A system gives the
+  system of the fields. Each branch is split into reachable conjunctions,
+  then projected under the conjunction's substitutions. Empty faces are
+  discarded. This avoids projecting `none` or `nil` on an unreachable
+  branch and keeps internal `?` operations out of rendered field tubes.
+  Probe levels are shared through kan.h; substitution stays stuck during
+  head probes. json.c gives INTERNAL for OP_KAN_FIELD, as for the other
+  Kan operations.
+- Evaluator (kan.c, M3-PLAN 3.4):
+  - data_type (Sum, Option, List) and data_ctor (inl, inr, none, some, nil,
+    cons). line_at accepts the data formers. kan_dom gives the left type of
+    a Sum and the element type of an Option or a List. kan_cod gives the
+    right type of a Sum, else INTERNAL ("a codomain of an Option or List
+    line").
+  - kan_transp, after the PathP rule: if the head is a data former and `a`
+    is a constructor, transp_data applies. none and nil give `a`. inl and
+    some give `C (transp (<i> DOM(L, i)) phi x)`. inr gives
+    `inr (transp (<i> COD(L, i, i0)) phi x)`. cons gives
+    `cons (transp (<i> DOM(L, i)) phi x) (transp L phi xs)`. A neutral `a`
+    gives a stuck transp.
+  - kan_hcomp, before the stuck return: for a data type, hcomp_data applies
+    when `u0` and each branch of `u i` (`i` fresh) have the same
+    constructor on each conjunction of the face of the branch
+    (hcomp_same_ctor, with value_bound as in hcomp_constant). The result is
+    `C (hcomp T phi (fun i => KAN_FIELD n (u i)) x)` for each field
+    (field_hcomp). OP_KAN_FIELD distributes over the system, so the tube
+    has no nested system. Else the hcomp is stuck.
+- Typing (check.c): RULE_TRANS, RULE_TRANSPORT, RULE_SUBST,
+  RULE_TRANSPORT_REFL, RULE_J and RULE_J_REFL. Each rule writes a core term
+  (D2). Helpers: path_base (PATH_EXPECTED), path_body, transp_zero and
+  j_motive.
+  - rule_trans: `trans p q : Path A x z`, with `p : Path A x y` and
+    `q : Path A y z`. The core term is
+    `<i> hcomp A (~i \/ i) (fun j => [ ~i -> x, i -> q @ j ]) (p @ i)`.
+    The printer writes the tube binder as `j`. An end mismatch gives
+    TYPE_MISMATCH.
+  - rule_transport: `transport p x : B`, with `p : Path (Type n) A B` and
+    `x : A` (D6). The core term is `transp (<i> p @ i) i0 x`.
+  - rule_subst: `subst P p x : P b`, with `P : A -> Type n`,
+    `p : Path A a b` and `x : P a`. The core term is
+    `transp (<i> P (p @ i)) i0 x`.
+  - rule_transport_refl: `transportRefl x : Path A (transp (<_> A) i0 x) x`.
+    The core term is `<i> transp (<_> A) i x`.
+  - rule_j: `J P d p : P y p`, with `P : (y : A) -> Path A x y -> Type n`,
+    `d : P x refl` and `p : Path A x y`. The core term is
+    `transp (<i> P (p @ i) (<j> p @ (i /\ j))) i0 d`. j_motive checks `P`
+    at a fresh `y` and a fresh path.
+  - rule_j_refl: `JRefl P d : Path (P x refl) (J P d refl) d`. The core
+    term is `<i> transp (<_> P x refl) i d`. `x` comes from the type of
+    `P`. An `x` that depends on `y` gives a refusal (value_bound). The start
+    of the type is `transp (<_> P x refl) i0 d`. It converts to
+    `J P d refl` (row jReflFive).
+- Names: trans, transport, subst, transportRefl, J and JRefl move from
+  RESERVED to BUILTINS. The reserved-*.lang rows keep REFUSE_NAME. The
+  message is now "X is a core name (rule R4)". No new check codes.
+- Design facts:
+  - trans, transport, subst and J infer their path argument, as sym and
+    cong do in M2. A literal `refl` in that position needs a definition
+    (derived.lang `five` and `natLine`).
+  - subst and J infer the family `P`. A lambda is not a motive.
+  - The printer writes `<i>` for a constant line. Rows:
+    `equality round => <i> 1200` and
+    `equality moved => fun P => fun u => transp (<i> P 1200) i0 u`.
+- Guest tests: examples/derived.lang has 27 definitions and 24 eval rows
+  (derived): transRefl, transStart, transVar, transportLaw, transportVar,
+  substVar, transportReflVar, transportReflNat, jVar, jReflVar, jReflFive,
+  sumConst, sumInl, sumInr, optNone, optSome, listNil, listCons, sumStuck,
+  sumHcomp, sumHcompInr, optHcomp, listHcomp and sumHcompStuck. `five` and
+  `natLine` are helper paths. transStart and transEnd are `refl` proofs of
+  the ends of `trans p q` with a variable type. test/json/derived.json has
+  no instance (`{"glue-lang":1,"instances":[]}`). examples/equality.lang
+  adds `round` (trans) and `moved` (subst), with 2 eval rows.
+- test/emit/stuck-transp.lang: the transp stays stuck, because `q` computes
+  to a PathP hcomp at Type 0 (O8 s2). Only the comment changes.
+- Native review regressions: test/path-regressions.c adds 7 evaluation
+  cases. Option and List ignore empty-face branches; Sum, Option and List
+  project constructors under their face restrictions. Disjunctive faces
+  are split, including a tube with distinct varying fields on each
+  conjunction. The first 6 cases fail on the original s3 implementation
+  (2 INTERNAL errors and 4 rendered internal operations). All 7 pass after
+  the projection fix; native path regressions now total 23. `make check`
+  passes, and the test source passes the compiler's strict warning flags.
+- Mutants (each with `make -B check`, source restored after): 3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| Sum rule ignores `inr` (transp_data, `inr` gives NULL) | eval derived sumConst; eval derived sumInr |
+| `trans` drops the `~i -> x` branch (rule_trans, system `[ i -> q @ j ]`, face kept) | examples/derived.lang (transStart: TYPE_REFL, the start is `[ i0 -> z ]`, the end is `x`) |
+| `J` gives `p @ i` as the second argument of `P` (rule_j) | examples/derived.lang (jReflFive: TYPE_MISMATCH, the start is `transp (<i> P 5 5) i0 d`) |
+
+- Mutant 1 fails 2 rows. sumConst has the line `<i> Sum Nat Nat`. Sum is
+  not a closed type, so transp_data computes the row. For mutants 2 and 3,
+  examples/derived.lang does not check, so each derived eval row fails and
+  the json build of derived.lang fails (26 gate failures each). Mutant 2
+  does not kill `equality round`: its type Nat is closed, so the
+  closed-type hcomp rule gives the same result. transStart has a variable
+  type `A`. Mutant 3 also fails jVar.
+- Mutant form: mutant 2 sets the branch count of OP_SYS to 1 (inst 1, 2
+  args). With inst 2 and 2 args the evaluator gives INTERNAL (the wrong
+  number of arguments), which is not a semantic kill. Mutant 3 adds
+  `(void)pij;`, because `make check-clang` refuses a variable that is set
+  but not used.
+- Gates: `make -B check` exit 0 (examples 19, parse refusals 15, check
+  refusals 75, evals 103, json 16, build refusals 4, circuits 3,
+  circuit refusals 10, satcheck refusals 6, native circuit regressions 9,
+  native path regressions 16, native face regressions 32, each with 0
+  failed; gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0. `make
+  e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).
+- Open items:
+  - O8 (s3): transp stays stuck at Family, at the fold and unfold
+    families, and at a neutral value of a Sum, Option or List (sumStuck).
+    hcomp stays stuck at Type n and at a stuck type. At a Sum, Option or
+    List, hcomp stays stuck when `u0` and the branches do not have the same
+    constructor (sumHcompStuck: a branch is a variable path).
+  - O9 (s3, new): `refl` cannot be inferred, so it is not accepted as the
+    path argument of trans, transport, subst or J. Use a definition.

@@ -18,6 +18,8 @@ inventory lotCost => 250
 sigma offer => pack 1200 (<i> 1200)
 equality back => <i> 1200
 equality bumped => <i> 1201
+equality round => <i> 1200
+equality moved => fun P => fun u => transp (<i> P 1200) i0 u
 field sqThree => <i> 9
 field sqRel => fun x => fun y => Path Field (fieldMul x x) y
 universes Endo => (A : Type 0) -> (x : A) -> A
@@ -75,3 +77,27 @@ kanpath pathSquare => fun x => fun y => fun q => fun z => fun w => fun r => fun 
 kanpath pathHcomp => fun x => fun y => fun p => fun k => <j> p @ j
 kanpath pathHcompEnd => fun x => fun y => fun p => fun s => fun k => <i> y
 kanpath pathHcompStuck => fun x => fun y => fun p => fun s => fun k => <j> hcomp Nat (~k \/ j \/ ~j) (fun i => [ ~k -> [ ~k -> s @ i @ j ], ~j -> x, j -> y ]) (p @ j)
+derived transRefl => <i> <_x0> 5
+derived transStart => fun A => fun x => fun y => fun z => fun p => fun q => <i> x
+derived transVar => fun A => fun x => fun y => fun z => fun p => fun q => <i> hcomp A (i \/ ~i) (fun j => [ ~i -> x, i -> q @ j ]) (p @ i)
+derived transportLaw => fun x => <i> x
+derived transportVar => fun p => fun x => transp (<i> p @ i) i0 x
+derived substVar => fun A => fun P => fun a => fun b => fun p => fun u => transp (<i> P (p @ i)) i0 u
+derived transportReflVar => fun A => fun x => <i> transp (<_> A) i x
+derived transportReflNat => fun x => <i> x
+derived jVar => fun A => fun x => fun P => fun d => fun y => fun p => transp (<i> P (p @ i) (<j> p @ (i /\ j))) i0 d
+derived jReflVar => fun A => fun x => fun P => fun d => <i> transp (<_> P x (<_x0> x)) i d
+derived jReflFive => fun P => fun d => <i> transp (<_> P 5 (<_x0> 5)) i d
+derived sumConst => fun n => inr n
+derived sumInl => fun K => fun L => fun x => inl (transp (<i> K i) i0 x)
+derived sumInr => fun K => fun L => fun y => inr (transp (<i> L i) i0 y)
+derived optNone => fun L => none
+derived optSome => fun L => fun x => some (transp (<i> L i) i0 x)
+derived listNil => fun L => nil
+derived listCons => fun L => fun x => fun y => cons (transp (<i> L i) i0 x) (cons (transp (<i> L i) i0 y) nil)
+derived sumStuck => fun K => fun L => fun s => transp (<i> Sum (K i) (L i)) i0 s
+derived sumHcomp => fun n => fun q => fun k => inl (hcomp Nat k (fun i => [ k -> q @ i ]) n)
+derived sumHcompInr => fun n => fun q => fun k => inr (hcomp Nat k (fun i => [ k -> q @ i ]) n)
+derived optHcomp => fun n => fun q => fun k => some (hcomp Nat k (fun i => [ k -> q @ i ]) n)
+derived listHcomp => fun n => fun k => cons n nil
+derived sumHcompStuck => fun n => fun q => fun k => hcomp (Sum Nat Nat) k (fun i => [ k -> q @ i ]) (inr n)

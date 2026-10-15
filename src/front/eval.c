@@ -29,7 +29,7 @@ static const char *const OP_NAMES[] = {
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
   [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
   [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?",
-  [OP_HCOMP] = "hcomp"
+  [OP_HCOMP] = "hcomp", [OP_KAN_FIELD] = "?"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -48,7 +48,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
   [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3,
-  [OP_HCOMP] = 4
+  [OP_HCOMP] = 4, [OP_KAN_FIELD] = 1
 };
 
 typedef enum {
@@ -435,6 +435,36 @@ static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32
   if (!val_is(a[0], ctor))
     return internal(m, "a projection of a value of the wrong type");
   return a[0]->args[index];
+}
+
+/* M3 s3: OP_KAN_FIELD (kan.c only) gives field INST of a constructor value.
+   kan.c tests the constructor on each branch face first. Split disjunctive
+   faces and apply their substitutions before projecting a branch. */
+static const Value *reduce_field(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  ValBuf out;
+  const Value *v;
+  uint32_t bound = 0;
+  uint32_t k;
+  uint32_t j;
+  if (blocked(m, a[0], OP_KAN_FIELD, inst, 0, a, n, &v))
+    return v;
+  if (!val_is(a[0], OP_SYS))
+    return a[0]->kind == VAL_OP && inst < a[0]->argc ? a[0]->args[inst] : internal(m, "a Kan field of a value that is not a constructor");
+  if (!value_bound(m, a[0], &bound))
+    return NULL;
+  if (bound >= KAN_PROBE)
+    return val_op(m, VAL_STUCK, OP_KAN_FIELD, inst, 0, a, n);
+  buf_init(&out);
+  for (k = 0; k + 1u < a[0]->argc; k += 2u)
+    for (j = 0; j < a[0]->args[k]->ivl->count; j++) {
+      const Ivl *face = face_conj(&h, a[0]->args[k]->ivl, j);
+      v = face == NULL ? NULL : value_on_face(m, bound, a[0]->args[k + 1u], face, 0);
+      if (v == NULL || !buf_push(m, &out, val_ivl(m, face))
+          || !buf_push(m, &out, reduce_field(m, inst, &v, 1u)))
+        return NULL;
+    }
+  return val_op(m, VAL_OP, OP_SYS, out.count / 2u, 0, out.items, out.count);
 }
 
 static const Value *reduce_either(Machine *m, const Value *const *a, uint32_t n) {
@@ -943,6 +973,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return kan_cod(m, a[0], a[1], a[2]);
   case OP_HCOMP:
     return kan_hcomp(m, a[0], face_value(m, a[1]), a[2], a[3]);
+  case OP_KAN_FIELD:
+    return reduce_field(m, inst, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:

@@ -1,7 +1,9 @@
 -- Path in place of formers F12 and F13 (M2 s3): refl, sym and cong.
--- trans and transport come back in M3 (hcomp and transp).
+-- M3 s3: trans is an hcomp and subst is a transp (round and moved).
 def price : Nat := 1200
 def cost : Nat := 1200
 def same : Path Nat price cost := refl
 def back : Path Nat cost price := sym same
 def bumped : Path Nat (natAdd price 1) (natAdd cost 1) := cong (fun (n : Nat) => natAdd n 1) same
+def round : Path Nat price price := trans same back
+def moved : (P : (n : Nat) -> Type 0) -> (u : P price) -> P cost := fun P => fun u => subst P same u

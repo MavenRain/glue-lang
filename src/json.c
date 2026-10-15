@@ -197,6 +197,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_KAN_DOM:
   case OP_KAN_COD:
   case OP_HCOMP:
+  case OP_KAN_FIELD:
     return internal(o, "a Kan operation as a type former");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))

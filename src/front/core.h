@@ -73,7 +73,8 @@ typedef enum {
   OP_TRANSP,   /* M3 s1: transp L phi a. args: the line (a PLAM closure), the face, a */
   OP_KAN_DOM,  /* M3 s1: kan.c only. args: L, r. The domain of L @ r */
   OP_KAN_COD,  /* M3 s1: kan.c only. args: L, r, x. The codomain of L @ r at x */
-  OP_HCOMP     /* M3 s2: hcomp A phi u u0. args: A, the face, u, u0 */
+  OP_HCOMP,    /* M3 s2: hcomp A phi u u0. args: A, the face, u, u0 */
+  OP_KAN_FIELD /* M3 s3: kan.c only. args: x. inst: the field index of the constructor x */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

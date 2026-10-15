@@ -79,7 +79,13 @@ typedef enum {
   RULE_TRANSP,
   RULE_HCOMP,
   RULE_COMP,
-  RULE_HFILL
+  RULE_HFILL,
+  RULE_TRANS,
+  RULE_TRANSPORT,
+  RULE_SUBST,
+  RULE_TRANSPORT_REFL,
+  RULE_J,
+  RULE_J_REFL
 } Rule;
 
 typedef struct {
@@ -144,7 +150,13 @@ static const Builtin BUILTINS[] = {
   {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
   {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0},
   {"comp", 4, RULE_COMP, OP_HCOMP, OP_NAT, 0},
-  {"hfill", 5, RULE_HFILL, OP_HCOMP, OP_NAT, 0}
+  {"hfill", 5, RULE_HFILL, OP_HCOMP, OP_NAT, 0},
+  {"trans", 2, RULE_TRANS, OP_HCOMP, OP_NAT, 0},
+  {"transport", 2, RULE_TRANSPORT, OP_TRANSP, OP_NAT, 0},
+  {"subst", 3, RULE_SUBST, OP_TRANSP, OP_NAT, 0},
+  {"transportRefl", 1, RULE_TRANSPORT_REFL, OP_TRANSP, OP_NAT, 0},
+  {"J", 3, RULE_J, OP_TRANSP, OP_NAT, 0},
+  {"JRefl", 2, RULE_J_REFL, OP_TRANSP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -152,8 +164,7 @@ static const Builtin BUILTINS[] = {
 /* Names that no declaration can take (rule R4). M3 D10: each Kan, Glue and
    univalence name is reserved from s1, and its slice moves it to BUILTINS. */
 static const char *const RESERVED[] = {
-  "Bool", "Text", "trans", "transport", "Glue", "ua",
-  "subst", "transportRefl", "J", "JRefl", "isContr", "fiber",
+  "Bool", "Text", "Glue", "ua", "isContr", "fiber",
   "isEquiv", "Equiv", "idEquiv", "glue", "unglue", "uaBeta"
 };
 
@@ -586,6 +597,12 @@ static const Core *rule_transp(Call *k);
 static const Core *rule_hcomp(Call *k);
 static const Core *rule_comp(Call *k);
 static const Core *rule_hfill(Call *k);
+static const Core *rule_trans(Call *k);
+static const Core *rule_transport(Call *k);
+static const Core *rule_subst(Call *k);
+static const Core *rule_transport_refl(Call *k);
+static const Core *rule_j(Call *k);
+static const Core *rule_j_refl(Call *k);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -1246,6 +1263,18 @@ static const Core *rule(Call *k) {
     return rule_comp(k);
   case RULE_HFILL:
     return rule_hfill(k);
+  case RULE_TRANS:
+    return rule_trans(k);
+  case RULE_TRANSPORT:
+    return rule_transport(k);
+  case RULE_SUBST:
+    return rule_subst(k);
+  case RULE_TRANSPORT_REFL:
+    return rule_transport_refl(k);
+  case RULE_J:
+    return rule_j(k);
+  case RULE_J_REFL:
+    return rule_j_refl(k);
   }
   return NULL;
 }
@@ -1975,6 +2004,207 @@ static const Core *rule_hfill(Call *k) {
                                                  core_ivl(c, IVL_REV, ri, NULL), up(c, u0)),
                                        u0);
   return c->m->diag->set ? NULL : out;
+}
+
+/* M3 s3: trans, transport, subst, transportRefl, J and JRefl are checker
+   rules that write transp and hcomp core terms (M3-PLAN section 4, D2). */
+
+/* The type A of PT = Path A a b (a constant line), or NULL with
+   PATH_EXPECTED for NAME. */
+static const Value *path_base(Checker *c, const char *name, const Value *pt) {
+  const Value *a = val_is(pt, OP_PATHP) ? line_type(c, pt->args[0]) : NULL;
+  if (a == NULL && !c->m->diag->set)
+    FAIL(c, "PATH_EXPECTED", "%s needs a path of type Path A a b, found a term of type %s", name, show(c, pt));
+  return a;
+}
+
+/* <i> P @ i for P : PT, a line in a context of one more binder. */
+static const Core *path_body(Checker *c, const Core *p, const Value *pt) {
+  return core_papp(c, c->level + 1u, up(c, p), pt, core_index(c, CORE_VAR, 0));
+}
+
+/* transp LINE i0 X */
+static const Core *transp_zero(Checker *c, const Core *line, const Core *x) {
+  return op3(c, OP_TRANSP, 0, 3, line, core_ivl(c, IVL_ZERO, NULL, NULL), x);
+}
+
+/* trans p q, p : Path A x y, q : Path A y z, gives Path A x z. The core is
+   <i> hcomp A (~i \/ i) (fun j => [ ~i -> x, i -> q @ j ]) (p @ i). */
+static const Core *rule_trans(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Value *qt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  const Value *a = p == NULL ? NULL : path_base(c, "trans", pt);
+  const Core *q = a == NULL ? NULL : infer(c, k->args[1], &qt);
+  const Value *b = q == NULL ? NULL : path_base(c, "trans", qt);
+  const Core *sys[4];
+  if (b == NULL || !expect(c, b, a))
+    return NULL;
+  if (!conv_values(c->m, c->level, pt->args[2], qt->args[1]))
+    return nul(FAIL(c, "TYPE_MISMATCH", "trans needs q to start where p ends, but p ends at %s and q starts at %s", show(c, pt->args[2]), show(c, qt->args[1])));
+  k->type = tyop(c, OP_PATHP, 3, pt->args[0], pt->args[1], qt->args[2]);
+  sys[0] = core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 1u), NULL);
+  sys[1] = quote_value(c->m, c->level + 2u, pt->args[1]);
+  sys[2] = core_index(c, CORE_VAR, 1u);
+  sys[3] = core_papp(c, c->level + 2u, core_shift(c, q, 2u, 0), qt, core_index(c, CORE_VAR, 0));
+  return core_bind(c, CORE_PLAM, "i", NULL,
+                   hcomp_core(c, quote_value(c->m, c->level + 1u, a),
+                              core_ivl(c, IVL_JOIN, core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 0), NULL), core_index(c, CORE_VAR, 0)),
+                              core_bind(c, CORE_LAM, "j", core_op(c, OP_INTERVAL, 0, 0, NULL, 0), core_op(c, OP_SYS, 2u, 0, sys, 4u)),
+                              path_body(c, p, pt)));
+}
+
+/* transport p x, p : Path (Type n) A B, x : A, gives B (D6). The core is
+   transp (<i> p @ i) i0 x. */
+static const Core *rule_transport(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  const Value *u = p == NULL ? NULL : path_base(c, "transport", pt);
+  const Core *x;
+  if (u == NULL)
+    return NULL;
+  if (u->kind != VAL_UNIV)
+    return nul(FAIL(c, "TYPE_MISMATCH", "transport needs a path of type Path (Type n) A B, found a term of type %s", show(c, pt)));
+  x = check(c, k->args[1], pt->args[1]);
+  k->type = pt->args[2];
+  return transp_zero(c, core_bind(c, CORE_PLAM, "i", NULL, path_body(c, p, pt)), x);
+}
+
+/* subst P p x, P : A -> Type n, p : Path A a b, x : P a, gives P b. The
+   core is transp (<i> P (p @ i)) i0 x. */
+static const Core *rule_subst(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Value *ft = NULL;
+  const Core *p = infer(c, k->args[1], &pt);
+  const Value *a = p == NULL ? NULL : path_base(c, "subst", pt);
+  const Core *f = a == NULL ? NULL : infer(c, k->args[0], &ft);
+  const Value *fv = here(c, f);
+  const Value *cod;
+  const Core *x;
+  if (fv == NULL)
+    return NULL;
+  if (ft == NULL || ft->kind != VAL_PI)
+    return nul(FAIL(c, "TYPE_NOT_FUNCTION", "subst needs a family P : A -> Type n, found a term of type %s", show(c, ft)));
+  if (!expect(c, a, ft->dom))
+    return NULL;
+  cod = closure_apply(c->m, ft, pt->args[1]);
+  if (cod == NULL || cod->kind != VAL_UNIV)
+    return nul(FAIL(c, "TYPE_MISMATCH", "subst needs a family P : A -> Type n, found a term of type %s", show(c, ft)));
+  x = check(c, k->args[2], apply_value(c->m, fv, pt->args[1]));
+  k->type = apply_value(c->m, fv, pt->args[2]);
+  return transp_zero(c, core_bind(c, CORE_PLAM, "i", NULL, core_app(c, up(c, f), path_body(c, p, pt))), x);
+}
+
+/* transportRefl x, x : A, gives Path A (transp (<_> A) i0 x) x. The core
+   is <i> transp (<_> A) i x. */
+static const Core *rule_transport_refl(Call *k) {
+  Checker *c = k->c;
+  const Value *at = NULL;
+  const Core *x = infer(c, k->args[0], &at);
+  const Core *line0 = x == NULL ? NULL : core_bind(c, CORE_PLAM, "_", NULL, quote_value(c->m, c->level + 1u, at));
+  const Value *start = here(c, transp_zero(c, line0, x));
+  const Value *line = start == NULL ? NULL : close_over(c, VAL_PLAM, "i", NULL, at);
+  if (line == NULL)
+    return NULL;
+  k->type = tyop(c, OP_PATHP, 3, line, start, here(c, x));
+  return core_bind(c, CORE_PLAM, "i", NULL,
+                   op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, "_", NULL, quote_value(c->m, c->level + 2u, at)),
+                       core_index(c, CORE_VAR, 0), up(c, x)));
+}
+
+/* J motive: FT = (y : A) -> Path A x y -> Type n, checked at a fresh y and
+   a fresh path. LINE is the constant line of A. */
+static int j_motive(Checker *c, const Value *ft, const Value *a, const Value *line, const Value *x) {
+  const Value *t1;
+  const Value *t2 = NULL;
+  if (ft == NULL || ft->kind != VAL_PI)
+    return FAIL(c, "TYPE_NOT_FUNCTION", "J needs a motive P : (y : A) -> Path A x y -> Type n, found a term of type %s", show(c, ft));
+  if (!expect(c, a, ft->dom) || !push(c, "y", a))
+    return 0;
+  t1 = closure_apply(c->m, ft, c->env->value);
+  if (t1 != NULL && t1->kind == VAL_PI && expect(c, tyop(c, OP_PATHP, 3, line, x, c->env->value), t1->dom) && push(c, "p", t1->dom)) {
+    t2 = closure_apply(c->m, t1, c->env->value);
+    pop(c);
+  }
+  pop(c);
+  if (t2 == NULL || t2->kind != VAL_UNIV)
+    return c->m->diag->set ? 0 : FAIL(c, "TYPE_MISMATCH", "J needs a motive P : (y : A) -> Path A x y -> Type n, found a term of type %s", show(c, ft));
+  return 1;
+}
+
+/* J P d p, P : (y : A) -> Path A x y -> Type n, d : P x refl,
+   p : Path A x y, gives P y p. The core is
+   transp (<i> P (p @ i) (<j> p @ (i /\ j))) i0 d. */
+static const Core *rule_j(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Value *ft = NULL;
+  const Core *p = infer(c, k->args[2], &pt);
+  const Value *a = p == NULL ? NULL : path_base(c, "J", pt);
+  const Core *f = a == NULL ? NULL : infer(c, k->args[0], &ft);
+  const Value *fv = here(c, f);
+  const Value *refl;
+  const Core *d;
+  const Core *pij;
+  if (fv == NULL || !j_motive(c, ft, a, pt->args[0], pt->args[1]))
+    return NULL;
+  refl = here(c, core_bind(c, CORE_PLAM, "i", NULL, quote_value(c->m, c->level + 1u, pt->args[1])));
+  d = refl == NULL ? NULL : check(c, k->args[1], apply_value(c->m, apply_value(c->m, fv, pt->args[1]), refl));
+  if (d == NULL)
+    return NULL;
+  k->type = apply_value(c->m, apply_value(c->m, fv, pt->args[2]), here(c, p));
+  pij = core_papp(c, c->level + 2u, core_shift(c, p, 2u, 0), pt, core_ivl(c, IVL_MEET, core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0)));
+  return transp_zero(c, core_bind(c, CORE_PLAM, "i", NULL,
+                                  core_app(c, core_app(c, up(c, f), path_body(c, p, pt)), core_bind(c, CORE_PLAM, "j", NULL, pij))),
+                     d);
+}
+
+/* JRefl P d, P : (y : A) -> Path A x y -> Type n, d : P x refl, gives
+   Path (P x refl) (J P d refl) d. The core is <i> transp (<_> P x refl) i d.
+   x comes from the type of P and cannot depend on y. */
+static const Core *rule_j_refl(Call *k) {
+  Checker *c = k->c;
+  const Value *ft = NULL;
+  const Core *f = infer(c, k->args[0], &ft);
+  const Value *fv = here(c, f);
+  const Value *t1 = NULL;
+  const Value *x = NULL;
+  const Value *line;
+  const Value *refl;
+  const Value *ty;
+  const Value *start;
+  const Core *d;
+  const Core *tyk;
+  uint32_t bound = 0;
+  if (fv == NULL)
+    return NULL;
+  if (ft == NULL || ft->kind != VAL_PI)
+    return nul(FAIL(c, "TYPE_NOT_FUNCTION", "JRefl needs a motive P : (y : A) -> Path A x y -> Type n, found a term of type %s", show(c, ft)));
+  if (push(c, "y", ft->dom)) {
+    t1 = closure_apply(c->m, ft, c->env->value);
+    x = t1 != NULL && t1->kind == VAL_PI && val_is(t1->dom, OP_PATHP) ? t1->dom->args[1] : NULL;
+    pop(c);
+  }
+  if (x != NULL && (!value_bound(c->m, x, &bound) || bound > c->level))
+    x = NULL;
+  if (x == NULL)
+    return c->m->diag->set ? NULL : nul(FAIL(c, "TYPE_MISMATCH", "JRefl needs a motive P : (y : A) -> Path A x y -> Type n, found a term of type %s", show(c, ft)));
+  line = close_over(c, VAL_PLAM, "i", NULL, ft->dom);
+  if (line == NULL || !j_motive(c, ft, ft->dom, line, x))
+    return NULL;
+  refl = here(c, core_bind(c, CORE_PLAM, "i", NULL, quote_value(c->m, c->level + 1u, x)));
+  ty = refl == NULL ? NULL : apply_value(c->m, apply_value(c->m, fv, x), refl);
+  d = ty == NULL ? NULL : check(c, k->args[1], ty);
+  tyk = d == NULL ? NULL : quote_value(c->m, c->level + 2u, ty);
+  line = tyk == NULL ? NULL : close_over(c, VAL_PLAM, "i", NULL, ty);
+  start = line == NULL ? NULL : here(c, transp_zero(c, core_bind(c, CORE_PLAM, "_", NULL, quote_value(c->m, c->level + 1u, ty)), d));
+  if (start == NULL)
+    return NULL;
+  k->type = tyop(c, OP_PATHP, 3, line, start, here(c, d));
+  return core_bind(c, CORE_PLAM, "i", NULL, op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, "_", NULL, tyk), core_index(c, CORE_VAR, 0), up(c, d)));
 }
 
 /* M2 s4: [ phi1 -> t1, ... ] against Partial phi A. Each ti : A under each

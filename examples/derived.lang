@@ -1,0 +1,38 @@
+-- M3 s3: trans, transport, subst, transportRefl, J and JRefl are checker
+-- rules (M3-PLAN section 4). transp and hcomp on Sum, Option and List (3.4).
+def five : Path Nat 5 5 := refl
+def natLine : Path (Type 0) Nat Nat := refl
+-- trans refl refl at Nat literals is refl: the closed-type rule.
+def transRefl : Path (Path Nat 5 5) (trans five five) five := refl
+-- trans p q @ i0 is x and trans p q @ i1 is z, for a variable type A.
+def transStart : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> (p : Path A x y) -> (q : Path A y z) -> Path A ((trans p q) @ i0) x := fun A => fun x => fun y => fun z => fun p => fun q => refl
+def transEnd : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> (p : Path A x y) -> (q : Path A y z) -> Path A ((trans p q) @ i1) z := fun A => fun x => fun y => fun z => fun p => fun q => refl
+def transVar : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> (p : Path A x y) -> (q : Path A y z) -> Path A x z := fun A => fun x => fun y => fun z => fun p => fun q => trans p q
+-- transport refl x = x for x : Nat: the base rule.
+def transportLaw : (x : Nat) -> Path Nat (transport natLine x) x := fun x => refl
+def transportVar : (p : Path (Type 0) Nat Nat) -> (x : Nat) -> Nat := fun p => fun x => transport p x
+def substVar : (A : Type 0) -> (P : A -> Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> (u : P a) -> P b := fun A => fun P => fun a => fun b => fun p => fun u => subst P p u
+def transportReflVar : (A : Type 0) -> (x : A) -> Path A (transp (<_> A) i0 x) x := fun A => fun x => transportRefl x
+def transportReflNat : (x : Nat) -> Path Nat x x := fun x => transportRefl x
+def jVar : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> (d : P x refl) -> (y : A) -> (p : Path A x y) -> P y p := fun A => fun x => fun P => fun d => fun y => fun p => J P d p
+def jReflVar : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> (d : P x refl) -> Path (P x refl) (transp (<_> P x refl) i0 d) d := fun A => fun x => fun P => fun d => JRefl P d
+-- J infers its path, so the refl of the JRefl law is the definition five.
+def jReflFive : (P : (y : Nat) -> Path Nat 5 y -> Type 0) -> (d : P 5 refl) -> Path (P 5 refl) (J P d five) d := fun P => fun d => JRefl P d
+-- transp on Sum, Option and List: the constructor with transp on its fields.
+def sumConst : Nat -> Sum Nat Nat := fun n => transp (<i> Sum Nat Nat) i0 (inr n)
+def sumInl : (K : I -> Type 0) -> (L : I -> Type 0) -> (x : K i0) -> Sum (K i1) (L i1) := fun K => fun L => fun x => transp (<i> Sum (K i) (L i)) i0 (inl x)
+def sumInr : (K : I -> Type 0) -> (L : I -> Type 0) -> (y : L i0) -> Sum (K i1) (L i1) := fun K => fun L => fun y => transp (<i> Sum (K i) (L i)) i0 (inr y)
+def optNone : (L : I -> Type 0) -> Option (L i1) := fun L => transp (<i> Option (L i)) i0 none
+def optSome : (L : I -> Type 0) -> (x : L i0) -> Option (L i1) := fun L => fun x => transp (<i> Option (L i)) i0 (some x)
+def listNil : (L : I -> Type 0) -> List (L i1) := fun L => transp (<i> List (L i)) i0 nil
+def listCons : (L : I -> Type 0) -> (x : L i0) -> (y : L i0) -> List (L i1) := fun L => fun x => fun y => transp (<i> List (L i)) i0 (cons x (cons y nil))
+-- A neutral argument stays stuck.
+def sumStuck : (K : I -> Type 0) -> (L : I -> Type 0) -> (s : Sum (K i0) (L i0)) -> Sum (K i1) (L i1) := fun K => fun L => fun s => transp (<i> Sum (K i) (L i)) i0 s
+-- hcomp on Sum, Option and List: the same constructor in the base and each
+-- branch gives that constructor with hcomp on its fields.
+def sumHcomp : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Sum Nat Nat := fun n => fun q => fun k => hcomp (Sum Nat Nat) k (fun i => [ k -> inl (q @ i) ]) (inl n)
+def sumHcompInr : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Sum Nat Nat := fun n => fun q => fun k => hcomp (Sum Nat Nat) k (fun i => [ k -> inr (q @ i) ]) (inr n)
+def optHcomp : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Option Nat := fun n => fun q => fun k => hcomp (Option Nat) k (fun i => [ k -> some (q @ i) ]) (some n)
+def listHcomp : (n : Nat) -> (k : I) -> List Nat := fun n => fun k => hcomp (List Nat) k (fun i => [ k -> cons n nil ]) (cons n nil)
+-- A branch that is not a constructor stays stuck.
+def sumHcompStuck : (n : Nat) -> (q : Path (Sum Nat Nat) (inr n) (inr n)) -> (k : I) -> Sum Nat Nat := fun n => fun q => fun k => hcomp (Sum Nat Nat) k (fun i => [ k -> q @ i ]) (inr n)

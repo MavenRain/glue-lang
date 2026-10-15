@@ -6,6 +6,12 @@
 
 #include "front/core.h"
 
+/* The fresh variable that reads the head former of a line. Depth makes
+   nested probes different. Interval levels must be below 2^31, and the
+   value_bound scan levels are above these probes. Face substitution must
+   not build an environment at a probe level. */
+#define KAN_PROBE (1u << 30)
+
 /* transp L phi a. L is a PLAM closure, PHI is in face normal form.
    M3-PLAN 3.4: the face i1 rule, then the rule of the head former of L at
    a fresh variable, else a stuck value. */

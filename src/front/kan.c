@@ -1,11 +1,6 @@
 /* M3: the Kan operations (see front/kan.h). SHARED by the tcc kits. */
 #include "front/kan.h"
 
-/* The level of the fresh variable that reads the head former of a line.
-   An interval literal is level * 2 + sign in a uint32_t, so a level must
-   be below 2^31. The depth makes nested probes different. */
-#define KAN_PROBE (1u << 30)
-
 static const Value *kan_fail(Machine *m, const char *what) {
   diag_fail(m->diag, "INTERNAL", m->def, "the Kan evaluator found %s", what);
   return NULL;
@@ -277,6 +272,38 @@ static int closed_type(const Value *t) {
   return t->kind == VAL_UNIV || val_is(t, OP_NAT) || val_is(t, OP_FIELD) || val_is(t, OP_UNIT) || val_is(t, OP_FLAG);
 }
 
+/* M3 s3: the coproduct formers and their constructors. */
+static int data_type(const Value *t) {
+  return val_is(t, OP_SUM) || val_is(t, OP_OPTION) || val_is(t, OP_LIST);
+}
+
+static int data_ctor(const Value *v) {
+  return val_is(v, OP_INL) || val_is(v, OP_INR) || val_is(v, OP_NONE) || val_is(v, OP_SOME) || val_is(v, OP_NIL) || val_is(v, OP_CONS);
+}
+
+/* transp (<i> T[i]) phi x, with T[i] = COD(L, i, i0) (the right type of a
+   Sum) when COD is 1, else DOM(L, i). X, PHI and L are indices outside <i>. */
+static const Core *field_transp(Machine *m, int cod, uint32_t x, uint32_t phi, uint32_t l) {
+  const Core *t = cod ? op(m, OP_KAN_COD, 3u, var(m, l + 1u), var(m, 0), zero(m)) : op(m, OP_KAN_DOM, 2u, var(m, l + 1u), var(m, 0), NULL);
+  return op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", t), var(m, phi), var(m, x));
+}
+
+/* M3-PLAN 3.4 (s3): transp on Sum, Option or List gives the constructor of
+   A with transp on each field. Environment [L, phi, x] (x is index 0):
+   C (transp (<i> T[i]) phi x). For cons, [L, phi, x, xs] (xs is index 0):
+   cons (transp (<i> DOM(L, i)) phi x) (transp L phi xs). */
+static const Value *transp_data(Machine *m, const Value *line, const Value *phi, const Value *a) {
+  const Env *env;
+  const Core *rule;
+  if (val_is(a, OP_NONE) || val_is(a, OP_NIL))
+    return a;
+  if (!val_is(a, OP_CONS))
+    return instance(m, op(m, val_is(a, OP_INL) ? OP_INL : val_is(a, OP_INR) ? OP_INR : OP_SOME, 1u, field_transp(m, val_is(a, OP_INR), 0, 1u, 2u), NULL, NULL), line, phi, a->args[0]);
+  env = env_push(m, env_push(m, env_push(m, env_push(m, NULL, line), phi), a->args[0]), a->args[1]);
+  rule = op(m, OP_CONS, 2u, field_transp(m, 0, 1u, 2u, 3u), op(m, OP_TRANSP, 3u, var(m, 3u), var(m, 2u), var(m, 0)), NULL);
+  return env == NULL || rule == NULL ? NULL : eval_core(m, env, rule);
+}
+
 const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const Value *a) {
   const Value *args[3];
   const Value *head;
@@ -300,6 +327,8 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
     return instance(m, pair_rule(m, OP_PAIR, OP_FIRST, OP_SECOND), line, phi, a);
   if (val_is(head, OP_PATHP))
     return instance(m, pathp_rule(m), line, phi, a);
+  if (data_type(head) && data_ctor(a))
+    return transp_data(m, line, phi, a);
   args[0] = line;
   args[1] = phi;
   args[2] = a;
@@ -315,17 +344,18 @@ static const Value *line_at(Machine *m, const Value *line, const Value *r) {
   t = closure_apply(m, line, r);
   if (t == NULL)
     return NULL;
-  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP))
+  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t))
     return t;
-  return kan_fail(m, "a template line that is not a Pi, Sigma, Prod or PathP");
+  return kan_fail(m, "a template line that is not a Pi, Sigma, Prod, PathP, Sum, Option or List");
 }
 
-/* For a PathP line: the inner line A[r]. */
+/* For a PathP line: the inner line A[r]. For a Sum: the left type. For an
+   Option or a List: the element type. */
 const Value *kan_dom(Machine *m, const Value *line, const Value *r) {
   const Value *t = line_at(m, line, r);
   if (t == NULL)
     return NULL;
-  return val_is(t, OP_PROD) || val_is(t, OP_PATHP) ? t->args[0] : t->dom;
+  return val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) ? t->args[0] : t->dom;
 }
 
 /* For a PathP line: X is i0 or i1 and gives that end at r. */
@@ -338,7 +368,9 @@ const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value 
       return kan_fail(m, "a PathP end that is not i0 or i1");
     return t->args[ivl_is_const(x->ivl, 1) ? 2 : 1];
   }
-  return val_is(t, OP_PROD) ? t->args[1] : closure_apply(m, t, x);
+  if (val_is(t, OP_OPTION) || val_is(t, OP_LIST))
+    return kan_fail(m, "a codomain of an Option or List line");
+  return val_is(t, OP_PROD) || val_is(t, OP_SUM) ? t->args[1] : closure_apply(m, t, x);
 }
 
 /* The constant line <_> T, so that OP_KAN_COD gives the codomain of a type
@@ -457,6 +489,59 @@ static int hcomp_constant(Machine *m, const Value *u, const Value *u0) {
   return 1;
 }
 
+/* 1 when u i (i fresh) is a value with the head of U0 on each conjunction
+   of the face of each branch (M3-PLAN 3.4, s3). A free level at KAN_PROBE
+   or above gives 0, as in hcomp_constant. */
+static int hcomp_same_ctor(Machine *m, const Value *u, const Value *u0) {
+  uint32_t bound = 0;
+  uint32_t j;
+  uint32_t k;
+  const Value *s;
+  const Value *x;
+  if (!value_bound(m, u, &bound) || bound >= KAN_PROBE)
+    return 0;
+  s = apply_value(m, u, val_ivl_var(m, bound));
+  if (s == NULL)
+    return 0;
+  if (!val_is(s, OP_SYS))
+    return val_is(s, u0->op);
+  for (j = 0; j + 1u < s->argc; j += 2u)
+    for (k = 0; k < s->args[j]->ivl->count; k++) {
+      x = value_on_face(m, bound + 1u, s->args[j + 1u], s->args[j]->ivl, k);
+      if (x == NULL || !val_is(x, u0->op))
+        return 0;
+    }
+  return 1;
+}
+
+/* hcomp T phi (fun i => field N of (u i)) x. T, PHI, U and X are indices
+   outside fun i. OP_KAN_FIELD distributes over the system u i, so the tube
+   keeps the faces of u and has no nested system. */
+static const Core *field_hcomp(Machine *m, uint32_t n, uint32_t t, uint32_t phi, uint32_t u, uint32_t x) {
+  const Core *args[1];
+  args[0] = app(m, var(m, u + 1u), var(m, 0));
+  return hcomp4(m, var(m, t), var(m, phi), tube(m, opn(m, OP_KAN_FIELD, n, args, 1u)), var(m, x));
+}
+
+/* M3-PLAN 3.4 (s3), the data rule for A a Sum, Option or List: U0 and each
+   branch of u are the same constructor C. Then C with hcomp on each field.
+   Environment [T, phi, u, x] (x is index 0, T its type): C (field_hcomp).
+   For cons, [A, List A, phi, u, x, xs] (xs is index 0). NULL without a
+   diagnostic when the rule does not apply. */
+static const Value *hcomp_data(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
+  const Env *env;
+  const Core *rule;
+  if (!data_ctor(u0) || !hcomp_same_ctor(m, u, u0))
+    return NULL;
+  if (val_is(u0, OP_NONE) || val_is(u0, OP_NIL))
+    return u0;
+  if (!val_is(u0, OP_CONS))
+    return instance4(m, op(m, u0->op, 1u, field_hcomp(m, 0, 3u, 2u, 1u, 0), NULL, NULL), a->args[val_is(u0, OP_INR) ? 1 : 0], phi, u, u0->args[0]);
+  env = env_push(m, env_push(m, env4(m, a->args[0], a, phi, u), u0->args[0]), u0->args[1]);
+  rule = op(m, OP_CONS, 2u, field_hcomp(m, 0, 5u, 3u, 2u, 1u), field_hcomp(m, 1u, 4u, 3u, 2u, 0), NULL);
+  return env == NULL || rule == NULL ? NULL : eval_core(m, env, rule);
+}
+
 /* M3-PLAN 3.4 (s2): the face i1 rule, then the rule of the head former of
    A, else a stuck value. No rule gives u0 for the face i0 on a general A
    (D8). */
@@ -482,6 +567,11 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
     return hcomp_pair(m, a, phi, u, u0, OP_PAIR, OP_FIRST, OP_SECOND);
   if (val_is(a, OP_PATHP))
     return instance4(m, hcomp_pathp_rule(m), const_line(m, a), phi, u, u0);
+  if (data_type(a)) {
+    const Value *v = hcomp_data(m, a, phi, u, u0);
+    if (v != NULL || m->diag->set)
+      return v;
+  }
   args[0] = a;
   args[1] = phi;
   args[2] = u;

@@ -55,6 +55,60 @@ static const Case CASES[] = {
    "def test : (p : Path Nat 0 1) -> (q : PathP (<i> Path Nat 0 (p @ i)) refl p) -> Path (Path Nat 0 0) refl refl := fun p q => cong (fun (r : Path Nat 0 0) => r) q\n", "TYPE_MISMATCH"}
 };
 
+typedef struct {
+  const char *label;
+  const char *source;
+  const char *expected;
+} EvalCase;
+
+static const EvalCase EVAL_CASES[] = {
+  {"Option hcomp ignores an empty branch",
+   "def test : Option Nat := hcomp (Option Nat) i0 (fun i => [ i0 -> none ]) (some 0)\n",
+   "some 0"},
+  {"List hcomp ignores an empty branch",
+   "def test : List Nat := hcomp (List Nat) i0 (fun i => [ i0 -> nil ]) (cons 0 nil)\n",
+   "cons 0 nil"},
+  {"Sum hcomp projects on the branch face",
+   "def test : (A : Type 0) -> (x : A) -> (p : Path (Sum A A) (inl x) (inl x)) -> (k : I) -> Sum A A := fun A x p k => hcomp (Sum A A) k (fun i => [ k -> p @ k ]) (inl x)\n",
+   "fun A => fun x => fun p => fun k => inl (hcomp A k (fun i => [ k -> x ]) x)"},
+  {"Option hcomp projects on the branch face",
+   "def test : (A : Type 0) -> (x : A) -> (p : Path (Option A) (some x) (some x)) -> (k : I) -> Option A := fun A x p k => hcomp (Option A) k (fun i => [ k -> p @ k ]) (some x)\n",
+   "fun A => fun x => fun p => fun k => some (hcomp A k (fun i => [ k -> x ]) x)"},
+  {"List hcomp projects both fields on the branch face",
+   "def test : (A : Type 0) -> (x : A) -> (p : Path (List A) (cons x nil) (cons x nil)) -> (k : I) -> List A := fun A x p k => hcomp (List A) k (fun i => [ k -> p @ k ]) (cons x nil)\n",
+   "fun A => fun x => fun p => fun k => cons (hcomp A k (fun i => [ k -> x ]) x) nil"},
+  {"Sum hcomp projects each conjunction of a branch face",
+   "def test : (A : Type 0) -> (x : A) -> (p : Path (Sum A A) (inl x) (inl x)) -> (k : I) -> Sum A A := fun A x p k => hcomp (Sum A A) (k \\/ ~k) (fun i => [ k \\/ ~k -> p @ k ]) (inl x)\n",
+   "fun A => fun x => fun p => fun k => inl (hcomp A (k \\/ ~k) (fun i => [ k -> x, ~k -> x ]) x)"},
+  {"disjunctive hcomp preserves distinct varying field tubes",
+   "def test : (A : Type 0) -> (x : A) -> (s t : Path A x x) -> (q : (i : I) -> Path (Option A) (some (s @ i)) (some (t @ i))) -> (k : I) -> Option A := fun A x s t q k => hcomp (Option A) (k \\/ ~k) (fun i => [ k \\/ ~k -> q i @ k ]) (some x)\n",
+   "fun A => fun x => fun s => fun t => fun q => fun k => some (hcomp A (k \\/ ~k) (fun i => [ k -> t @ i, ~k -> s @ i ]) x)"}
+};
+
+static int eval_case(const EvalCase *test) {
+  Arena arena;
+  Diag diag;
+  DeclList decls;
+  Machine machine;
+  const Value *value = NULL;
+  char output[2048] = "";
+  int failed;
+  arena_init(&arena, (size_t)64 << 20);
+  diag_init(&diag);
+  if (front_load(&arena, test->label, test->source, strlen(test->source), &decls, &diag)
+      && check_program(&arena, &decls, &machine, &diag))
+    value = def_value(&machine, machine.def_count - 1u);
+  failed = value == NULL || !value_print(&machine, NULL, 0, value, output, sizeof output)
+    || strcmp(output, test->expected) != 0;
+  if (failed) {
+    fprintf(stderr, "FAIL %s: expected %s, got %s\n", test->label, test->expected, output);
+    if (diag.set)
+      diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return failed;
+}
+
 static int check_case(const Case *test) {
   Arena arena;
   Diag diag;
@@ -79,9 +133,12 @@ static int check_case(const Case *test) {
 
 int main(void) {
   size_t i;
+  size_t j;
   int failed = 0;
   for (i = 0; i < sizeof CASES / sizeof CASES[0]; i++)
     failed += check_case(&CASES[i]);
-  printf("native path regressions: %lu checked, %d failed\n", (unsigned long)i, failed);
+  for (j = 0; j < sizeof EVAL_CASES / sizeof EVAL_CASES[0]; j++)
+    failed += eval_case(&EVAL_CASES[j]);
+  printf("native path regressions: %lu checked, %d failed\n", (unsigned long)(i + j), failed);
   return failed != 0;
 }
