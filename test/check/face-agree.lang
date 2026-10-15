@@ -1,0 +1,1 @@
+def endBad : Path Nat 0 2 -> (i : I) -> Partial (~i) Nat := fun (p : Path Nat 0 2) => fun (i : I) => [ ~i -> p @ i, ~i -> 1 ]

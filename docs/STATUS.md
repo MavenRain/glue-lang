@@ -235,3 +235,105 @@ The plan is docs/M2-PLAN.md. Each slice is one session (section 10).
   2. `Eq` as an alias of `Path` (check.c BUILTINS row `{"Eq", 3,
      RULE_PATH, OP_PATHP, OP_NAT, 0}`): KILLED, 1 gate failure
      (unknown-eq.lang exits 0).
+
+### s4: face lattice, Partial and systems (2026-10-14)
+
+- New file src/front/face.c (face.h): face_norm, face_meet, face_join,
+  face_equal, face_leq, and conjunction k as a substitution. The Makefile
+  and test/regressions.js list it.
+- Syntax: the lexer reads `[`, `]` and `,`. The parser reads a system
+  `[ phi -> t, psi -> u ]` (TERM_SYS: left = face, right = body, next =
+  the next branch). New parse rows: sys-no-body.lang and sys-unclosed.lang.
+- Core (design call 4 changed): a system is CORE_OP and VAL_OP with OP_SYS
+  (inst = the branch count, args face0, body0, face1, body1, ...), not a
+  new CoreKind or ValKind. Quote walks the op arguments. Eval normalizes
+  faces and reduces full branches. Conversion compares covers and the
+  bodies under each overlap. New ops: OP_INTERVAL and OP_SSET (0-ary),
+  OP_PARTIAL (args face,
+  A). eval.c keeps each face of a system and of a Partial in face normal
+  form, so conv compares faces by normal form.
+- Interval binders: `fun (i : I) => t` and `(i : I) -> T` bind with
+  push_ivl. The domain of the Pi and of the lambda is the op OP_INTERVAL.
+  The value of such a lambda keeps this domain, so quote, print and the
+  eta rule of conv apply the body to an interval variable. Conversion,
+  quote and print also open an interval Pi with an interval variable. In an
+  application `f r` to the domain I, the checker elaborates r with
+  elab_ivl.
+- SSet: a Pi with the domain I, a Pi with a domain or a codomain in SSet,
+  and `Partial phi A` are in SSet. `SSet` is a sort: it is not a binder
+  type. A bare `I` as the type of a path stays PATH_TYPE.
+- Codes: SORT_FIBRANT (a type in SSet as the type of a path, as a Sigma
+  component, under a type former, or as an instance; SSet itself as a
+  binder type),
+  PARTIAL_EXPECTED (a system without a declared type `Partial phi A`),
+  FACE_AGREE and FACE_COVER.
+- Instance rule (rule b): an instance with the type `Partial phi A` gives
+  SORT_FIBRANT (json.c instance_json). The checker refuses a type in SSet
+  under a type former, so only the instance type itself can be in SSet. A
+  function with an interval binder is not an instance.
+- Restriction method: for each conjunction of a branch face, the checker
+  builds the scope and the environment again from level 0. An interval
+  level that the conjunction sets becomes a constant (val_ivl_end). The
+  type of each local term is eval(quote_value(type, its level)) in the
+  restricted environment below it. The checker checks the body against
+  eval(quote_value(A, level)) in the restricted environment. Each
+  conjunction has a separate core branch, so a specialized body is used
+  only on the face where it checks.
+- A branch on the empty face (no conjunction) is checked in the context as
+  it is. The checker checks FACE_COVER before FACE_AGREE. The FACE_AGREE
+  message names the two branch faces, their meet face and the two values.
+- Application of a partial element is not in s4.
+- Tests: examples/faces.lang (sysEnds, sysMeet, endPt, sysSplit, ivlFun,
+  ivlAt0, ivlAt1, ivlRev, sysRev) and test/json/faces.json. sysSplit is
+  the empty face row: the meet `i /\ ~i` is empty, so the branches need
+  not agree. endPt agrees only by the end point rule in the restricted
+  environment. New check rows: face-agree.lang and face-meet.lang
+  (FACE_AGREE), face-cover.lang (FACE_COVER), sset-path.lang,
+  sset-sigma.lang and sset-binder.lang (SORT_FIBRANT), partial-expected.lang
+  (PARTIAL_EXPECTED). New build refusal row: partial-instance.lang
+  (SORT_FIBRANT). New eval rows: 8 rows `faces ...` (for example `faces
+  ivlAt0 => 3` and `faces sysRev => fun i => [ i -> 0, ~i -> 1 ]`).
+- Gates: `make check` exit 0 (examples 16, parse refusals 15, check
+  refusals 54, evals 49, json 13, build refusals 3, circuits 3, circuit
+  refusals 10, satcheck refusals 6, native circuit regressions 9 and 0
+  failed, native path regressions 12 and 0 failed, gate 0 failures,
+  regressions 6 and 0 failed, printer 2). `make check-clang` clean. `forge
+  build --root contracts --sizes` exit 0. `make e2e` exit 0 (33 Forge
+  tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. The IR and the verifiers did not change. contracts/test/fixtures
+  is restored from HEAD, and `forge test --root contracts` passes again
+  (33 passed, 0 failed).
+- Mutants (`make -B` for each, source restored after): 3 KILLED, 0
+  SURVIVED.
+  1. Agreement check off (check.c branches_agree, `if (0 &&
+     !conv_values(...))`): KILLED, 2 gate failures (face-agree.lang and
+     face-meet.lang exit 0).
+  2. Cover check off (check.c check_sys, `if (0 && !face_equal(cover,
+     ...))`): KILLED, 1 gate failure (face-cover.lang exits 0).
+  3. face_norm keeps `i /\ ~i` (face.c conj_consistent returns 1):
+     KILLED, 10 gate failures (examples/faces.lang gives FACE_AGREE on
+     sysEnds, the 8 eval rows `faces ...`, the build of
+     examples/faces.lang).
+
+### s4 review fixes (2026-10-14)
+
+- HIGH: check_sys kept only the last core body for a face with several
+  conjunctions. A branch `[ i \/ ~i -> refl ]` could then give `<i> 0` at
+  the end of a `Path Nat 1 1`. Each conjunction now has its own core branch.
+  The checker checks agreement between those branches too.
+- MEDIUM: conversion, quote and print opened a dependent interval Pi with
+  an ordinary variable. A valid alias of `(i : I) -> Partial i Nat` gave
+  INTERNAL. Each operation now opens that Pi with an interval variable.
+- MEDIUM: system conversion compared the branch arrays. Equal partial
+  elements with different branch order, duplicate branches or different
+  face decompositions failed as dependent indices. Conversion now compares
+  covers and compares the bodies under each conjunction of each overlap.
+  It preserves free interval variables and distinct partial values.
+- test/face-regressions.c adds 20 native C cases to `make check`. The
+  original staged source fails 15 cases. The fixed source passes all 20.
+  AddressSanitizer and UndefinedBehaviorSanitizer also pass all 20.
+- Validation after the fixes: `make check` (including check-clang),
+  `forge build --root contracts --sizes` and `make e2e` pass. The IR and
+  verifier diff is empty. After restoring the generated proof fixtures,
+  `forge test --root contracts` passes all 33 tests again.

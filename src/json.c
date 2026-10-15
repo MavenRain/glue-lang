@@ -188,6 +188,11 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     return put_text(o, "{}");
   case OP_PATHP:
     return put_text(o, "null");
+  case OP_INTERVAL:
+  case OP_SSET:
+  case OP_PARTIAL:
+  case OP_SYS:
+    return internal(o, "a value of a type in SSet");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))
       return internal(o, "a Prod value that is not a pair");
@@ -328,6 +333,11 @@ static int instance_json(Out *o, uint32_t index, char *type_text, int first) {
     return 0;
   if (!value_print(m, NULL, 0, d->type, type_text, JSON_TYPE_MAX))
     return diag_fail(m->diag, "JSON_TYPE", d->name, "the instance type exceeds the printer limits");
+  /* The checker refuses a type in SSet under a type former, so only the
+     instance type itself can be in SSet. */
+  if (val_is(d->type, OP_PARTIAL))
+    return diag_fail(m->diag, "SORT_FIBRANT", d->name, "the instance type %s is in SSet, not in Type n: it has no JSON form",
+                     type_text);
   return (first || put_text(o, ",")) && put_text(o, "{\"name\":") && put_string(o, d->name)
     && put_text(o, ",\"type\":") && put_string(o, type_text) && put_text(o, ",\"value\":")
     && value_json(o, d->type, v) && put_text(o, "}");

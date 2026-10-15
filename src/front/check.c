@@ -7,6 +7,7 @@
 
 #include <string.h>
 
+#include "front/face.h"
 #include "front/fr.h"
 
 #define CHECK_DEPTH_LIMIT 2000u
@@ -72,7 +73,9 @@ typedef enum {
   RULE_PATHP,
   RULE_SYM,
   RULE_FUNEXT,
-  RULE_HAPPLY
+  RULE_HAPPLY,
+  RULE_PARTIAL,
+  RULE_SSET
 } Rule;
 
 typedef struct {
@@ -131,13 +134,15 @@ static const Builtin BUILTINS[] = {
   {"PathP", 3, RULE_PATHP, OP_PATHP, OP_NAT, 0},
   {"sym", 1, RULE_SYM, OP_PATHP, OP_NAT, 0},
   {"funExt", 1, RULE_FUNEXT, OP_PATHP, OP_NAT, 0},
-  {"happly", 2, RULE_HAPPLY, OP_PATHP, OP_NAT, 0}
+  {"happly", 2, RULE_HAPPLY, OP_PATHP, OP_NAT, 0},
+  {"Partial", 2, RULE_PARTIAL, OP_PARTIAL, OP_NAT, 0},
+  {"SSet", 0, RULE_SSET, OP_SSET, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
 
 /* Names that no declaration can take (rule R4). */
-static const char *const RESERVED[] = {"Bool", "Text", "trans", "transport", "transp", "hcomp", "Glue", "ua", "Partial", "SSet"};
+static const char *const RESERVED[] = {"Bool", "Text", "trans", "transport", "transp", "hcomp", "Glue", "ua"};
 
 typedef enum {
   HEAD_TERM, /* a local, a definition or another term: plain application */
@@ -374,14 +379,29 @@ static const Core *try_infer(Checker *c, const Term *t, const Value **type) {
   return k;
 }
 
-static const Core *check_type(Checker *c, const Term *t, uint64_t *level) {
+/* M2 s4: a type in Type n (*LEVEL is n) or in SSet (*SSET is 1). */
+static const Core *check_sort(Checker *c, const Term *t, uint64_t *level, int *sset) {
   const Value *type = NULL;
   const Core *k = infer(c, t, &type);
+  *sset = 0;
   if (k == NULL)
     return NULL;
+  if (val_is(type, OP_SSET)) {
+    *sset = 1;
+    return k;
+  }
   if (type == NULL || type->kind != VAL_UNIV)
     return nul(FAIL(c, "TYPE_MISMATCH", "expected a type, found a term of type %s", show(c, type)));
   *level = type->nat;
+  return k;
+}
+
+/* A type in Type n. A type in SSet is refused (SORT_FIBRANT). */
+static const Core *check_type(Checker *c, const Term *t, uint64_t *level) {
+  int sset = 0;
+  const Core *k = check_sort(c, t, level, &sset);
+  if (k != NULL && sset)
+    return nul(FAIL(c, "SORT_FIBRANT", "%s is in SSet, not a type in Type n", show(c, here(c, k))));
   return k;
 }
 
@@ -548,6 +568,7 @@ static const Core *rule_pack(Call *k) {
 }
 
 static const Core *core_ivl(Checker *c, IvlOp op, const Core *a, const Core *b);
+static const Core *elab_ivl(Checker *c, const Term *t);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -834,6 +855,8 @@ static const Core *path_line(Checker *c, const char *name, const Term *a, uint64
   if (!push_ivl(c, name))
     return NULL;
   body = is_interval_type(c, a) ? nul(FAIL(c, "PATH_TYPE", "the interval I is not a type in Type n, so it cannot be the type of a path")) : infer(c, a, &ty);
+  if (body != NULL && val_is(ty, OP_SSET))
+    body = nul(FAIL(c, "SORT_FIBRANT", "the type of a path must be in Type n, found %s in SSet", show(c, here(c, body))));
   if (body != NULL && (ty == NULL || ty->kind != VAL_UNIV))
     body = nul(FAIL(c, "PATH_TYPE", "the type of a path must be in Type n, found a term of type %s", show(c, ty)));
   pop(c);
@@ -852,6 +875,16 @@ static const Core *path_former(Call *k, const char *name, const Term *a) {
   const Core *y = x == NULL ? NULL : check(c, k->args[2], closure_apply(c->m, lv, val_ivl_end(c->m, 1)));
   k->type = val_univ(c->m, level);
   return op3(c, OP_PATHP, 0, 3, line, x, y);
+}
+
+/* M2 s4: Partial phi A, a type in SSet. phi is a face, A is in Type n. */
+static const Core *rule_partial(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *face = elab_ivl(c, k->args[0]);
+  const Core *a = face == NULL ? NULL : check_type(c, k->args[1], &level);
+  k->type = tyop(c, OP_SSET, 0, NULL, NULL, NULL);
+  return a == NULL ? NULL : op3(c, OP_PARTIAL, 0, 2, face, a, NULL);
 }
 
 static const Core *rule_pathp(Call *k) {
@@ -1184,6 +1217,10 @@ static const Core *rule(Call *k) {
     return rule_funext(k);
   case RULE_HAPPLY:
     return rule_happly(k);
+  case RULE_PARTIAL:
+    return rule_partial(k);
+  case RULE_SSET:
+    return nul(FAIL(k->c, "SORT_FIBRANT", "SSet is a sort, not a type in Type n: it cannot be a binder type"));
   }
   return NULL;
 }
@@ -1390,7 +1427,7 @@ static const Core *apply_rest(Checker *c, const Core *k, const Value *ty, const 
     const Core *a;
     if (ty == NULL || ty->kind != VAL_PI)
       return nul(FAIL(c, "TYPE_NOT_FUNCTION", "a term of type %s is applied to an argument", show(c, ty)));
-    a = check(c, args[i], ty->dom);
+    a = val_is(ty->dom, OP_INTERVAL) ? elab_ivl(c, args[i]) : check(c, args[i], ty->dom);
     ty = closure_apply(c->m, ty, here(c, a));
     k = core_app(c, k, a);
   }
@@ -1464,7 +1501,8 @@ static const Core *elab_spine(Checker *c, const Term *t, const Value *hint, cons
 
 static int annotation_ok(Checker *c, const Term *ann, const Value *dom) {
   uint64_t level = 0;
-  const Value *v = here(c, check_type(c, ann, &level));
+  int sset = 0;
+  const Value *v = here(c, check_sort(c, ann, &level, &sset));
   if (v == NULL)
     return 0;
   return conv_values(c->m, c->level, v, dom) ? 1 : FAIL(c, "TYPE_MISMATCH", "the binder type %s differs from the expected type %s", show(c, v), show(c, dom));
@@ -1472,16 +1510,20 @@ static int annotation_ok(Checker *c, const Term *ann, const Value *dom) {
 
 static const Core *check_lam(Checker *c, const Term *t, const Value *hint, const Value **type) {
   const Core *body;
+  int ivl;
   if (hint->kind != VAL_PI)
     return nul(FAIL(c, "TYPE_MISMATCH", "a function is not a term of type %s", show(c, hint)));
-  if (t->left != NULL && !annotation_ok(c, t->left, hint->dom))
+  ivl = val_is(hint->dom, OP_INTERVAL);
+  if (t->left != NULL && ivl && !is_interval_type(c, t->left))
+    return nul(FAIL(c, "TYPE_MISMATCH", "the binder type must be the interval I for a term of type %s", show(c, hint)));
+  if (t->left != NULL && !ivl && !annotation_ok(c, t->left, hint->dom))
     return NULL;
-  if (!push(c, t->name, hint->dom))
+  if (!(ivl ? push_ivl(c, t->name) : push(c, t->name, hint->dom)))
     return NULL;
   body = check(c, t->right, closure_apply(c->m, hint, c->env->value));
   pop(c);
   *type = hint;
-  return core_bind(c, CORE_LAM, t->name, NULL, body);
+  return core_bind(c, CORE_LAM, t->name, ivl ? core_op(c, OP_INTERVAL, 0, 0, NULL, 0) : NULL, body);
 }
 
 static const Core *infer_lam(Checker *c, const Term *t, const Value **type) {
@@ -1490,29 +1532,37 @@ static const Core *infer_lam(Checker *c, const Term *t, const Value **type) {
   const Value *bt = NULL;
   const Core *body;
   const Core *quoted;
+  int ivl;
+  int sset = 0;
   if (t->left == NULL)
     return nul(FAIL(c, "TYPE_INFER", "fun %s => ... needs a binder type here", t->name));
-  dom = here(c, check_type(c, t->left, &level));
-  if (!push(c, t->name, dom))
+  ivl = is_interval_type(c, t->left);
+  dom = ivl ? tyop(c, OP_INTERVAL, 0, NULL, NULL, NULL) : here(c, check_sort(c, t->left, &level, &sset));
+  if (dom == NULL || !(ivl ? push_ivl(c, t->name) : push(c, t->name, dom)))
     return NULL;
   body = infer(c, t->right, &bt);
   quoted = body == NULL ? NULL : quote_value(c->m, c->level, bt);
   pop(c);
   *type = val_closure(c->m, VAL_PI, t->name, dom, c->env, quoted);
-  return core_bind(c, CORE_LAM, t->name, NULL, body);
+  return core_bind(c, CORE_LAM, t->name, ivl ? core_op(c, OP_INTERVAL, 0, 0, NULL, 0) : NULL, body);
 }
 
 /* (x : A) -> B and Sigma (x : A) B. */
 static const Core *elab_binder(Checker *c, const Term *t, CoreKind kind, const Value *hint, const Value **type) {
   uint64_t la = 0;
   uint64_t lb = 0;
-  const Core *a = check_type(c, t->left, &la);
+  int sa = 0;
+  int sb = 0;
+  /* M2 s4: a Pi over I, from SSet or into SSet is in SSet. A Sigma
+     component must be in Type n. */
+  int ivl = kind == CORE_PI && is_interval_type(c, t->left);
+  const Core *a = ivl ? core_op(c, OP_INTERVAL, 0, 0, NULL, 0) : kind == CORE_PI ? check_sort(c, t->left, &la, &sa) : check_type(c, t->left, &la);
   const Core *b;
-  if (a == NULL || !push(c, t->name, here(c, a)))
+  if (a == NULL || !(ivl ? push_ivl(c, t->name) : push(c, t->name, here(c, a))))
     return NULL;
-  b = check_type(c, t->right, &lb);
+  b = kind == CORE_PI ? check_sort(c, t->right, &lb, &sb) : check_type(c, t->right, &lb);
   pop(c);
-  *type = val_univ(c->m, la > lb ? la : lb);
+  *type = ivl || sa || sb ? tyop(c, OP_SSET, 0, NULL, NULL, NULL) : val_univ(c->m, la > lb ? la : lb);
   return finish(c, core_bind(c, kind, t->name, a, b), hint, type);
 }
 
@@ -1643,6 +1693,139 @@ static const Core *infer_papp(Checker *c, const Term *t, const Value *hint, cons
   return finish(c, k, hint, type);
 }
 
+/* M2 s4: the context restricted by conjunction K of FACE. An interval
+   variable that the conjunction sets is a constant end point. Each local
+   type is quoted, then evaluated in the restricted context below it. */
+static int restrict_ctx(Checker *c, const Scope *s, const Env *e, const Ivl *face, uint32_t k, const Scope **rs, const Env **re) {
+  const Scope *ts = NULL;
+  const Env *te = NULL;
+  const Value *v;
+  Scope *ns;
+  int one = 0;
+  if (s == NULL || e == NULL) {
+    *rs = s;
+    *re = e;
+    return 1;
+  }
+  if (!restrict_ctx(c, s->next, e->next, face, k, &ts, &te))
+    return 0;
+  ns = arena_alloc(c->m->arena, sizeof *ns);
+  v = s->interval && face_conj_sets(face, k, s->level, &one) ? val_ivl_end(c->m, one) : e->value;
+  if (ns == NULL || v == NULL)
+    return c->m->diag->set ? 0 : FAIL(c, "OOM", "out of memory");
+  *ns = *s;
+  ns->type = s->type == NULL ? NULL : eval_core(c->m, te, quote_value(c->m, s->level, s->type));
+  ns->next = ts;
+  *rs = ns;
+  *re = env_push(c->m, te, v);
+  return (s->type == NULL || ns->type != NULL) && *re != NULL;
+}
+
+/* BODY against A in the context restricted by conjunction K of FACE. */
+static const Core *check_restricted(Checker *c, const Term *body, const Value *a, const Ivl *face, uint32_t k) {
+  const Scope *scope = c->scope;
+  const Env *env = c->env;
+  const Scope *rs = NULL;
+  const Env *re = NULL;
+  const Core *out;
+  if (!restrict_ctx(c, scope, env, face, k, &rs, &re))
+    return NULL;
+  c->scope = rs;
+  c->env = re;
+  out = check(c, body, eval_core(c->m, re, quote_value(c->m, c->level, a)));
+  c->scope = scope;
+  c->env = env;
+  return out;
+}
+
+/* The core K evaluated in the context restricted by conjunction J of FACE. */
+static const Value *eval_restricted(Checker *c, const Core *k, const Ivl *face, uint32_t j) {
+  const Scope *rs = NULL;
+  const Env *re = NULL;
+  return restrict_ctx(c, c->scope, c->env, face, j, &rs, &re) ? eval_core(c->m, re, k) : NULL;
+}
+
+/* FACE_AGREE: branches K and L give the same value on each conjunction of
+   the meet of their faces. */
+static int branches_agree(Checker *c, const Core *const *args, const Ivl *const *faces, uint32_t k, uint32_t l) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Ivl *meet = face_meet(&h, faces[k], faces[l]);
+  uint32_t j;
+  if (meet == NULL)
+    return 0;
+  for (j = 0; j < meet->count; j++) {
+    const Value *x = eval_restricted(c, args[2u * k + 1u], meet, j);
+    const Value *y = eval_restricted(c, args[2u * l + 1u], meet, j);
+    if (!conv_values(c->m, c->level, x, y))
+      return c->m->diag->set ? 0 : FAIL(c, "FACE_AGREE", "the branches on %s and %s differ on %s: %s and %s", show(c, val_ivl(c->m, faces[k])), show(c, val_ivl(c->m, faces[l])), show(c, val_ivl(c->m, meet)), show(c, x), show(c, y));
+  }
+  return 1;
+}
+
+/* M2 s4: [ phi1 -> t1, ... ] against Partial phi A. Each ti : A under each
+   conjunction of phi_i;  FACE_AGREE on each meet;  FACE_COVER: the join of
+   the faces is phi. */
+static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const Value **type) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Ivl *cover = ivl_const(&h, 0);
+  const Core **args;
+  const Ivl **faces;
+  const Ivl **branch_faces;
+  const Term *b;
+  uint32_t branches = 0;
+  uint32_t n = 0;
+  uint32_t at = 0;
+  uint32_t k;
+  uint32_t l;
+  if (!val_is(hint, OP_PARTIAL) || hint->args[0]->kind != VAL_IVL)
+    return nul(FAIL(c, "PARTIAL_EXPECTED", "%d:%d: a system [ ... ] needs a declared type Partial phi A here, found %s", t->line, t->col, hint == NULL ? "no type" : show(c, hint)));
+  for (b = t; b != NULL; b = b->next)
+    branches++;
+  branch_faces = arena_alloc(c->m->arena, ((size_t)branches + 1u) * sizeof *branch_faces);
+  if (branch_faces == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (b = t, k = 0; b != NULL && cover != NULL; b = b->next, k++) {
+    const Value *fv = here(c, elab_ivl(c, b->left));
+    uint32_t count;
+    branch_faces[k] = fv == NULL ? NULL : face_norm(&h, fv->ivl);
+    if (branch_faces[k] == NULL)
+      return NULL;
+    count = branch_faces[k]->count == 0u ? 1u : branch_faces[k]->count;
+    if (count > UINT32_MAX / 2u - n)
+      return nul(FAIL(c, "OOM", "the system has too many conjunctions"));
+    n += count;
+    cover = face_join(&h, cover, branch_faces[k]);
+  }
+  if (cover == NULL)
+    return NULL;
+  args = arena_alloc(c->m->arena, (2u * (size_t)n + 1u) * sizeof *args);
+  faces = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *faces);
+  if (args == NULL || faces == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  /* Elaboration can specialize a body (for example refl) differently on
+     each conjunction. Keep that core only on the face where it checks. */
+  for (b = t, k = 0; b != NULL; b = b->next, k++) {
+    const Ivl *face = branch_faces[k];
+    uint32_t count = face->count == 0u ? 1u : face->count;
+    for (l = 0; l < count; l++, at++) {
+      faces[at] = face->count == 0u ? face : face_conj(&h, face, l);
+      args[2u * at] = faces[at] == NULL ? NULL : quote_value(c->m, c->level, val_ivl(c->m, faces[at]));
+      args[2u * at + 1u] = args[2u * at] == NULL ? NULL : face->count == 0u
+        ? check(c, b->right, hint->args[1]) : check_restricted(c, b->right, hint->args[1], face, l);
+      if (args[2u * at + 1u] == NULL)
+        return NULL;
+    }
+  }
+  if (!face_equal(cover, hint->args[0]->ivl))
+    return nul(FAIL(c, "FACE_COVER", "the faces of the system join to %s, but the type needs the face %s", show(c, val_ivl(c->m, cover)), show(c, hint->args[0])));
+  for (k = 0; k < n; k++)
+    for (l = k + 1u; l < n; l++)
+      if (!branches_agree(c, args, faces, k, l))
+        return NULL;
+  *type = hint;
+  return core_op(c, OP_SYS, n, 0, args, 2u * n);
+}
+
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {
   switch (t->kind) {
   case TERM_VAR:
@@ -1676,6 +1859,8 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
     return infer_papp(c, t, hint, type);
   case TERM_IVL:
     return nul(FAIL(c, "INTERVAL_TERM", "%d:%d: an interval term (~, /\\ or \\/) is not a term of a type", t->line, t->col));
+  case TERM_SYS:
+    return check_sys(c, t, hint, type);
   }
   return NULL;
 }
@@ -1815,7 +2000,8 @@ static int check_family(Checker *c, const Decl *d) {
 static int check_def(Checker *c, const Decl *d) {
   Machine *m = c->m;
   uint64_t level = 0;
-  const Core *t = check_type(c, d->type, &level);
+  int sset = 0;
+  const Core *t = check_sort(c, d->type, &level, &sset);
   const Value *tv = here(c, t);
   const Core *body = check(c, d->body, tv);
   DefInfo *info = &m->defs[m->def_count];

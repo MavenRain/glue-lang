@@ -1,0 +1,1 @@
+def sg : Type 1 := Sigma (x : Partial i0 Nat) Nat

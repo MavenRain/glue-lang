@@ -42,6 +42,7 @@ typedef struct {
 
 static const Term *parse_term(Parser *p);
 static const Term *parse_atom(Parser *p);
+static const Term *parse_join(Parser *p);
 
 static const Token *peek_at(const Parser *p, size_t ahead) {
   size_t i = p->pos + ahead;
@@ -136,12 +137,15 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
     case TOK_TILDE:
+    case TOK_LBRACKET:
       return 1;
     case TOK_LANGLE:
     case TOK_RANGLE:
     case TOK_AT:
     case TOK_MEET:
     case TOK_JOIN:
+    case TOK_RBRACKET:
+    case TOK_COMMA:
     case TOK_EOF:
     case TOK_RPAREN:
     case TOK_COLON:
@@ -316,6 +320,32 @@ static const Term *parse_rev(Parser *p) {
   return t;
 }
 
+/* One branch `face -> term` of a system. The face uses the interval grammar. */
+static Term *parse_branch(Parser *p) {
+  const Token *tok = cur(p);
+  const Term *face = parse_join(p);
+  if (face == NULL || !expect(p, TOK_ARROW, "'->'")) return NULL;
+  const Term *body = parse_term(p);
+  Term *t = body == NULL ? NULL : make_term(p, TERM_SYS, tok->line, tok->col);
+  if (t == NULL) return NULL;
+  t->left = face;
+  t->right = body;
+  return t;
+}
+
+/* '[' branch (',' branch)* ']': a system. Each branch links to the next. */
+static const Term *parse_system(Parser *p) {
+  bump(p);
+  Term *head = parse_branch(p);
+  Term *last = head;
+  while (last != NULL && eat(p, TOK_COMMA)) {
+    Term *next = parse_branch(p);
+    last->next = next;
+    last = next;
+  }
+  return last != NULL && expect(p, TOK_RBRACKET, "']' or ','") ? head : NULL;
+}
+
 static const Term *parse_atom(Parser *p) {
   const Token *tok = cur(p);
   switch (tok->kind) {
@@ -325,11 +355,14 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_TYPE: return parse_universe(p);
     case TOK_KW_SIGMA: return parse_sigma(p);
     case TOK_TILDE: return parse_rev(p);
+    case TOK_LBRACKET: return parse_system(p);
     case TOK_LANGLE:
     case TOK_RANGLE:
     case TOK_AT:
     case TOK_MEET:
     case TOK_JOIN:
+    case TOK_RBRACKET:
+    case TOK_COMMA:
     case TOK_EOF:
     case TOK_RPAREN:
     case TOK_COLON:
@@ -606,6 +639,9 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_TILDE:
     case TOK_MEET:
     case TOK_JOIN:
+    case TOK_LBRACKET:
+    case TOK_RBRACKET:
+    case TOK_COMMA:
       break;
   }
   return fail_at(p, tok, "'def', 'axiom', 'family' or 'circuit'");

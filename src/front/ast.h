@@ -16,7 +16,8 @@ typedef enum {
   TERM_ARITH, /* left OP right, OP = nat: 0 +, 1 -, 2 * (Field) */
   TERM_PLAM,  /* <name> right: a path abstraction */
   TERM_PAPP,  /* left @ right: a path applied to an interval term */
-  TERM_IVL    /* nat = IvlOp (interval.h): 2 ~left, 3 left /\ right, 4 left \/ right */
+  TERM_IVL,   /* nat = IvlOp (interval.h): 2 ~left, 3 left /\ right, 4 left \/ right */
+  TERM_SYS    /* M2: one branch `left -> right` of a system [ ... ]; next: the next branch */
 } TermKind;
 
 typedef struct Term Term;
@@ -29,6 +30,7 @@ struct Term {
   int big; /* NAT: the literal is above 2^64 - 1. name: the digits */
   const Term *left;
   const Term *right;
+  const Term *next; /* SYS: the next branch, or NULL */
 };
 
 /* A named field of a constructor, or a parameter of a family. */

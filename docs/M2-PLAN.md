@@ -320,7 +320,7 @@ Each slice is one session. Each prompt is in ~/Documents.
 | s1 | Lexer, parser, AST; interval.c; core and value kinds; OP_PATHP; `<i> t`, `p @ r`; endpoint rule; conversion; printer; boundary check; the s1 codes and tests. `Eq` stays. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s1-PROMPT.md |
 | s2 | `refl` over Path (beside `Eq`), `sym`, `cong`, `funExt`, `happly`; the law table; the guards. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s2-PROMPT.md |
 | s3 | F12/F13 per ruling c; circuits per ruling b; examples, goldens, old harness strings; reserved names; IR unchanged. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s3-PROMPT.md |
-| s4 | Face lattice (face.c), interval binders, `SSet`, `Partial`, systems, the s4 codes and tests. | glue-lang-M2-s4-PROMPT.md |
+| s4 | Face lattice (face.c), interval binders, `SSet`, `Partial`, systems, the s4 codes and tests. DONE 2026-10-14 (docs/STATUS.md `## M2`). | glue-lang-M2-s4-PROMPT.md |
 | s5 | Close: SPEC 2, 3 and 9, FORMERS F12/F13 and matrix, PLAN M2 DONE, STATUS, mutant roll-up, M3 kickoff prompt. | glue-lang-M2-s5-PROMPT.md |
 
 Gates for each slice (all GREEN before staging): `make check`, `make

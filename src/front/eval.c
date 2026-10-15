@@ -1,6 +1,7 @@
 /* The evaluator, the conversion test, quote and the printer (see
    front/core.h). SHARED by the tcc kits. */
 #include "front/core.h"
+#include "front/face.h"
 #include "front/fr.h"
 
 #include <string.h>
@@ -24,7 +25,8 @@ static const char *const OP_NAMES[] = {
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
   [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
-  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP"
+  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
+  [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -41,7 +43,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
-  [OP_PATHP] = 3
+  [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
+  [OP_SYS] = VARIES
 };
 
 typedef enum {
@@ -806,6 +809,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + 1u;
+  if (op == OP_SYS)
+    return inst * 2u;
   return UINT32_MAX;
 }
 
@@ -815,6 +820,39 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
   if (OP_ARITY[op] != VARIES)
     return n == (uint32_t)OP_ARITY[op];
   return n == varied_arity(m, op, inst);
+}
+
+/* M2 s4: the face normal form of an interval value. So conv compares two
+   faces by their normal forms. */
+static const Value *face_value(Machine *m, const Value *v) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Ivl *face = v->kind == VAL_IVL ? face_norm(&h, v->ivl) : NULL;
+  if (face == NULL)
+    return m->diag->set ? NULL : internal(m, "a face is not an interval value");
+  return val_ivl(m, face);
+}
+
+/* M2 s4: a system with a branch on the face 1 is that branch (CCHM). Else
+   the system is a canonical value with each face in face normal form. */
+static const Value *reduce_sys(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const Value **out = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *out);
+  uint32_t k;
+  if (out == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < n; k += 2u) {
+    out[k] = face_value(m, a[k]);
+    if (out[k] == NULL)
+      return NULL;
+    if (ivl_is_const(out[k]->ivl, 1))
+      return a[k + 1u];
+    out[k + 1u] = a[k + 1u];
+  }
+  return val_op(m, VAL_OP, OP_SYS, inst, 0, out, n);
+}
+
+static const Value *reduce_partial(Machine *m, const Value *const *a) {
+  const Value *face = face_value(m, a[0]);
+  return face == NULL ? NULL : val_make(m, OP_PARTIAL, 0, 2u, face, a[1], NULL);
 }
 
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -844,7 +882,13 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_PACK:
   case OP_CTOR:
   case OP_PATHP:
+  case OP_INTERVAL:
+  case OP_SSET:
     return val_op(m, VAL_OP, op, inst, field, a, n);
+  case OP_PARTIAL:
+    return reduce_partial(m, a);
+  case OP_SYS:
+    return reduce_sys(m, inst, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -918,7 +962,7 @@ static IvlHeap ivl_heap(Machine *m) {
   return h;
 }
 
-static const Value *val_ivl(Machine *m, const Ivl *ivl) {
+const Value *val_ivl(Machine *m, const Ivl *ivl) {
   Value *v;
   if (ivl == NULL)
     return NULL;
@@ -931,6 +975,11 @@ static const Value *val_ivl(Machine *m, const Ivl *ivl) {
 const Value *val_ivl_var(Machine *m, uint32_t level) {
   IvlHeap h = ivl_heap(m);
   return val_ivl(m, ivl_lit(&h, level, 0));
+}
+
+/* A path lambda or a lambda or Pi with domain I binds an interval variable. */
+static int ivl_binder(const Value *v) {
+  return v->kind == VAL_PLAM || ((v->kind == VAL_LAM || v->kind == VAL_PI) && val_is(v->dom, OP_INTERVAL));
 }
 
 const Value *val_ivl_end(Machine *m, int one) {
@@ -1022,7 +1071,7 @@ static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
   case CORE_UNIV:
     return val_univ(m, c->nat);
   case CORE_LAM:
-    return val_closure(m, VAL_LAM, c->name, NULL, env, c->b);
+    return val_closure(m, VAL_LAM, c->name, c->a == NULL ? NULL : eval_core(m, env, c->a), env, c->b);
   case CORE_PI:
     return val_closure(m, VAL_PI, c->name, eval_core(m, env, c->a), env, c->b);
   case CORE_SIGMA:
@@ -1052,12 +1101,12 @@ const Value *eval_core(Machine *m, const Env *env, const Core *c) {
 
 /* Eta: a function is equal to G when the two agree on a fresh variable. */
 static int conv_fun(Machine *m, uint32_t level, const Value *a, const Value *b) {
-  const Value *x = val_var(m, level);
+  const Value *x = ivl_binder(a) || ivl_binder(b) ? val_ivl_var(m, level) : val_var(m, level);
   return conv_values(m, level + 1u, apply_value(m, a, x), apply_value(m, b, x));
 }
 
 static int conv_binder(Machine *m, uint32_t level, const Value *a, const Value *b) {
-  const Value *x = val_var(m, level);
+  const Value *x = ivl_binder(a) || ivl_binder(b) ? val_ivl_var(m, level) : val_var(m, level);
   return conv_values(m, level, a->dom, b->dom) && conv_values(m, level + 1u, closure_apply(m, a, x), closure_apply(m, b, x));
 }
 
@@ -1081,6 +1130,100 @@ static int conv_path(Machine *m, uint32_t level, const Value *a, const Value *b)
     return 0;
   x = val_ivl_var(m, level);
   return conv_values(m, level + 1u, papp_value(m, a, x, NULL, NULL), papp_value(m, b, x, NULL, NULL));
+}
+
+/* Record the free interval levels before building an identity environment.
+   Opening closures also exposes interval occurrences in their bodies. */
+static int interval_levels(Machine *m, uint32_t level, uint32_t free_count, const Value *v, unsigned char *levels) {
+  uint32_t i;
+  int ok = 1;
+  if (v == NULL || !enter(m))
+    return 0;
+  switch (v->kind) {
+  case VAL_IVL:
+    for (i = 0; i < v->ivl->starts[v->ivl->count]; i++)
+      if (v->ivl->lits[i] / 2u < free_count)
+        levels[v->ivl->lits[i] / 2u] = 1;
+    break;
+  case VAL_LAM:
+  case VAL_PI:
+  case VAL_SIGMA:
+  case VAL_PLAM:
+    ok = (v->dom == NULL || interval_levels(m, level, free_count, v->dom, levels))
+      && interval_levels(m, level + 1u, free_count,
+        closure_apply(m, v, ivl_binder(v) ? val_ivl_var(m, level) : val_var(m, level)), levels);
+    break;
+  case VAL_APP:
+  case VAL_PAPP:
+    ok = interval_levels(m, level, free_count, v->dom, levels)
+      && interval_levels(m, level, free_count, v->arg, levels);
+    for (i = 0; ok && i < v->argc; i++)
+      ok = interval_levels(m, level, free_count, v->args[i], levels);
+    break;
+  case VAL_OP:
+  case VAL_STUCK:
+    for (i = 0; ok && i < v->argc; i++)
+      ok = interval_levels(m, level, free_count, v->args[i], levels);
+    break;
+  case VAL_NAT:
+  case VAL_TRAP:
+  case VAL_UNIV:
+  case VAL_VAR:
+    break;
+  }
+  m->depth--;
+  return ok;
+}
+
+/* Substitute a conjunction into a value, preserving the distinction between
+   ordinary variables and interval variables in the identity environment. */
+static const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl *face, uint32_t k) {
+  unsigned char *levels = arena_alloc(m->arena, (size_t)level + 1u);
+  const Env *env = NULL;
+  uint32_t i;
+  if (levels == NULL)
+    return oom(m);
+  if (!interval_levels(m, level, level, v, levels))
+    return NULL;
+  for (i = 0; i < level; i++) {
+    int one = 0;
+    const Value *x = face_conj_sets(face, k, i, &one) ? val_ivl_end(m, one)
+      : levels[i] ? val_ivl_var(m, i) : val_var(m, i);
+    env = env_push(m, env, x);
+    if (env == NULL)
+      return NULL;
+  }
+  return eval_core(m, env, quote_value(m, level, v));
+}
+
+/* Systems are equal when their covers coincide and their bodies agree on
+   every overlap. Branch order, duplicates and face decomposition do not
+   change a partial element. */
+static int conv_sys(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  IvlHeap h = ivl_heap(m);
+  const Ivl *ac = ivl_const(&h, 0);
+  const Ivl *bc = ivl_const(&h, 0);
+  uint32_t i, j, k;
+  for (i = 0; i < a->argc && ac != NULL; i += 2u)
+    ac = face_join(&h, ac, a->args[i]->ivl);
+  for (i = 0; i < b->argc && bc != NULL; i += 2u)
+    bc = face_join(&h, bc, b->args[i]->ivl);
+  if (ac == NULL || bc == NULL || !face_equal(ac, bc))
+    return 0;
+  for (i = 0; i < a->argc; i += 2u) {
+    for (j = 0; j < b->argc; j += 2u) {
+      const Ivl *meet = face_meet(&h, a->args[i]->ivl, b->args[j]->ivl);
+      if (meet == NULL)
+        return 0;
+      for (k = 0; k < meet->count; k++) {
+        const Value *x = value_on_face(m, level, a->args[i + 1u], meet, k);
+        const Value *y = value_on_face(m, level, b->args[j + 1u], meet, k);
+        if (!conv_values(m, level, x, y))
+          return 0;
+      }
+    }
+  }
+  return 1;
 }
 
 /* The last argument of an operation is compared in the loop, so a long
@@ -1127,6 +1270,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       break;
     case VAL_OP:
     case VAL_STUCK:
+      if (val_is(a, OP_SYS) && val_is(b, OP_SYS))
+        return conv_sys(m, level, a, b);
       if (!same_head(a, b))
         return 0;
       if (a->op == OP_FIELD_LIT)
@@ -1197,9 +1342,9 @@ static const Core *quote_app(Machine *m, uint32_t level, const Value *v) {
 }
 
 static const Core *quote_binder(Machine *m, uint32_t level, const Value *v, CoreKind kind) {
-  int bare = kind == CORE_LAM || kind == CORE_PLAM;
+  int bare = kind == CORE_PLAM || (kind == CORE_LAM && v->dom == NULL);
   const Core *dom = bare ? NULL : quote_value(m, level, v->dom);
-  const Value *x = kind == CORE_PLAM ? val_ivl_var(m, level) : val_var(m, level);
+  const Value *x = ivl_binder(v) ? val_ivl_var(m, level) : val_var(m, level);
   const Core *body = quote_value(m, level + 1u, closure_apply(m, v, x));
   Core *c;
   if (body == NULL || (dom == NULL && !bare))
@@ -1449,7 +1594,7 @@ static void print_binder(Printer *p, const Value *v) {
   const char *name = v->name != NULL ? v->name : "x";
   char fresh[32];
   uint32_t suffix = 0;
-  const Value *x = v->kind == VAL_PLAM ? val_ivl_var(p->m, level) : val_var(p->m, level);
+  const Value *x = ivl_binder(v) ? val_ivl_var(p->m, level) : val_var(p->m, level);
   const Value *body = closure_apply(p->m, v, x);
   int binder_dom = v->dom != NULL && (v->dom->kind == VAL_PI || v->dom->kind == VAL_SIGMA || v->dom->kind == VAL_LAM || v->dom->kind == VAL_UNIV);
   while (name_used(p, name)) {
@@ -1628,6 +1773,20 @@ static void print_value(Printer *p, const Value *v, int atom) {
     return;
   }
   p->depth++;
+  if (val_is(v, OP_SYS)) {
+    /* M2 s4: [ phi -> t, psi -> u ] */
+    put(p, "[ ");
+    for (i = 0; i + 1u < v->argc; i += 2u) {
+      if (i > 0u)
+        put(p, ", ");
+      print_value(p, v->args[i], 0);
+      put(p, " -> ");
+      print_value(p, v->args[i + 1u], 0);
+    }
+    put(p, " ]");
+    p->depth--;
+    return;
+  }
   while (is_chain(v) && !p->full) {
     if (atom) {
       put(p, "(");

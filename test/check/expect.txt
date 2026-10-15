@@ -45,3 +45,10 @@ unknown-eq.lang NAME_UNKNOWN
 reserved-trans.lang REFUSE_NAME
 reserved-transport.lang REFUSE_NAME
 bad-sqrel.lang TYPE_REFL
+face-agree.lang FACE_AGREE
+face-meet.lang FACE_AGREE
+face-cover.lang FACE_COVER
+sset-path.lang SORT_FIBRANT
+sset-sigma.lang SORT_FIBRANT
+sset-binder.lang SORT_FIBRANT
+partial-expected.lang PARTIAL_EXPECTED

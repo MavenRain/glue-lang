@@ -1,0 +1,2 @@
+-- M2 s4: a system needs a closing ].
+def bad : Nat := [ i -> 0, ~i -> 1

@@ -3,7 +3,7 @@ TCC ?= tcc
 CC ?= cc
 CFLAGS = -std=c99 -Wall -Werror -Isrc
 CLANG_FLAGS = -std=c99 -Wall -Wextra -Wswitch-enum -Werror -fsyntax-only -Isrc
-FRONT = src/front/base.c src/front/lexer.c src/front/parser.c src/front/front.c src/front/eval.c src/front/check.c src/front/fr.c src/front/interval.c
+FRONT = src/front/base.c src/front/lexer.c src/front/parser.c src/front/front.c src/front/eval.c src/front/check.c src/front/fr.c src/front/interval.c src/front/face.c
 TARGET = src/json.c src/circuit.c
 SRC = src/main.c $(FRONT) $(TARGET)
 HEADERS = $(wildcard src/*.h src/front/*.h)
@@ -40,9 +40,13 @@ build/circuit-regressions: test/circuit-regressions.c $(FRONT) src/circuit.c $(H
 build/path-regressions: test/path-regressions.c $(FRONT) $(HEADERS) build/domain.c
 	$(TCC) $(CFLAGS) -o $@ test/path-regressions.c $(FRONT) build/domain.c
 
-check: build/langc build/circuit-regressions build/path-regressions check-clang
+build/face-regressions: test/face-regressions.c $(FRONT) $(HEADERS) build/domain.c
+	$(TCC) $(CFLAGS) -o $@ test/face-regressions.c $(FRONT) build/domain.c
+
+check: build/langc build/circuit-regressions build/path-regressions build/face-regressions check-clang
 	build/circuit-regressions
 	build/path-regressions
+	build/face-regressions
 	sh test/gate.sh
 	TCC="$(TCC)" node test/regressions.js
 	node test/printer-regressions.js

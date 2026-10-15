@@ -39,3 +39,11 @@ paths reversed => fun p => <i> p @ ~i
 paths mixed => fun p => <i> <j> p @ (i /\ ~j)
 paths symStart => fun p => 2
 paths happlyFunExt => fun f => fun g => fun h => fun x => <i> h x @ i
+faces sysEnds => fun i => [ ~i -> 0, i -> 1 ]
+faces sysMeet => fun i => fun j => [ i /\ j -> 5 ]
+faces endPt => fun p => fun i => [ ~i -> p @ i, ~i -> 0 ]
+faces sysSplit => fun i => [ i -> 0, ~i -> 1 ]
+faces ivlAt0 => 3
+faces ivlAt1 => 3
+faces ivlRev => fun i => 3
+faces sysRev => fun i => [ i -> 0, ~i -> 1 ]

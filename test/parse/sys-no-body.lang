@@ -1,0 +1,2 @@
+-- M2 s4: a system branch needs a term after ->.
+def bad : Nat := [ i -> ]

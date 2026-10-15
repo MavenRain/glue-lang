@@ -1,0 +1,1 @@
+def two : (i : I) -> (j : I) -> Partial (i \/ j) Nat := fun (i : I) => fun (j : I) => [ i -> 0, j -> 1 ]

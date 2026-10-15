@@ -65,7 +65,11 @@ typedef enum {
   OP_FIELD_ADD,
   OP_FIELD_SUB,
   OP_FIELD_MUL,
-  OP_PATHP /* M2: the line (a PLAM closure), then the two ends */
+  OP_PATHP,    /* M2: the line (a PLAM closure), then the two ends */
+  OP_INTERVAL, /* M2 s4: I as the domain of a Pi. No term has this type */
+  OP_SSET,     /* M2 s4: the sort of I, Partial and each Pi over them */
+  OP_PARTIAL,  /* M2 s4: Partial phi A. args: the face, then A */
+  OP_SYS       /* M2 s4: [ phi -> t, ... ]. inst: the branch count. args: face, body, ... */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -237,6 +241,8 @@ const Value *val_arrow(Machine *m, const Value *dom, const Value *cod);
 /* M2: a fresh interval variable at LEVEL, and the end i0 (ONE zero) or i1. */
 const Value *val_ivl_var(Machine *m, uint32_t level);
 const Value *val_ivl_end(Machine *m, int one);
+/* M2 s4: the interval value with the normal form IVL. */
+const Value *val_ivl(Machine *m, const Ivl *ivl);
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body);
 int val_is(const Value *v, Op op);
 const Env *env_push(Machine *m, const Env *env, const Value *value);

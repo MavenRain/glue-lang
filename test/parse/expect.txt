@@ -11,3 +11,5 @@ circuit-no-eq.glue PARSE_EXPECT
 plam-no-rangle.lang PARSE_EXPECT
 papp-no-atom.lang PARSE_EXPECT
 meet-no-left.lang PARSE_EXPECT
+sys-no-body.lang PARSE_EXPECT
+sys-unclosed.lang PARSE_EXPECT

@@ -1,0 +1,1 @@
+def pt : Type 1 := Path ((i : I) -> Nat) (fun i => 0) (fun i => 0)

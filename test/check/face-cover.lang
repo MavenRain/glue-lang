@@ -1,0 +1,1 @@
+def short : (i : I) -> Partial (~i \/ i) Nat := fun (i : I) => [ ~i -> 0 ]

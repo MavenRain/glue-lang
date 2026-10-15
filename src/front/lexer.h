@@ -36,7 +36,10 @@ typedef enum {
   TOK_AT,     /* @ */
   TOK_TILDE,  /* ~ */
   TOK_MEET,   /* /\ */
-  TOK_JOIN    /* \/ */
+  TOK_JOIN,     /* \/ */
+  TOK_LBRACKET, /* [ */
+  TOK_RBRACKET, /* ] */
+  TOK_COMMA     /* , */
 } TokKind;
 
 typedef struct {

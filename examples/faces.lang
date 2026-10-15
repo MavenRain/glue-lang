@@ -1,0 +1,19 @@
+-- M2 s4: the face lattice, Partial and systems (CCHM).
+-- A system on ~i \/ i gives 0 at the start and 1 at the end.
+def sysEnds : (i : I) -> Partial (~i \/ i) Nat := fun (i : I) => [ ~i -> 0, i -> 1 ]
+
+-- A system on a meet of two interval variables.
+def sysMeet : (i : I) -> (j : I) -> Partial (i /\ j) Nat := fun i => fun j => [ i /\ j -> 5 ]
+
+-- The two branches agree on ~i only by the end point rule of the Path type.
+def endPt : Path Nat 0 2 -> (i : I) -> Partial (~i) Nat := fun (p : Path Nat 0 2) => fun (i : I) => [ ~i -> p @ i, ~i -> 0 ]
+
+-- The meet i /\ ~i is the empty face, so the branches need not agree.
+def sysSplit : (i : I) -> Partial (i \/ ~i) Nat := fun (i : I) => [ i -> 0, ~i -> 1 ]
+
+-- An interval binder in a function and in a Pi type.
+def ivlFun : (i : I) -> Nat := fun (i : I) => 3
+def ivlAt0 : Nat := ivlFun i0
+def ivlAt1 : Nat := ivlFun i1
+def ivlRev : (i : I) -> Nat := fun (i : I) => ivlFun (~i)
+def sysRev : (i : I) -> Partial (i \/ ~i) Nat := fun (i : I) => sysEnds (~i)
