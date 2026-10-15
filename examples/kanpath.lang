@@ -1,0 +1,26 @@
+-- M3 s2: hcomp, comp and hfill (CCHM), M3-PLAN 3.4 and section 4.
+-- hcomp A i1 u u0 = u i1: the face i1 rule.
+def hcompAt1 : (q : Path Nat 3 5) -> Nat := fun q => hcomp Nat i1 (fun i => [ i1 -> q @ i ]) 3
+-- The closed-type rule: a constant system on a variable base gives the base.
+def constBase : Nat -> (k : I) -> Nat := fun n => fun k => hcomp Nat k (fun i => [ k -> n ]) n
+-- A system that uses i stays stuck.
+def stuckBase : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Nat := fun n => fun q => fun k => hcomp Nat (~k) (fun i => [ ~k -> q @ i ]) n
+-- Pi: the hcomp of a function is the hcomp at each argument.
+def piHcomp : (f : Nat -> Nat) -> (k : I) -> Nat -> Nat := fun f => fun k => hcomp (Nat -> Nat) k (fun i => [ k -> f ]) f
+-- comp on a constant line is hcomp after transp on Nat.
+def compConst : Nat -> (k : I) -> Nat := fun n => fun k => comp (<i> Nat) k (fun i => [ k -> n ]) n
+-- hfill A phi u u0 i0 = u0.
+def fillAt0 : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Path Nat (hfill Nat (~k) (fun i => [ ~k -> q @ i ]) n i0) n := fun n => fun q => fun k => refl
+-- hfill A phi u u0 i1 converts to hcomp A phi (fun i => [ phi -> u i ]) u0.
+def fillAt1 : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Path Nat (hfill Nat (~k) (fun i => [ ~k -> q @ i ]) n i1) (hcomp Nat (~k) (fun i => [ ~k -> q @ i ]) n) := fun n => fun q => fun k => refl
+-- Sigma and Prod: the first component is an hcomp, the second a comp over hfill.
+def sigmaHcomp : (p : Sigma (n : Nat) Nat) -> (k : I) -> Sigma (n : Nat) Nat := fun p => fun k => hcomp (Sigma (n : Nat) Nat) k (fun i => [ k -> p ]) p
+def prodHcomp : (k : I) -> Prod Nat Field := fun k => hcomp (Prod Nat Field) k (fun i => [ k -> pair 1 2 ]) (pair 1 2)
+def prodStuck : (n : Nat) -> (q : Path Nat n n) -> (k : I) -> Prod Nat Nat := fun n => fun q => fun k => hcomp (Prod Nat Nat) (~k) (fun i => [ ~k -> pair (q @ i) 0 ]) (pair n 0)
+-- PathP: transp along a line of paths is a comp with the system [ phi -> p @ j, ~j -> a[i], j -> b[i] ].
+def pathEnd : (x : Nat) -> (y : Nat) -> (q : Path Nat x y) -> (z : Nat) -> (w : Nat) -> (r : Path Nat z w) -> (p : Path Nat x z) -> Path Nat ((transp (<i> Path Nat (q @ i) (r @ i)) i0 p) @ i0) (q @ i1) := fun x => fun y => fun q => fun z => fun w => fun r => fun p => refl
+def pathSquare : (x : Nat) -> (y : Nat) -> (q : Path Nat x y) -> (z : Nat) -> (w : Nat) -> (r : Path Nat z w) -> (p : Path Nat x z) -> Path Nat y w := fun x => fun y => fun q => fun z => fun w => fun r => fun p => transp (<i> Path Nat (q @ i) (r @ i)) i0 p
+-- hcomp in PathP: an hcomp at each j with the two ends added to the system.
+def pathHcomp : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (k : I) -> Path Nat x y := fun x => fun y => fun p => fun k => hcomp (Path Nat x y) k (fun i => [ k -> p ]) p
+def pathHcompEnd : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (s : Path (Path Nat x y) p p) -> (k : I) -> Path Nat ((hcomp (Path Nat x y) (~k) (fun i => [ ~k -> s @ i ]) p) @ i1) y := fun x => fun y => fun p => fun s => fun k => refl
+def pathHcompStuck : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (s : Path (Path Nat x y) p p) -> (k : I) -> Path Nat x y := fun x => fun y => fun p => fun s => fun k => hcomp (Path Nat x y) (~k) (fun i => [ ~k -> s @ i ]) p

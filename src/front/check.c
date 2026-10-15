@@ -76,7 +76,10 @@ typedef enum {
   RULE_HAPPLY,
   RULE_PARTIAL,
   RULE_SSET,
-  RULE_TRANSP
+  RULE_TRANSP,
+  RULE_HCOMP,
+  RULE_COMP,
+  RULE_HFILL
 } Rule;
 
 typedef struct {
@@ -138,7 +141,10 @@ static const Builtin BUILTINS[] = {
   {"happly", 2, RULE_HAPPLY, OP_PATHP, OP_NAT, 0},
   {"Partial", 2, RULE_PARTIAL, OP_PARTIAL, OP_NAT, 0},
   {"SSet", 0, RULE_SSET, OP_SSET, OP_NAT, 0},
-  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0}
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
+  {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0},
+  {"comp", 4, RULE_COMP, OP_HCOMP, OP_NAT, 0},
+  {"hfill", 5, RULE_HFILL, OP_HCOMP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -146,8 +152,8 @@ static const Builtin BUILTINS[] = {
 /* Names that no declaration can take (rule R4). M3 D10: each Kan, Glue and
    univalence name is reserved from s1, and its slice moves it to BUILTINS. */
 static const char *const RESERVED[] = {
-  "Bool", "Text", "trans", "transport", "hcomp", "Glue", "ua",
-  "comp", "hfill", "subst", "transportRefl", "J", "JRefl", "isContr", "fiber",
+  "Bool", "Text", "trans", "transport", "Glue", "ua",
+  "subst", "transportRefl", "J", "JRefl", "isContr", "fiber",
   "isEquiv", "Equiv", "idEquiv", "glue", "unglue", "uaBeta"
 };
 
@@ -577,6 +583,9 @@ static const Core *rule_pack(Call *k) {
 static const Core *core_ivl(Checker *c, IvlOp op, const Core *a, const Core *b);
 static const Core *elab_ivl(Checker *c, const Term *t);
 static const Core *rule_transp(Call *k);
+static const Core *rule_hcomp(Call *k);
+static const Core *rule_comp(Call *k);
+static const Core *rule_hfill(Call *k);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -1231,6 +1240,12 @@ static const Core *rule(Call *k) {
     return nul(FAIL(k->c, "SORT_FIBRANT", "SSet is a sort, not a type in Type n: it cannot be a binder type"));
   case RULE_TRANSP:
     return rule_transp(k);
+  case RULE_HCOMP:
+    return rule_hcomp(k);
+  case RULE_COMP:
+    return rule_comp(k);
+  case RULE_HFILL:
+    return rule_hfill(k);
   }
   return NULL;
 }
@@ -1807,6 +1822,159 @@ static const Core *rule_transp(Call *k) {
   }
   k->type = closure_apply(c->m, lv, val_ivl_end(c->m, 1));
   return op3(c, OP_TRANSP, 0, 3, line, face, a);
+}
+
+/* M3 s2: hcomp, comp and hfill (M3-PLAN 3.2 and section 4). comp and hfill
+   are checker rules that write an hcomp core term (D2). */
+
+/* The face normal form of the interval core FACE. */
+static const Ivl *kan_face(Checker *c, const Core *face) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Value *fv = here(c, face);
+  return fv == NULL || fv->kind != VAL_IVL ? NULL : face_norm(&h, fv->ivl);
+}
+
+/* The type (i : I) -> Partial PHI A[i] of a tube. A[i] is A when LINE is
+   NULL, else LINE at i. */
+static const Value *tube_type(Checker *c, const Value *phi, const Value *line, const Value *a) {
+  const Value *ai = line == NULL ? a : closure_apply(c->m, line, val_ivl_var(c->m, c->level));
+  const Value *p = ai == NULL ? NULL : tyop(c, OP_PARTIAL, 2, phi, ai, NULL);
+  return close_over(c, VAL_PI, "i", tyop(c, OP_INTERVAL, 0, NULL, NULL, NULL), p);
+}
+
+/* HCOMP_BASE: on each conjunction of NORM, u i0 converts to u0. */
+static int hcomp_base(Checker *c, const char *name, const Ivl *norm, const Core *u, const Core *u0) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  uint32_t j;
+  for (j = 0; j < norm->count; j++) {
+    const Value *uv = eval_restricted(c, u, norm, j);
+    const Value *x = uv == NULL ? NULL : apply_value(c->m, uv, val_ivl_end(c->m, 0));
+    const Value *y = x == NULL ? NULL : eval_restricted(c, u0, norm, j);
+    if (y == NULL)
+      return 0;
+    if (!conv_values(c->m, c->level, x, y))
+      return c->m->diag->set ? 0 : FAIL(c, "HCOMP_BASE", "%s needs u i0 to be u0 on %s, but u i0 is %s and u0 is %s", name, show(c, val_ivl(c->m, face_conj(&h, norm, j))), show(c, x), show(c, y));
+  }
+  return 1;
+}
+
+/* K under one more binder. */
+static const Core *up(Checker *c, const Core *k) {
+  return core_shift(c, k, 1u, 0);
+}
+
+/* fun i => [ F0 -> B0, F1 -> B1 ] with N (1 or 2) branches. The faces and
+   the bodies are core terms under the binder i. */
+static const Core *tube_core(Checker *c, uint32_t n, const Core *f0, const Core *b0, const Core *f1, const Core *b1) {
+  const Core *args[4];
+  args[0] = f0;
+  args[1] = b0;
+  args[2] = f1;
+  args[3] = b1;
+  return core_bind(c, CORE_LAM, "i", core_op(c, OP_INTERVAL, 0, 0, NULL, 0), core_op(c, OP_SYS, n, 0, args, 2u * n));
+}
+
+static const Core *hcomp_core(Checker *c, const Core *a, const Core *phi, const Core *u, const Core *u0) {
+  const Core *args[4];
+  args[0] = a;
+  args[1] = phi;
+  args[2] = u;
+  args[3] = u0;
+  return core_op(c, OP_HCOMP, 0, 0, args, 4u);
+}
+
+/* A[i \/ j] for the line LV, a core term under the binders i and j. */
+static const Core *line_join(Checker *c, const Value *lv) {
+  const Core *k = NULL;
+  const Value *r;
+  const Value *x;
+  if (!push_ivl(c, "i"))
+    return NULL;
+  if (push_ivl(c, "j")) {
+    r = here(c, core_ivl(c, IVL_JOIN, core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0)));
+    x = r == NULL ? NULL : closure_apply(c->m, lv, r);
+    k = x == NULL ? NULL : quote_value(c->m, c->level, x);
+    pop(c);
+  }
+  pop(c);
+  return k;
+}
+
+/* hcomp A phi u u0 : A. A : Type n;  u : (i : I) -> Partial phi A;
+   u0 : A;  HCOMP_BASE. */
+static const Core *rule_hcomp(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *a = check_type(c, k->args[0], &level);
+  const Value *av = here(c, a);
+  const Core *face = av == NULL ? NULL : elab_ivl(c, k->args[1]);
+  const Ivl *norm = face == NULL ? NULL : kan_face(c, face);
+  const Core *u = norm == NULL ? NULL : check(c, k->args[2], tube_type(c, here(c, face), NULL, av));
+  const Core *u0 = u == NULL ? NULL : check(c, k->args[3], av);
+  if (u0 == NULL || !hcomp_base(c, "hcomp", norm, u, u0))
+    return NULL;
+  k->type = av;
+  return hcomp_core(c, a, face, u, u0);
+}
+
+/* comp (<i> A) phi u u0 : A[i1]. u : (i : I) -> Partial phi A[i];
+   u0 : A[i0];  HCOMP_BASE. The core term (section 4):
+   hcomp A[i1] phi (fun i => [ phi -> transp (<j> A[i \/ j]) i (u i) ])
+     (transp (<i> A) i0 u0). */
+static const Core *rule_comp(Call *k) {
+  Checker *c = k->c;
+  const Term *t = k->args[0];
+  uint64_t level = 0;
+  const Core *line;
+  const Value *lv;
+  const Core *face;
+  const Ivl *norm;
+  const Core *u;
+  const Core *u0;
+  const Core *fill;
+  const Core *out;
+  if (t->kind != TERM_PLAM)
+    return nul(FAIL(c, "PATH_TYPE", "comp needs a line <i> A as its first argument"));
+  line = path_line(c, t->name, t->right, &level);
+  lv = here(c, line);
+  face = lv == NULL ? NULL : elab_ivl(c, k->args[1]);
+  norm = face == NULL ? NULL : kan_face(c, face);
+  u = norm == NULL ? NULL : check(c, k->args[2], tube_type(c, here(c, face), lv, NULL));
+  u0 = u == NULL ? NULL : check(c, k->args[3], closure_apply(c->m, lv, val_ivl_end(c->m, 0)));
+  if (u0 == NULL || !hcomp_base(c, "comp", norm, u, u0))
+    return NULL;
+  k->type = closure_apply(c->m, lv, val_ivl_end(c->m, 1));
+  fill = op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, "j", NULL, line_join(c, lv)), core_index(c, CORE_VAR, 0), core_app(c, up(c, u), core_index(c, CORE_VAR, 0)));
+  out = hcomp_core(c, k->type == NULL ? NULL : quote_value(c->m, c->level, k->type), face,
+                   tube_core(c, 1u, up(c, face), fill, NULL, NULL),
+                   op3(c, OP_TRANSP, 0, 3, line, core_ivl(c, IVL_ZERO, NULL, NULL), u0));
+  return c->m->diag->set ? NULL : out;
+}
+
+/* hfill A phi u u0 r : A. The premises of hcomp, and r is an interval
+   term. The core term (section 4):
+   hcomp A (phi \/ ~r) (fun i => [ phi -> u (i /\ r), ~r -> u0 ]) u0. */
+static const Core *rule_hfill(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *a = check_type(c, k->args[0], &level);
+  const Value *av = here(c, a);
+  const Core *face = av == NULL ? NULL : elab_ivl(c, k->args[1]);
+  const Ivl *norm = face == NULL ? NULL : kan_face(c, face);
+  const Core *u = norm == NULL ? NULL : check(c, k->args[2], tube_type(c, here(c, face), NULL, av));
+  const Core *u0 = u == NULL ? NULL : check(c, k->args[3], av);
+  const Core *r = u0 == NULL ? NULL : elab_ivl(c, k->args[4]);
+  const Core *ri;
+  const Core *out;
+  if (r == NULL || !hcomp_base(c, "hfill", norm, u, u0))
+    return NULL;
+  k->type = av;
+  ri = up(c, r);
+  out = ri == NULL ? NULL : hcomp_core(c, a, core_ivl(c, IVL_JOIN, face, core_ivl(c, IVL_REV, r, NULL)),
+                                       tube_core(c, 2u, up(c, face), core_app(c, up(c, u), core_ivl(c, IVL_MEET, core_index(c, CORE_VAR, 0), ri)),
+                                                 core_ivl(c, IVL_REV, ri, NULL), up(c, u0)),
+                                       u0);
+  return c->m->diag->set ? NULL : out;
 }
 
 /* M2 s4: [ phi1 -> t1, ... ] against Partial phi A. Each ti : A under each

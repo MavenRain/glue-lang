@@ -498,3 +498,97 @@ different variables of one path type do not convert.
   and `make check-clang` pass. The end-to-end gate passes all 33 Forge
   tests using the unchanged Halo2 binary. Circuit IR and verifiers remain
   unchanged.
+
+### s2: hcomp, comp and hfill; Kan rules for PathP (2026-10-15)
+
+- Files: src/front/core.h, eval.c, check.c, kan.c and kan.h, and
+  src/json.c. Guest tests: examples/kanpath.lang and test/json/kanpath.json
+  (new), test/check/hcomp-base.lang and comp-base.lang (new),
+  test/check/expect.txt and test/eval/expect.txt.
+- Core: core.h adds OP_HCOMP (args: A, the face, u, u0). json.c gives
+  INTERNAL for OP_HCOMP as a type former, as for the other Kan operations.
+  core.h also declares value_bound (with VALUE_BOUND_OPEN) and
+  value_on_face. kan.c uses them.
+- Typing (check.c rule_hcomp): `hcomp A phi u u0 : A`. `A` is in Type n,
+  `u : (i : I) -> Partial phi A` and `u0 : A`. HCOMP_BASE: on each
+  conjunction of `phi`, `u i0` must convert to `u0`. Rows:
+  test/check/hcomp-base.lang and comp-base.lang (`[ i1 -> 1 ]` with the
+  base `0`, HCOMP_BASE).
+- comp and hfill are checker rules that write an hcomp core term (D2):
+  - rule_comp: `comp (<i> A) phi u u0 : A[i1]`, with
+    `u : (i : I) -> Partial phi A[i]` and `u0 : A[i0]`. The core term is
+    `hcomp A[i1] phi (fun i => [ phi -> transp (<j> A[i \/ j]) i (u i) ]) (transp (<i> A) i0 u0)`.
+  - rule_hfill: `hfill A phi u u0 r : A`, with the premises of hcomp and an
+    interval term `r`. The core term is
+    `hcomp A (phi \/ ~r) (fun i => [ phi -> u (i /\ r), ~r -> u0 ]) u0`.
+- Evaluator (kan.c kan_hcomp, M3-PLAN 3.4). The rules apply in this order:
+  - The face `i1` gives `u i1`.
+  - A closed type (Nat, Field, Unit or Flag, not Type n) gives `u0` if `u`
+    is constant (hcomp_constant). The test applies `u` to a fresh interval
+    variable. Each branch of the system must be `u0` on each conjunction of
+    its face. A value that is not a system must convert to `u0`. Else the
+    hcomp is stuck.
+  - Pi: an hcomp at each argument.
+  - Sigma: pair_fill makes the filler `H` of the first component, then
+    hcomp_pair_rule gives `pack (hcomp A phi u1 (p1 p)) (comp (<i> B(H i)) phi u2 (p2 p))`.
+    The comp is the core term of rule_comp.
+  - Prod: the Sigma rule with a constant second type.
+  - PathP: hcomp_pathp_rule gives `<j> hcomp A[j] (phi \/ ~j \/ j) ...`,
+    with a branch for each end of the path.
+  - Each other head gives a stuck hcomp.
+- kan_transp: the PathP rule (pathp_rule) follows the Prod rule. transp
+  along a PathP line gives `<j> hcomp` with three branches: `phi`, `~j` (the
+  left end) and `j` (the right end). The rule pushes the transp into each
+  branch, so there is no nested system. line_at accepts OP_PATHP. kan_dom of
+  a PathP gives its inner line. kan_cod of a PathP at `i0` or `i1` gives that
+  end, else INTERNAL ("a PathP end that is not i0 or i1").
+- eval.c: a partial element (an OP_SYS value) distributes over each
+  eliminator. sys_apply gives the system of the branches applied to the
+  argument. sys_project gives the system of the projected branches.
+  sys_papp gives the system of the branches at `r`, after the ends test of
+  papp_value.
+- Conversion (part c): no new code. conv_sys joins the faces, so a branch
+  at the face `i0` has no effect. reduce_sys is unchanged. No conv rule
+  reads a type. `hcomp A i0 u u0 = u0` is not a rule (D8).
+- Row change: `kan sigmaLine` now gives
+  `fun p => pack (witness p) (<j> (payload p) @ j)`. The PathP transp rule
+  computes the old stuck `transp (<i> Path Nat ...) i0 (payload p)`. The
+  result is the eta form of `payload p`, so the row is correct.
+- Guest tests: examples/kanpath.lang has 15 eval rows (kanpath):
+  hcompAt1, constBase, stuckBase, piHcomp, compConst, fillAt0, fillAt1,
+  sigmaHcomp, prodHcomp, prodStuck, pathEnd, pathSquare, pathHcomp,
+  pathHcompEnd and pathHcompStuck. pathEnd and pathHcompEnd are also
+  `refl` proofs in the example. test/json/kanpath.json has no instance
+  (`{"glue-lang":1,"instances":[]}`).
+- hcompAt1 is `fun q => hcomp Nat i1 (fun i => [ i1 -> q @ i ]) 3` (row
+  `fun q => 5`). The system uses `i`, so the closed-type rule cannot give
+  the result. Only the face `i1` rule can.
+- Mutants (each with `make -B check`, source restored after): 3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| face `i1` rule off (kan_hcomp, `0 &&`) | examples/kanpath.lang (pathEnd: TYPE_REFL, the start is `hcomp Nat i1 ...`); eval kanpath hcompAt1 |
+| closed-type rule skips the branch test (hcomp_constant, `return 1;`) | eval kanpath stuckBase |
+| PathP transp drops the `~j` branch (pathp_rule face and system) | examples/kanpath.lang (pathEnd: TYPE_REFL, the start is `x`, the end is `y`); eval kanpath pathEnd |
+
+- For mutants 1 and 3, examples/kanpath.lang does not check, so each
+  kanpath eval row fails (18 gate failures each). Mutant 2 fails 5 rows:
+  stuckBase, fillAt1, prodStuck, pathSquare and pathHcompStuck.
+- Gates: `make -B check` exit 0 (examples 18, parse refusals 15, check
+  refusals 75, evals 77, json 15, build refusals 4, circuits 3,
+  circuit refusals 10, satcheck refusals 6, native circuit regressions 9,
+  native path regressions 12, native face regressions 32, each with 0
+  failed; gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0. `make
+  e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).
+- Open items:
+  - O8 (s1): the PathP transp rule is now in kan.c. transp stays stuck at
+    Sum, Option and List (rule in s3), and at Family and the fold and
+    unfold families.
+  - O8 (s2, new): hcomp stays stuck at Type n, Sum, List, Option and a
+    stuck type. A transp of a system value along a stuck line stays
+    stuck.

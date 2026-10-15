@@ -90,8 +90,80 @@ static const Core *op(Machine *m, Op o, uint32_t argc, const Core *a, const Core
   return k;
 }
 
+/* An operation with N arguments ARGS (OP_HCOMP: 4, OP_SYS: 2 per branch,
+   INST = the branch count). */
+static const Core *opn(Machine *m, Op o, uint32_t inst, const Core *const *args, uint32_t n) {
+  const Core **copy = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *copy);
+  Core *k;
+  uint32_t i;
+  if (copy == NULL) {
+    diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    if (args[i] == NULL)
+      return NULL;
+    copy[i] = args[i];
+  }
+  k = kan_core(m, CORE_OP);
+  if (k == NULL)
+    return NULL;
+  k->op = o;
+  k->inst = inst;
+  k->args = copy;
+  k->argc = n;
+  return k;
+}
+
+/* fun i => BODY with an interval binder: A is an OP_INTERVAL core, so the
+   value keeps its domain (eval.c ivl_binder). */
+static const Core *tube(Machine *m, const Core *body) {
+  Core *c;
+  const Core *dom = opn(m, OP_INTERVAL, 0, NULL, 0);
+  if (dom == NULL || body == NULL)
+    return NULL;
+  c = kan_core(m, CORE_LAM);
+  if (c == NULL)
+    return NULL;
+  c->name = "i";
+  c->a = dom;
+  c->b = body;
+  return c;
+}
+
+/* [ FACE -> BODY ], one branch. */
+static const Core *sys1(Machine *m, const Core *face, const Core *body) {
+  const Core *args[2];
+  args[0] = face;
+  args[1] = body;
+  return opn(m, OP_SYS, 1u, args, 2u);
+}
+
+/* [ F0 -> B0, F1 -> B1 ], two branches. */
+static const Core *sys2(Machine *m, const Core *f0, const Core *b0, const Core *f1, const Core *b1) {
+  const Core *args[4];
+  args[0] = f0;
+  args[1] = b0;
+  args[2] = f1;
+  args[3] = b1;
+  return opn(m, OP_SYS, 2u, args, 4u);
+}
+
+static const Core *hcomp4(Machine *m, const Core *a, const Core *phi, const Core *u, const Core *u0) {
+  const Core *args[4];
+  args[0] = a;
+  args[1] = phi;
+  args[2] = u;
+  args[3] = u0;
+  return opn(m, OP_HCOMP, 0, args, 4u);
+}
+
 static const Core *zero(Machine *m) {
   return ivl(m, IVL_ZERO, NULL, NULL);
+}
+
+static const Core *one(Machine *m) {
+  return ivl(m, IVL_ONE, NULL, NULL);
 }
 
 /* w r = transp (<j> DOM(L, ~j \/ r)) (phi \/ r) y. Y is the index of y,
@@ -127,6 +199,74 @@ static const Core *pair_rule(Machine *m, Op pack, Op p1, Op p2) {
   return op(m, pack, 2u, first, second, NULL);
 }
 
+/* P @ R. E0 and E1 are the ends of the type of P (D5), or both NULL when P
+   is a line of types. */
+static const Core *papp(Machine *m, const Core *p, const Core *r, const Core *e0, const Core *e1) {
+  const Core **ends = NULL;
+  Core *c;
+  if (p == NULL || r == NULL || (e0 == NULL) != (e1 == NULL))
+    return NULL;
+  if (e0 != NULL) {
+    ends = arena_alloc(m->arena, 2u * sizeof *ends);
+    if (ends == NULL) {
+      diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+      return NULL;
+    }
+    ends[0] = e0;
+    ends[1] = e1;
+  }
+  c = kan_core(m, CORE_PAPP);
+  if (c == NULL)
+    return NULL;
+  c->a = p;
+  c->b = r;
+  c->args = ends;
+  c->argc = e0 == NULL ? 0 : 2u;
+  return c;
+}
+
+/* A[r][j] for the PathP line L (index L) at the core interval R, J the
+   index of j. */
+static const Core *path_cell(Machine *m, uint32_t l, const Core *r, uint32_t j) {
+  return papp(m, op(m, OP_KAN_DOM, 2u, var(m, l), r, NULL), var(m, j), NULL, NULL);
+}
+
+/* The end E (i0 or i1) of the PathP line L (index L) at R. */
+static const Core *path_end(Machine *m, uint32_t l, const Core *r, const Core *e) {
+  return op(m, OP_KAN_COD, 3u, var(m, l), r, e);
+}
+
+/* transp (<i> T k) i (X) with T k = A[i \/ k][j], under <i> with i 0,
+   j 1 and L at index 4. */
+static const Core *path_step(Machine *m, const Core *x) {
+  const Core *cell = path_cell(m, 5u, ivl(m, IVL_JOIN, var(m, 1u), var(m, 0)), 2u);
+  return op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "k", cell), var(m, 0), x);
+}
+
+/* Environment [L, phi, p] (p is index 0), L = <i> PathP (A[i]) a[i] b[i]:
+   <j> comp (<i> A[i][j]) (phi \/ ~j \/ j) (fun i => [ phi -> p @ j, ~j -> a[i], j -> b[i] ]) (p @ j),
+   and comp is the core term of check.c rule_comp, with the transp in each
+   branch:
+   <j> hcomp A[i1][j] (phi \/ ~j \/ j)
+         (fun i => [ phi -> S (p @ j), ~j -> S a[i], j -> S b[i] ])
+         (transp (<i> A[i][j]) i0 (p @ j)),  S = transp (<k> A[i \/ k][j]) i.
+   Under <j>: j 0, p 1, phi 2, L 3. Under <i> or fun i: i 0, j 1, p 2,
+   phi 3, L 4. Under <k>: k 0, i 1, j 2, p 3, phi 4, L 5. */
+static const Core *pathp_rule(Machine *m) {
+  const Core *face = ivl(m, IVL_JOIN, ivl(m, IVL_JOIN, var(m, 2u), ivl(m, IVL_REV, var(m, 0), NULL)), var(m, 0));
+  const Core *pj = papp(m, var(m, 1u), var(m, 0), path_end(m, 3u, zero(m), zero(m)), path_end(m, 3u, zero(m), one(m)));
+  const Core *base = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", path_cell(m, 4u, var(m, 0), 1u)), zero(m), pj);
+  const Core *pi = papp(m, var(m, 2u), var(m, 1u), path_end(m, 4u, zero(m), zero(m)), path_end(m, 4u, zero(m), one(m)));
+  const Core *args[6];
+  args[0] = var(m, 3u);
+  args[1] = path_step(m, pi);
+  args[2] = ivl(m, IVL_REV, var(m, 1u), NULL);
+  args[3] = path_step(m, path_end(m, 4u, var(m, 0), zero(m)));
+  args[4] = var(m, 1u);
+  args[5] = path_step(m, path_end(m, 4u, var(m, 0), one(m)));
+  return binder(m, CORE_PLAM, "j", hcomp4(m, path_cell(m, 3u, one(m), 0), face, tube(m, opn(m, OP_SYS, 3u, args, 6u)), base));
+}
+
 static const Value *instance(Machine *m, const Core *rule, const Value *line, const Value *phi, const Value *a) {
   const Env *env = env_push(m, env_push(m, env_push(m, NULL, line), phi), a);
   return rule == NULL || env == NULL ? NULL : eval_core(m, env, rule);
@@ -158,6 +298,8 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
     return instance(m, pair_rule(m, OP_PACK, OP_WITNESS, OP_PAYLOAD), line, phi, a);
   if (val_is(head, OP_PROD))
     return instance(m, pair_rule(m, OP_PAIR, OP_FIRST, OP_SECOND), line, phi, a);
+  if (val_is(head, OP_PATHP))
+    return instance(m, pathp_rule(m), line, phi, a);
   args[0] = line;
   args[1] = phi;
   args[2] = a;
@@ -173,21 +315,176 @@ static const Value *line_at(Machine *m, const Value *line, const Value *r) {
   t = closure_apply(m, line, r);
   if (t == NULL)
     return NULL;
-  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD))
+  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP))
     return t;
-  return kan_fail(m, "a template line that is not a Pi, Sigma or Prod");
+  return kan_fail(m, "a template line that is not a Pi, Sigma, Prod or PathP");
 }
 
+/* For a PathP line: the inner line A[r]. */
 const Value *kan_dom(Machine *m, const Value *line, const Value *r) {
   const Value *t = line_at(m, line, r);
   if (t == NULL)
     return NULL;
-  return val_is(t, OP_PROD) ? t->args[0] : t->dom;
+  return val_is(t, OP_PROD) || val_is(t, OP_PATHP) ? t->args[0] : t->dom;
 }
 
+/* For a PathP line: X is i0 or i1 and gives that end at r. */
 const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value *x) {
   const Value *t = line_at(m, line, r);
   if (t == NULL || x == NULL)
     return NULL;
+  if (val_is(t, OP_PATHP)) {
+    if (x->kind != VAL_IVL || !(ivl_is_const(x->ivl, 0) || ivl_is_const(x->ivl, 1)))
+      return kan_fail(m, "a PathP end that is not i0 or i1");
+    return t->args[ivl_is_const(x->ivl, 1) ? 2 : 1];
+  }
   return val_is(t, OP_PROD) ? t->args[1] : closure_apply(m, t, x);
+}
+
+/* The constant line <_> T, so that OP_KAN_COD gives the codomain of a type
+   T. Under the binder: the interval variable 0, T 1. */
+static const Value *const_line(Machine *m, const Value *t) {
+  const Env *env = env_push(m, NULL, t);
+  const Core *body = var(m, 1u);
+  return env == NULL || body == NULL ? NULL : val_closure(m, VAL_PLAM, "_", NULL, env, body);
+}
+
+/* Environment [L, phi, u, f] (f is index 0), L = <_> (x : A) -> B:
+   fun x => hcomp (COD(L, i0, x)) phi (fun i => [ phi -> (u i) x ]) (f x).
+   Under fun x: x 0, f 1, u 2, phi 3, L 4. Under fun i: i 0, x 1, f 2, u 3,
+   phi 4, L 5. */
+static const Core *hcomp_pi_rule(Machine *m) {
+  const Core *cod = op(m, OP_KAN_COD, 3u, var(m, 4u), zero(m), var(m, 0));
+  const Core *u = tube(m, sys1(m, var(m, 4u), app(m, app(m, var(m, 3u), var(m, 0)), var(m, 1u))));
+  return binder(m, CORE_LAM, "x", hcomp4(m, cod, var(m, 3u), u, app(m, var(m, 1u), var(m, 0))));
+}
+
+static const Env *env4(Machine *m, const Value *line, const Value *phi, const Value *u, const Value *u0) {
+  return env_push(m, env_push(m, env_push(m, env_push(m, NULL, line), phi), u), u0);
+}
+
+static const Value *instance4(Machine *m, const Core *rule, const Value *line, const Value *phi, const Value *u, const Value *u0) {
+  const Env *env = env4(m, line, phi, u, u0);
+  return rule == NULL || env == NULL ? NULL : eval_core(m, env, rule);
+}
+
+/* Environment [L, phi, u, p] (p is index 0), L = <_> T, T a Sigma or Prod
+   with the first component A = DOM(L, i0) and u1 i = p1 (u i):
+   fun r => hfill A phi u1 (p1 p) r
+        = fun r => hcomp A (phi \/ ~r) (fun i => [ phi -> u1 (i /\ r), ~r -> p1 p ]) (p1 p).
+   Under fun r: r 0, p 1, u 2, phi 3, L 4. Under fun i: i 0, r 1, p 2, u 3,
+   phi 4, L 5. */
+static const Core *pair_fill(Machine *m, Op p1) {
+  const Core *u1 = op(m, p1, 1u, app(m, var(m, 3u), ivl(m, IVL_MEET, var(m, 0), var(m, 1u))), NULL, NULL);
+  const Core *u = tube(m, sys2(m, var(m, 4u), u1, ivl(m, IVL_REV, var(m, 1u), NULL), op(m, p1, 1u, var(m, 2u), NULL, NULL)));
+  const Core *face = ivl(m, IVL_JOIN, var(m, 3u), ivl(m, IVL_REV, var(m, 0), NULL));
+  return tube(m, hcomp4(m, op(m, OP_KAN_DOM, 2u, var(m, 4u), zero(m), NULL), face, u, op(m, p1, 1u, var(m, 1u), NULL, NULL)));
+}
+
+/* Environment [L, phi, u, p, H] (H is index 0), H = pair_fill, B[r] =
+   COD(L, i0, H r), u2 i = p2 (u i):
+   pack (hcomp A phi u1 (p1 p)) (comp (<i> B[i]) phi u2 (p2 p)), and comp
+   is the core term of check.c rule_comp:
+   hcomp B[i1] phi (fun i => [ phi -> transp (<j> B[i \/ j]) i (u2 i) ])
+     (transp (<i> B[i]) i0 (p2 p)).
+   Under fun i or <i>: i 0, H 1, p 2, u 3, phi 4, L 5. Under <j>: j 0, i 1,
+   H 2, p 3, u 4, phi 5, L 6. */
+static const Core *hcomp_pair_rule(Machine *m, Op pack, Op p1, Op p2) {
+  const Core *first = hcomp4(m, op(m, OP_KAN_DOM, 2u, var(m, 4u), zero(m), NULL), var(m, 3u),
+                             tube(m, op(m, p1, 1u, app(m, var(m, 3u), var(m, 0)), NULL, NULL)), op(m, p1, 1u, var(m, 1u), NULL, NULL));
+  const Core *bj = op(m, OP_KAN_COD, 3u, var(m, 6u), zero(m), app(m, var(m, 2u), ivl(m, IVL_JOIN, var(m, 1u), var(m, 0))));
+  const Core *fill = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "j", bj), var(m, 0), op(m, p2, 1u, app(m, var(m, 3u), var(m, 0)), NULL, NULL));
+  const Core *bi = op(m, OP_KAN_COD, 3u, var(m, 5u), zero(m), app(m, var(m, 1u), var(m, 0)));
+  const Core *base = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", bi), zero(m), op(m, p2, 1u, var(m, 1u), NULL, NULL));
+  const Core *b1 = op(m, OP_KAN_COD, 3u, var(m, 4u), zero(m), app(m, var(m, 0), one(m)));
+  const Core *second = hcomp4(m, b1, var(m, 3u), tube(m, sys1(m, var(m, 4u), fill)), base);
+  return op(m, pack, 2u, first, second, NULL);
+}
+
+/* Environment [L, phi, u, p] (p is index 0), L = <_> PathP (A) a b:
+   <j> hcomp A[j] (phi \/ ~j \/ j) (fun i => [ phi -> (u i) @ j, ~j -> a, j -> b ]) (p @ j).
+   Under <j>: j 0, p 1, u 2, phi 3, L 4. Under fun i: i 0, j 1, p 2, u 3,
+   phi 4, L 5. */
+static const Core *hcomp_pathp_rule(Machine *m) {
+  const Core *face = ivl(m, IVL_JOIN, ivl(m, IVL_JOIN, var(m, 3u), ivl(m, IVL_REV, var(m, 0), NULL)), var(m, 0));
+  const Core *base = papp(m, var(m, 1u), var(m, 0), path_end(m, 4u, zero(m), zero(m)), path_end(m, 4u, zero(m), one(m)));
+  const Core *args[6];
+  args[0] = var(m, 4u);
+  args[1] = papp(m, app(m, var(m, 3u), var(m, 0)), var(m, 1u), path_end(m, 5u, zero(m), zero(m)), path_end(m, 5u, zero(m), one(m)));
+  args[2] = ivl(m, IVL_REV, var(m, 1u), NULL);
+  args[3] = path_end(m, 5u, zero(m), zero(m));
+  args[4] = var(m, 1u);
+  args[5] = path_end(m, 5u, zero(m), one(m));
+  return binder(m, CORE_PLAM, "j", hcomp4(m, path_cell(m, 4u, zero(m), 0), face, tube(m, opn(m, OP_SYS, 3u, args, 6u)), base));
+}
+
+static const Value *hcomp_pair(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0, Op pack, Op p1, Op p2) {
+  const Value *line = const_line(m, a);
+  const Value *h = line == NULL ? NULL : instance4(m, pair_fill(m, p1), line, phi, u, u0);
+  const Env *env = h == NULL ? NULL : env_push(m, env4(m, line, phi, u, u0), h);
+  const Core *rule = env == NULL ? NULL : hcomp_pair_rule(m, pack, p1, p2);
+  return rule == NULL ? NULL : eval_core(m, env, rule);
+}
+
+/* 1 when B on conjunction K of FACE converts to U0 there. LEVEL is above
+   each free level of B and U0. */
+static int same_on(Machine *m, uint32_t level, const Value *b, const Value *u0, const Ivl *face, uint32_t k) {
+  const Value *x = value_on_face(m, level, b, face, k);
+  const Value *y = x == NULL ? NULL : value_on_face(m, level, u0, face, k);
+  return y != NULL && conv_values(m, level, x, y);
+}
+
+/* The closed-type rule (M3-PLAN 3.4): 1 when each branch of u i (i fresh)
+   converts to U0 on its face. U0 does not use i, so the conversion is also
+   the constancy test. A free level at KAN_PROBE or above (a head probe of
+   kan_transp) gives 0:  the probe reads only the head. */
+static int hcomp_constant(Machine *m, const Value *u, const Value *u0) {
+  uint32_t bound = 0;
+  uint32_t j;
+  uint32_t k;
+  const Value *s;
+  if (!value_bound(m, u, &bound) || !value_bound(m, u0, &bound) || bound >= KAN_PROBE)
+    return 0;
+  s = apply_value(m, u, val_ivl_var(m, bound));
+  if (s == NULL)
+    return 0;
+  if (!val_is(s, OP_SYS))
+    return conv_values(m, bound + 1u, s, u0);
+  for (j = 0; j + 1u < s->argc; j += 2u)
+    for (k = 0; k < s->args[j]->ivl->count; k++)
+      if (!same_on(m, bound + 1u, s->args[j + 1u], u0, s->args[j]->ivl, k))
+        return 0;
+  return 1;
+}
+
+/* M3-PLAN 3.4 (s2): the face i1 rule, then the rule of the head former of
+   A, else a stuck value. No rule gives u0 for the face i0 on a general A
+   (D8). */
+const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
+  const Value *args[4];
+  if (a == NULL || phi == NULL || u == NULL || u0 == NULL)
+    return NULL;
+  if (phi->kind != VAL_IVL)
+    return kan_fail(m, "an hcomp with a bad face");
+  if (ivl_is_const(phi->ivl, 1))
+    return apply_value(m, u, val_ivl_end(m, 1));
+  if (closed_type(a) && a->kind != VAL_UNIV) {
+    if (hcomp_constant(m, u, u0))
+      return u0;
+    if (m->diag->set)
+      return NULL;
+  }
+  if (a->kind == VAL_PI)
+    return instance4(m, hcomp_pi_rule(m), const_line(m, a), phi, u, u0);
+  if (a->kind == VAL_SIGMA)
+    return hcomp_pair(m, a, phi, u, u0, OP_PACK, OP_WITNESS, OP_PAYLOAD);
+  if (val_is(a, OP_PROD))
+    return hcomp_pair(m, a, phi, u, u0, OP_PAIR, OP_FIRST, OP_SECOND);
+  if (val_is(a, OP_PATHP))
+    return instance4(m, hcomp_pathp_rule(m), const_line(m, a), phi, u, u0);
+  args[0] = a;
+  args[1] = phi;
+  args[2] = u;
+  args[3] = u0;
+  return val_op(m, VAL_STUCK, OP_HCOMP, 0, 0, args, 4u);
 }

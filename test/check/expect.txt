@@ -71,3 +71,5 @@ transp-constant.lang TRANSP_CONSTANT
 transp-meet.lang TRANSP_CONSTANT
 transp-interval.lang PATH_TYPE
 transp-guard.lang TYPE_REFL
+hcomp-base.lang HCOMP_BASE
+comp-base.lang HCOMP_BASE

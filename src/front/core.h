@@ -72,7 +72,8 @@ typedef enum {
   OP_SYS,      /* M2 s4: [ phi -> t, ... ]. inst: the branch count. args: face, body, ... */
   OP_TRANSP,   /* M3 s1: transp L phi a. args: the line (a PLAM closure), the face, a */
   OP_KAN_DOM,  /* M3 s1: kan.c only. args: L, r. The domain of L @ r */
-  OP_KAN_COD   /* M3 s1: kan.c only. args: L, r, x. The codomain of L @ r at x */
+  OP_KAN_COD,  /* M3 s1: kan.c only. args: L, r, x. The codomain of L @ r at x */
+  OP_HCOMP     /* M3 s2: hcomp A phi u u0. args: A, the face, u, u0 */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -257,6 +258,15 @@ const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
 const Core *quote_value(Machine *m, uint32_t level, const Value *v);
+/* M3 s2: value_bound opens closures at VALUE_BOUND_OPEN plus the current
+   depth. These levels are above the kan.c probe levels and below 2^31. */
+#define VALUE_BOUND_OPEN (3u << 29)
+/* M3 s2: raise *BOUND above each free level of V below this scan's open
+   level, including the temporary levels of active outer scans. */
+int value_bound(Machine *m, const Value *v, uint32_t *bound);
+/* V on conjunction K of the face normal form FACE. LEVEL is above each free
+   level of V. */
+const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl *face, uint32_t k);
 /* Writes V in the surface syntax. NAMES gives the names of the levels below
    NAME_COUNT. Returns 1 for a complete rendering, 0 on truncation or error. */
 int value_print(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap);

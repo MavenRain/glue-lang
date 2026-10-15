@@ -14,5 +14,8 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
    (OP_KAN_COD), for a Pi, Sigma or Prod line. */
 const Value *kan_dom(Machine *m, const Value *line, const Value *r);
 const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value *x);
+/* hcomp A phi u u0. PHI is in face normal form, U is a function of an
+   interval variable. M3-PLAN 3.4 (s2). */
+const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0);
 
 #endif

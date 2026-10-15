@@ -28,7 +28,8 @@ static const char *const OP_NAMES[] = {
   [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
   [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
-  [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?"
+  [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?",
+  [OP_HCOMP] = "hcomp"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -46,7 +47,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
-  [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3
+  [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3,
+  [OP_HCOMP] = 4
 };
 
 typedef enum {
@@ -345,6 +347,22 @@ static const Value *list_tail(Machine *m, const Value *tail, Op op, uint32_t ins
   return val_is(tail, OP_NIL) ? tail : internal(m, "a list that does not end in nil");
 }
 
+/* M3 s2: a partial element of a function type at ARG is the system of the
+   branches at ARG. The faces do not change. */
+static const Value *sys_apply(Machine *m, const Value *sys, const Value *arg) {
+  const Value **out = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *out);
+  uint32_t k;
+  if (out == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u) {
+    out[k] = sys->args[k];
+    out[k + 1u] = apply_value(m, sys->args[k + 1u], arg);
+    if (out[k + 1u] == NULL)
+      return NULL;
+  }
+  return val_op(m, VAL_OP, OP_SYS, sys->inst, 0, out, sys->argc);
+}
+
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   Value *v;
   if (fn == NULL || arg == NULL)
@@ -373,6 +391,8 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   case VAL_PLAM:
     break;
   }
+  if (val_is(fn, OP_SYS))
+    return sys_apply(m, fn, arg);
   return internal(m, "an application of a value that is not a function");
 }
 
@@ -388,10 +408,30 @@ const Value *closure_apply(Machine *m, const Value *binder, const Value *arg) {
   return eval_core(m, env, binder->body);
 }
 
+static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32_t n, Op ctor, uint32_t index);
+
+/* M3 s2: a projection of a partial element is the system of the projected
+   branches, as sys_apply. The faces do not change. */
+static const Value *sys_project(Machine *m, Op op, const Value *sys, Op ctor, uint32_t index) {
+  const Value **out = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *out);
+  uint32_t k;
+  if (out == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u) {
+    out[k] = sys->args[k];
+    out[k + 1u] = reduce_part(m, op, &sys->args[k + 1u], 1u, ctor, index);
+    if (out[k + 1u] == NULL)
+      return NULL;
+  }
+  return val_op(m, VAL_OP, OP_SYS, sys->inst, 0, out, sys->argc);
+}
+
 static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32_t n, Op ctor, uint32_t index) {
   const Value *out;
   if (blocked(m, a[0], op, 0, 0, a, n, &out))
     return out;
+  if (val_is(a[0], OP_SYS))
+    return sys_project(m, op, a[0], ctor, index);
   if (!val_is(a[0], ctor))
     return internal(m, "a projection of a value of the wrong type");
   return a[0]->args[index];
@@ -901,6 +941,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return kan_dom(m, a[0], a[1]);
   case OP_KAN_COD:
     return kan_cod(m, a[0], a[1], a[2]);
+  case OP_HCOMP:
+    return kan_hcomp(m, a[0], face_value(m, a[1]), a[2], a[3]);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -1032,6 +1074,24 @@ static const Value *eval_ivl(Machine *m, const Env *env, const Core *c) {
   return internal(m, "an unknown interval operation");
 }
 
+static const Value *papp_value(Machine *m, const Value *p, const Value *r, const Env *env, const Core *const *ends);
+
+/* M3 s2: a partial element of a path type at R is the system of the
+   branches at R, as sys_apply. The faces do not change. */
+static const Value *sys_papp(Machine *m, const Value *sys, const Value *r, const Env *env, const Core *const *ends) {
+  const Value **out = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *out);
+  uint32_t k;
+  if (out == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u) {
+    out[k] = sys->args[k];
+    out[k + 1u] = papp_value(m, sys->args[k + 1u], r, env, ends);
+    if (out[k + 1u] == NULL)
+      return NULL;
+  }
+  return val_op(m, VAL_OP, OP_SYS, sys->inst, 0, out, sys->argc);
+}
+
 /* P @ R. ENDS: the two ends of the type of P in ENV. They are NULL only in
    the eta rule of conv, where R is a fresh variable. */
 static const Value *papp_value(Machine *m, const Value *p, const Value *r, const Env *env, const Core *const *ends) {
@@ -1049,6 +1109,8 @@ static const Value *papp_value(Machine *m, const Value *p, const Value *r, const
   one = ivl_is_const(r->ivl, 1);
   if (ends != NULL && (one || ivl_is_const(r->ivl, 0)))
     return eval_core(m, env, ends[one]);
+  if (val_is(p, OP_SYS))
+    return sys_papp(m, p, r, env, ends);
   if (scrut_of(p) != SCRUT_NEUTRAL)
     return internal(m, "an application of a value that is not a path");
   v = new_value(m, VAL_PAPP);
@@ -1187,9 +1249,62 @@ static int interval_levels(Machine *m, uint32_t level, uint32_t free_count, cons
   return ok;
 }
 
+/* M3 s2: raise *BOUND above each free level of V below OPEN. Closures open
+   at LEVEL (OPEN or above), so their binders do not count. */
+static int free_bound(Machine *m, uint32_t level, uint32_t open, const Value *v, uint32_t *bound) {
+  uint32_t i;
+  int ok = 1;
+  if (v == NULL || !enter(m))
+    return 0;
+  switch (v->kind) {
+  case VAL_IVL:
+    for (i = 0; i < v->ivl->starts[v->ivl->count]; i++)
+      if (v->ivl->lits[i] / 2u < open && v->ivl->lits[i] / 2u >= *bound)
+        *bound = v->ivl->lits[i] / 2u + 1u;
+    break;
+  case VAL_VAR:
+    if (v->nat < open && v->nat >= *bound)
+      *bound = (uint32_t)v->nat + 1u;
+    break;
+  case VAL_LAM:
+  case VAL_PI:
+  case VAL_SIGMA:
+  case VAL_PLAM:
+    ok = (v->dom == NULL || free_bound(m, level, open, v->dom, bound))
+      && free_bound(m, level + 1u, open,
+        closure_apply(m, v, ivl_binder(v) ? val_ivl_var(m, level) : val_var(m, level)), bound);
+    break;
+  case VAL_APP:
+  case VAL_PAPP:
+    ok = free_bound(m, level, open, v->dom, bound) && free_bound(m, level, open, v->arg, bound);
+    for (i = 0; ok && i < v->argc; i++)
+      ok = free_bound(m, level, open, v->args[i], bound);
+    break;
+  case VAL_OP:
+  case VAL_STUCK:
+    for (i = 0; ok && i < v->argc; i++)
+      ok = free_bound(m, level, open, v->args[i], bound);
+    break;
+  case VAL_NAT:
+  case VAL_TRAP:
+  case VAL_UNIV:
+    break;
+  }
+  m->depth--;
+  return ok;
+}
+
+int value_bound(Machine *m, const Value *v, uint32_t *bound) {
+  /* A nested scan must count the open variables of its caller as free.
+     Depth also grows with the closure binders opened by free_bound, so
+     this start is above every open variable of an active outer scan. */
+  uint32_t open = VALUE_BOUND_OPEN + m->depth;
+  return free_bound(m, open, open, v, bound);
+}
+
 /* Substitute a conjunction into a value, preserving the distinction between
    ordinary variables and interval variables in the identity environment. */
-static const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl *face, uint32_t k) {
+const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl *face, uint32_t k) {
   unsigned char *levels = arena_alloc(m->arena, (size_t)level + 1u);
   const Env *env = NULL;
   uint32_t i;

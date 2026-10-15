@@ -33,6 +33,18 @@ static const Case CASES[] = {
    "def test : (B : Nat -> Type 0) -> (f g : (x : Nat) -> B x) -> (p : Path ((x : Nat) -> B x) f g) -> (x : Nat) -> Path (B x) ((happly p x) @ i0) (f x) := fun B f g p x => refl\n", NULL},
   {"dependent sym involution",
    "def test : (p : Path Nat 0 1) -> (q : PathP (<i> Path Nat 0 (p @ i)) refl p) -> Path (PathP (<i> Path Nat 0 (p @ i)) refl p) (sym (sym q)) q := fun p q => refl\n", NULL},
+  {"nested hcomp normalization",
+   "def nested : (n : Nat) -> (q : Path Nat n n) -> (k l : I) -> Nat := fun n q k l => hcomp Nat k (fun i => [ k -> hcomp Nat l (fun j => [ l -> q @ (i /\\ j) ]) n ]) n\n"
+   "def test : (n : Nat) -> (q : Path Nat n n) -> (k l : I) -> Path Nat (nested n q k l) (nested n q k l) := fun n q k l => refl\n", NULL},
+  {"dependent Sigma hcomp normalization",
+   "def dep : (p : Sigma (n : Nat) (Path Nat n n)) -> (s : Path (Sigma (n : Nat) (Path Nat n n)) p p) -> (k : I) -> Sigma (n : Nat) (Path Nat n n) := fun p s k => hcomp (Sigma (n : Nat) (Path Nat n n)) k (fun i => [ k -> s @ i ]) p\n"
+   "def test : (p : Sigma (n : Nat) (Path Nat n n)) -> (s : Path (Sigma (n : Nat) (Path Nat n n)) p p) -> (k : I) -> Path (Sigma (n : Nat) (Path Nat n n)) (dep p s k) (dep p s k) := fun p s k => refl\n", NULL},
+  {"nested hcomp preserves a nonconstant tube",
+   "def nested : (n : Nat) -> (q : Path Nat n n) -> (k l : I) -> Nat := fun n q k l => hcomp Nat k (fun i => [ k -> hcomp Nat l (fun j => [ l -> q @ (i /\\ j) ]) n ]) n\n"
+   "def test : (n : Nat) -> (q : Path Nat n n) -> (k l : I) -> Path Nat (nested n q k l) n := fun n q k l => refl\n", "TYPE_REFL"},
+  {"nested PathP transport normalization",
+   "def pathVar : (q : Path Nat 0 1) -> PathP (<j> Path Nat 0 1) q q := fun q => transp (<i> PathP (<j> Path Nat 0 (q @ i)) (<j> q @ (i /\\ j)) (<j> q @ (i /\\ j))) i0 (<j> <k> 0)\n"
+   "def test : (q : Path Nat 0 1) -> Path (PathP (<j> Path Nat 0 1) q q) (pathVar q) (pathVar q) := fun q => refl\n", NULL},
   {"cong rejects a wrong domain",
    "def r : Path Nat 0 0 := refl\n"
    "def test : (B : Flag -> Type 0) -> (f : (x : Flag) -> B x) -> Path (B flagYes) (f flagYes) (f flagYes) := fun B f => cong f r\n", "TYPE_MISMATCH"},

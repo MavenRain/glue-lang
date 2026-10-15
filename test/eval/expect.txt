@@ -56,7 +56,22 @@ kan etaNat => fun f => fun y => f y
 kan piLine => fun P => fun x => fun y => fun p => fun f => fun _x0 => f (transp (<j> P (p @ ~j)) i0 _x0)
 kan sigmaT => pack 2 3
 kan prodT => pair 1 2
-kan sigmaLine => fun p => pack (witness p) (transp (<i> Path Nat (witness p) (witness p)) i0 (payload p))
+kan sigmaLine => fun p => pack (witness p) (<j> (payload p) @ j)
 kan stuckP => fun P => fun n => fun u => transp (<i> P n) i0 u
 kan meetLine => fun A => fun j => fun a => transp (<i> A (j /\ i)) ~j a
 kan d4Path => fun u => fun i => fun j => [ i -> u i @ j ]
+kanpath hcompAt1 => fun q => 5
+kanpath constBase => fun n => fun k => n
+kanpath stuckBase => fun n => fun q => fun k => hcomp Nat ~k (fun i => [ ~k -> q @ i ]) n
+kanpath piHcomp => fun f => fun k => fun x => f x
+kanpath compConst => fun n => fun k => n
+kanpath fillAt0 => fun n => fun q => fun k => <i> n
+kanpath fillAt1 => fun n => fun q => fun k => <i> hcomp Nat ~k (fun _x0 => [ ~k -> [ ~k -> q @ _x0 ], i0 -> n ]) n
+kanpath sigmaHcomp => fun p => fun k => pack (witness p) (payload p)
+kanpath prodHcomp => fun k => pair 1 2
+kanpath prodStuck => fun n => fun q => fun k => pair (hcomp Nat ~k (fun i => [ ~k -> q @ i ]) n) 0
+kanpath pathEnd => fun x => fun y => fun q => fun z => fun w => fun r => fun p => <i> y
+kanpath pathSquare => fun x => fun y => fun q => fun z => fun w => fun r => fun p => <j> hcomp Nat (j \/ ~j) (fun i => [ i0 -> p @ j, ~j -> q @ i, j -> r @ i ]) (p @ j)
+kanpath pathHcomp => fun x => fun y => fun p => fun k => <j> p @ j
+kanpath pathHcompEnd => fun x => fun y => fun p => fun s => fun k => <i> y
+kanpath pathHcompStuck => fun x => fun y => fun p => fun s => fun k => <j> hcomp Nat (~k \/ j \/ ~j) (fun i => [ ~k -> [ ~k -> s @ i @ j ], ~j -> x, j -> y ]) (p @ j)
