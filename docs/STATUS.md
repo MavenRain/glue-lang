@@ -723,3 +723,136 @@ different variables of one path type do not convert.
     constructor (sumHcompStuck: a branch is a variable path).
   - O9 (s3, new): `refl` cannot be inferred, so it is not accepted as the
     path argument of trans, transport, subst or J. Use a definition.
+
+### s4: equivalences, Glue, glue, unglue and ua (2026-10-15)
+
+- Files: src/front/core.h, eval.c and check.c, src/json.c and
+  test/path-regressions.c. Guest
+  tests: examples/glue.lang and test/json/glue.json (new); in test/check/,
+  glue-no-hint.lang, unglue-nat.lang, glue-boundary.lang,
+  glue-face-cover.lang, reserved-ua.lang and reserved-Glue-type.lang (new);
+  test/emit/glue-instance.lang (new); rows in test/check/expect.txt,
+  test/eval/expect.txt and test/emit/expect.txt.
+- Core: core.h adds OP_GLUE (args: A, the face, the system of `pack T e`),
+  OP_GLUE_ELEM (args: a, the face, the system of t) and OP_UNGLUE (args: g,
+  the face, the system of the Glue type).
+- Evaluator (eval.c, M3-PLAN 3.4): reduce_glue, reduce_glue_elem and
+  reduce_unglue. On the face i1 the system is its branch body:
+  `Glue A [ i1 -> pack T e ]` is T, `glue [ i1 -> t ] a` is t and
+  `unglue g` is `first e g`. `unglue (glue s a)` is a. Else Glue and glue
+  are canonical values, and unglue of a neutral value is stuck. project
+  gives the projection of one value.
+- Conversion (3.5): conv_glue gives Glue eta. A neutral g is equal to
+  `glue s a` when `unglue g` converts to a and, on each conjunction of the
+  face, g converts to the branch of s. The face and the system come from
+  the glue value, not from a type. No conv rule reads a type.
+- Printer: print_glue writes `Glue A [ ... ]`, `glue [ ... ] a` and
+  `unglue g`.
+- JSON (json.c, 3.6): an instance of a Glue type gives JSON_VALUE ("a value
+  of a Glue type"). On the face i1 a Glue type is T, so only a face that is
+  not i1 gets to this case. OP_UNGLUE as a type gives INTERNAL, as the Kan
+  operations do. OP_GLUE_ELEM as a type gives INTERNAL.
+- Typing (check.c): RULE_IS_CONTR, RULE_FIBER, RULE_IS_EQUIV, RULE_EQUIV,
+  RULE_ID_EQUIV, RULE_GLUE, RULE_GLUE_ELEM, RULE_UNGLUE and RULE_UA. Each
+  rule writes a core term (D2).
+  - core_is_contr, core_fiber, core_is_equiv, core_equiv and core_id_equiv
+    write the terms of M3-PLAN section 4. `idEquiv A` takes no type
+    argument in the core. path_core writes a Path term. Core and Value
+    retain the universe of checked type terms in sort_level (n + 1 for
+    Type n, zero when unknown). Elaboration records it; evaluation, quote
+    and shifting preserve it. type_level uses that information for nominal,
+    neutral and computed types, with structural reconstruction for generated
+    type values. FamilyInfo supplies a domain family's universe. arrow_cod
+    gives B of a non-dependent `A -> B` (value_bound).
+  - `first` and `second` on an Equiv value: rule_part sends a Sigma
+    argument to sigma_part (OP_WITNESS and OP_PAYLOAD). rule_sigma_part
+    shares sigma_part. Prod does not change.
+  - papp_ends writes CORE_PAPP with core ends. core_papp calls it.
+  - rule_glue: A : Type n. The system checks against
+    `Partial psi (Sigma (T : Type n) (Equiv T A))`, where psi is the join
+    of its faces (sys_face, D5). An argument that is not a system gives
+    PARTIAL_EXPECTED.
+  - rule_glue_elem: glue checks only against a declared Glue type, else
+    GLUE_EXPECTED. The system checks against `Partial psi T` (FACE_COVER),
+    with T from the witness of the Glue system. a checks against A.
+    glue_boundary: on each conjunction of psi, `(witness e) t` converts to
+    a, else GLUE_BOUNDARY.
+  - rule_unglue: `unglue g` infers A. The core copies the face and the
+    system of the type of g (D5 of M2). A term that is not of a Glue type
+    gives GLUE_EXPECTED.
+  - rule_ua: `ua e : Path (Type n) A B`, with `e : Equiv A B`. The core is
+    `<i> Glue B [ ~i -> pack A e, i -> pack B (idEquiv B) ]`. A type that
+    is not `Equiv A B`, or A and B in different universes, gives
+    TYPE_MISMATCH.
+- Names: isContr, fiber, isEquiv, Equiv, idEquiv, Glue, glue, unglue and ua
+  move from RESERVED to BUILTINS. RESERVED keeps Bool, Text and uaBeta. The
+  reserved-*.lang rows keep REFUSE_NAME. No new check codes.
+- Guest tests: examples/glue.lang has 17 definitions and 12 eval rows
+  (glue): firstId, centerId, secondId, glueAt1, gl, ungl, ung, ungAt1, eta,
+  uaEnd0, uaEnd1 and uaIdAt0. It has Equiv, idEquiv, `first` and `second`
+  on idEquiv, isContr and fiber (contrId), Glue at the faces i1 (glueAt1)
+  and j (gl), glue, unglue, unglue at the face i1 (ungAt1), Glue beta
+  (beta), Glue eta (eta) and the ends of ua as `refl` rows (uaEnd0,
+  uaEnd1, uaId0, uaId1). test/json/glue.json has 3 instances (firstId,
+  centerId, ungAt1). Check rows: glue-no-hint.lang and unglue-nat.lang
+  GLUE_EXPECTED, glue-boundary.lang GLUE_BOUNDARY, glue-face-cover.lang
+  FACE_COVER, reserved-ua.lang and reserved-Glue-type.lang REFUSE_NAME.
+  reserved-glue.lang (s1) covers glue. The file system is not case
+  sensitive, so the Glue row has the name reserved-Glue-type.lang. Build
+  refusal row: glue-instance.lang JSON_VALUE.
+- Design facts:
+  - The FACE_COVER row uses a Glue face `j \/ k` with two branches and
+    `glue [ j -> 5 ] 5`. check_sys checks each live body before coverage.
+  - For glue systems, a branch on i0 has no selected branch type. Its
+    unreachable body is erased to unit while retaining its false face.
+    Coverage, live branch typing, base typing and GLUE_BOUNDARY remain
+    checked. `glue [ i0 -> 5 ] 5` constructs an empty-face Glue element.
+  - unglue maps over partial systems before an outer face is selected,
+    as application and projections do.
+  - Glue eta applies only when the other side is neutral.
+- Mutants (each with `make -B check`, source restored after): 3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| Glue face i1 rule off (reduce_glue, always the canonical Glue value) | examples/glue.lang (glueAt1: TYPE_REFL, the start is `Glue Nat pack Field e`, the end is `Field`) |
+| GLUE_BOUNDARY off (glue_boundary, the conv test is `0 && ...`) | glue-boundary.lang GLUE_BOUNDARY (exit 0) |
+| unglue beta off (reduce_unglue, a glue element gives a stuck unglue) | examples/glue.lang (beta: TYPE_REFL, the start is `unglue (glue [ j -> 5 ] 5)`, the end is `5`) |
+
+- For mutants 1 and 3, examples/glue.lang does not check, so each glue
+  eval row fails and the json build of glue.lang fails. Mutant 1 also
+  kills uaEnd0 alone (TYPE_REFL, the start is `Glue Field pack Nat e`).
+- Mutant form: mutant 3 returns
+  `val_op(m, VAL_STUCK, OP_UNGLUE, 0, 0, a, n)` for a glue element. A
+  mutant that only removes the beta line sends the glue element to
+  `blocked`, which gives INTERNAL ("unglue of a value that is not a glue
+  element"). That is not a semantic kill.
+- Gates: `make -B check` exit 0 (examples 20, parse refusals 15, check
+  refusals 81, evals 115, json 17, build refusals 5, circuits 3,
+  circuit refusals 10, satcheck refusals 6, native circuit regressions 9,
+  native path regressions 40, native face regressions 32, each with 0
+  failed; gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0. `make
+  e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).
+- Open items:
+  - O8 (s4): transp and hcomp at a Glue type stay stuck. s5 adds them
+    (M3-PLAN 3.4, D8).
+
+- Staged review (2026-10-15): three MEDIUM findings fixed. O10 and O11
+  are closed. No CI or test weakening was found.
+  - Empty-face glue construction rejected valid terms with
+    TYPE_MISMATCH, including `glue [ i0 -> 5 ] 5`. The checker now
+    erases only unreachable glue branch bodies.
+  - `ua (idEquiv Color)` and `ua (idEquiv (P x))` gave TYPE_INFER.
+    Checked universe metadata also covers types computed by fold,
+    projected types and types restricted to a face.
+  - unglue of a partial system caused INTERNAL during normalization.
+    The evaluator now preserves and maps its branches.
+  - Seventeen C regressions cover these fixes and refusal guards.
+    The original staged implementation fails 15 of the 40 native path
+    cases; the fixed implementation passes all 40. ASan and UBSan pass.
+    `make -B check` and the full e2e pipeline pass, including 33 Forge
+    tests. The pipeline reuses the unchanged Halo2 binary.

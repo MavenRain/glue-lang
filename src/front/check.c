@@ -85,7 +85,16 @@ typedef enum {
   RULE_SUBST,
   RULE_TRANSPORT_REFL,
   RULE_J,
-  RULE_J_REFL
+  RULE_J_REFL,
+  RULE_IS_CONTR,
+  RULE_FIBER,
+  RULE_IS_EQUIV,
+  RULE_EQUIV,
+  RULE_ID_EQUIV,
+  RULE_GLUE,
+  RULE_GLUE_ELEM,
+  RULE_UNGLUE,
+  RULE_UA
 } Rule;
 
 typedef struct {
@@ -156,7 +165,16 @@ static const Builtin BUILTINS[] = {
   {"subst", 3, RULE_SUBST, OP_TRANSP, OP_NAT, 0},
   {"transportRefl", 1, RULE_TRANSPORT_REFL, OP_TRANSP, OP_NAT, 0},
   {"J", 3, RULE_J, OP_TRANSP, OP_NAT, 0},
-  {"JRefl", 2, RULE_J_REFL, OP_TRANSP, OP_NAT, 0}
+  {"JRefl", 2, RULE_J_REFL, OP_TRANSP, OP_NAT, 0},
+  {"isContr", 1, RULE_IS_CONTR, OP_PATHP, OP_NAT, 0},
+  {"fiber", 2, RULE_FIBER, OP_PATHP, OP_NAT, 0},
+  {"isEquiv", 1, RULE_IS_EQUIV, OP_PATHP, OP_NAT, 0},
+  {"Equiv", 2, RULE_EQUIV, OP_PATHP, OP_NAT, 0},
+  {"idEquiv", 1, RULE_ID_EQUIV, OP_PACK, OP_NAT, 0},
+  {"Glue", 2, RULE_GLUE, OP_GLUE, OP_NAT, 0},
+  {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0},
+  {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0},
+  {"ua", 1, RULE_UA, OP_GLUE, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -164,8 +182,7 @@ static const Builtin BUILTINS[] = {
 /* Names that no declaration can take (rule R4). M3 D10: each Kan, Glue and
    univalence name is reserved from s1, and its slice moves it to BUILTINS. */
 static const char *const RESERVED[] = {
-  "Bool", "Text", "Glue", "ua", "isContr", "fiber",
-  "isEquiv", "Equiv", "idEquiv", "glue", "unglue", "uaBeta"
+  "Bool", "Text", "uaBeta"
 };
 
 typedef enum {
@@ -603,6 +620,15 @@ static const Core *rule_subst(Call *k);
 static const Core *rule_transport_refl(Call *k);
 static const Core *rule_j(Call *k);
 static const Core *rule_j_refl(Call *k);
+static const Core *rule_is_contr(Call *k);
+static const Core *rule_fiber(Call *k);
+static const Core *rule_is_equiv(Call *k);
+static const Core *rule_equiv(Call *k);
+static const Core *rule_id_equiv(Call *k);
+static const Core *rule_glue(Call *k);
+static const Core *rule_glue_elem(Call *k);
+static const Core *rule_unglue(Call *k);
+static const Core *rule_ua(Call *k);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -610,12 +636,18 @@ static const Core *rule_refl(Call *k) {
   return val_is(k->hint, OP_PATHP) ? refl_path(k) : need_type(k, "Path A a b");
 }
 
+static const Core *sigma_part(Call *k, const Core *s, const Value *st);
+
+/* M3 s4: first and second of a Sigma value (for example an Equiv) are its
+   witness and its payload. */
 static const Core *rule_part(Call *k) {
   Checker *c = k->c;
   const Value *pt = NULL;
   const Core *p = infer(c, k->args[0], &pt);
   if (p == NULL)
     return NULL;
+  if (pt != NULL && pt->kind == VAL_SIGMA)
+    return sigma_part(k, p, pt);
   if (!val_is(pt, OP_PROD))
     return nul(FAIL(c, "TYPE_MISMATCH", "%s needs a pair, found a term of type %s", k->b->name, show(c, pt)));
   k->type = pt->args[k->b->part];
@@ -626,12 +658,17 @@ static const Core *rule_sigma_part(Call *k) {
   Checker *c = k->c;
   const Value *st = NULL;
   const Core *s = infer(c, k->args[0], &st);
-  const Core *w;
   if (s == NULL)
     return NULL;
   if (st == NULL || st->kind != VAL_SIGMA)
     return nul(FAIL(c, "TYPE_MISMATCH", "%s needs a Sigma value, found a term of type %s", k->b->name, show(c, st)));
-  w = op3(c, OP_WITNESS, 0, 1, s, NULL, NULL);
+  return sigma_part(k, s, st);
+}
+
+/* S : ST, a Sigma type. PART 0 gives the witness, PART 1 the payload. */
+static const Core *sigma_part(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  const Core *w = op3(c, OP_WITNESS, 0, 1, s, NULL, NULL);
   k->type = k->b->part == 0u ? st->dom : closure_apply(c->m, st, here(c, w));
   return k->b->part == 0u ? w : op3(c, OP_PAYLOAD, 0, 1, s, NULL, NULL);
 }
@@ -941,7 +978,14 @@ static const Core *core_shift(Checker *c, const Core *k, uint32_t by, uint32_t c
     return NULL;
   switch (k->kind) {
   case CORE_VAR:
-    return k->index < cut ? k : core_index(c, CORE_VAR, k->index + by);
+    if (k->index < cut)
+      return k;
+    n = new_core(c, CORE_VAR);
+    if (n != NULL) {
+      *n = *k;
+      n->index += by;
+    }
+    return n;
   case CORE_GLOBAL:
   case CORE_NAT:
   case CORE_TRAP:
@@ -977,27 +1021,32 @@ static const Core *core_shift(Checker *c, const Core *k, uint32_t by, uint32_t c
   return c->m->diag->set ? NULL : n;
 }
 
-/* The core term P @ R, P : PT = PathP L a b, in a context of LEVEL binders.
-   The core keeps a and b, so the evaluator can reduce a neutral P at i0 and
-   i1 (D5). */
-static const Core *core_papp(Checker *c, uint32_t level, const Core *p, const Value *pt, const Core *r) {
+/* The core term P @ R with the ends X and Y of the type of P (D5). */
+static const Core *papp_ends(Checker *c, const Core *p, const Core *r, const Core *x, const Core *y) {
   const Core **ends;
   Core *k;
-  if (p == NULL || r == NULL)
+  if (p == NULL || r == NULL || x == NULL || y == NULL)
     return NULL;
   ends = arena_alloc(c->m->arena, 2u * sizeof *ends);
   k = ends == NULL ? NULL : new_core(c, CORE_PAPP);
   if (k == NULL)
     return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
-  ends[0] = quote_value(c->m, level, pt->args[1]);
-  ends[1] = quote_value(c->m, level, pt->args[2]);
-  if (ends[0] == NULL || ends[1] == NULL)
-    return NULL;
+  ends[0] = x;
+  ends[1] = y;
   k->a = p;
   k->b = r;
   k->args = ends;
   k->argc = 2u;
   return k;
+}
+
+/* The core term P @ R, P : PT = PathP L a b, in a context of LEVEL binders.
+   The core keeps a and b, so the evaluator can reduce a neutral P at i0 and
+   i1 (D5). */
+static const Core *core_papp(Checker *c, uint32_t level, const Core *p, const Value *pt, const Core *r) {
+  if (p == NULL || r == NULL)
+    return NULL;
+  return papp_ends(c, p, r, quote_value(c->m, level, pt->args[1]), quote_value(c->m, level, pt->args[2]));
 }
 
 /* The closure of KIND (VAL_LAM, VAL_PI or VAL_PLAM) with the body BODY, a
@@ -1275,6 +1324,24 @@ static const Core *rule(Call *k) {
     return rule_j(k);
   case RULE_J_REFL:
     return rule_j_refl(k);
+  case RULE_IS_CONTR:
+    return rule_is_contr(k);
+  case RULE_FIBER:
+    return rule_fiber(k);
+  case RULE_IS_EQUIV:
+    return rule_is_equiv(k);
+  case RULE_EQUIV:
+    return rule_equiv(k);
+  case RULE_ID_EQUIV:
+    return rule_id_equiv(k);
+  case RULE_GLUE:
+    return rule_glue(k);
+  case RULE_GLUE_ELEM:
+    return rule_glue_elem(k);
+  case RULE_UNGLUE:
+    return rule_unglue(k);
+  case RULE_UA:
+    return rule_ua(k);
   }
   return NULL;
 }
@@ -2210,7 +2277,7 @@ static const Core *rule_j_refl(Call *k) {
 /* M2 s4: [ phi1 -> t1, ... ] against Partial phi A. Each ti : A under each
    conjunction of phi_i;  FACE_AGREE on each meet;  FACE_COVER: the join of
    the faces is phi. */
-static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const Value **type) {
+static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const Value **type, int glue) {
   IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
   const Ivl *cover = ivl_const(&h, 0);
   const Value *base;
@@ -2265,7 +2332,10 @@ static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const
     for (l = 0; l < count; l++, at++) {
       faces[at] = face->count == 0u ? face : face_conj(&h, face, l);
       args[2u * at] = faces[at] == NULL ? NULL : quote_value(c->m, c->level, val_ivl(c->m, faces[at]));
-      args[2u * at + 1u] = args[2u * at] == NULL ? NULL : face->count == 0u
+      /* A false Glue branch has no selected branch type. Its body is
+         unreachable under every substitution, so keep an erased unit body. */
+      args[2u * at + 1u] = args[2u * at] == NULL ? NULL : glue && face->count == 0u
+        ? op3(c, OP_UNIT_VAL, 0, 0, NULL, NULL, NULL) : face->count == 0u
         ? check(c, b->right, base) : check_restricted(c, b->right, base, face, l);
       if (args[2u * at + 1u] == NULL)
         return NULL;
@@ -2279,6 +2349,297 @@ static const Core *check_sys(Checker *c, const Term *t, const Value *hint, const
         return NULL;
   *type = hint;
   return core_op(c, OP_SYS, n, 0, args, 2u * n);
+}
+
+/* M3 s4: the equivalences of M3-PLAN section 4 as core terms (D2). The
+   arguments are core terms in the current context. Each builder moves them
+   under its binders. */
+
+/* Path A x y, with the constant line <_> A. */
+static const Core *path_core(Checker *c, const Core *a, const Core *x, const Core *y) {
+  return op3(c, OP_PATHP, 0, 3, core_bind(c, CORE_PLAM, "_", NULL, up(c, a)), x, y);
+}
+
+/* isContr A = Sigma (c : A) ((y : A) -> Path A c y) */
+static const Core *core_is_contr(Checker *c, const Core *a) {
+  const Core *path = path_core(c, core_shift(c, a, 2u, 0), core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0));
+  return core_bind(c, CORE_SIGMA, "c", a, core_bind(c, CORE_PI, "y", up(c, a), path));
+}
+
+/* fiber f y = Sigma (x : A) (Path B (f x) y), f : A -> B, y : B */
+static const Core *core_fiber(Checker *c, const Core *a, const Core *b, const Core *f, const Core *y) {
+  const Core *fx = core_app(c, up(c, f), core_index(c, CORE_VAR, 0));
+  return core_bind(c, CORE_SIGMA, "x", a, path_core(c, up(c, b), fx, up(c, y)));
+}
+
+/* isEquiv f = (y : B) -> isContr (fiber f y), f : A -> B */
+static const Core *core_is_equiv(Checker *c, const Core *a, const Core *b, const Core *f) {
+  const Core *fib = core_fiber(c, up(c, a), up(c, b), up(c, f), core_index(c, CORE_VAR, 0));
+  return core_bind(c, CORE_PI, "y", b, core_is_contr(c, fib));
+}
+
+/* Equiv A B = Sigma (f : A -> B) (isEquiv f) */
+static const Core *core_equiv(Checker *c, const Core *a, const Core *b) {
+  const Core *fn = core_bind(c, CORE_PI, NULL, a, up(c, b));
+  return core_bind(c, CORE_SIGMA, "f", fn, core_is_equiv(c, up(c, a), up(c, b), core_index(c, CORE_VAR, 0)));
+}
+
+/* idEquiv A = pack (fun x => x) (fun y => pack (pack y (<_> y))
+   (fun z => <i> pack (second z @ ~i) (<j> second z @ (~i \/ j)))). The
+   path second z has the ends witness z and y. The term does not use A. */
+static const Core *core_id_equiv(Checker *c) {
+  const Core *z_ij = papp_ends(c, op3(c, OP_PAYLOAD, 0, 1, core_index(c, CORE_VAR, 2u), NULL, NULL),
+                               core_ivl(c, IVL_JOIN, core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 1u), NULL), core_index(c, CORE_VAR, 0)),
+                               op3(c, OP_WITNESS, 0, 1, core_index(c, CORE_VAR, 2u), NULL, NULL), core_index(c, CORE_VAR, 3u));
+  const Core *z_i = papp_ends(c, op3(c, OP_PAYLOAD, 0, 1, core_index(c, CORE_VAR, 1u), NULL, NULL),
+                              core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 0), NULL),
+                              op3(c, OP_WITNESS, 0, 1, core_index(c, CORE_VAR, 1u), NULL, NULL), core_index(c, CORE_VAR, 2u));
+  const Core *contract = core_bind(c, CORE_LAM, "z", NULL,
+                                   core_bind(c, CORE_PLAM, "i", NULL, op3(c, OP_PACK, 0, 2, z_i, core_bind(c, CORE_PLAM, "j", NULL, z_ij), NULL)));
+  const Core *center = op3(c, OP_PACK, 0, 2, core_index(c, CORE_VAR, 0), core_bind(c, CORE_PLAM, "_", NULL, core_index(c, CORE_VAR, 1u)), NULL);
+  const Core *id = core_bind(c, CORE_LAM, "x", NULL, core_index(c, CORE_VAR, 0));
+  return op3(c, OP_PACK, 0, 2, id, core_bind(c, CORE_LAM, "y", NULL, op3(c, OP_PACK, 0, 2, center, contract, NULL)), NULL);
+}
+
+/* *LEVEL is n for a type T in Type n: a universe, a neutral, a core type
+   former, a Pi or Sigma type, a path type or a Glue type. Else
+   TYPE_INFER. */
+static int type_level(Checker *c, const char *name, const Value *t, uint64_t *level) {
+  const Scope *s = c->scope;
+  uint64_t la = 0;
+  uint64_t lb = 0;
+  int ok;
+  if (t != NULL && t->kind == VAL_UNIV) {
+    *level = t->nat + 1u;
+    return 1;
+  }
+  if (t != NULL && t->sort_level != 0u) {
+    *level = t->sort_level - 1u;
+    return 1;
+  }
+  while (t != NULL && t->kind == VAL_VAR && s != NULL && s->level != t->nat)
+    s = s->next;
+  if (t != NULL && t->kind == VAL_VAR && s != NULL && s->type != NULL && s->type->kind == VAL_UNIV) {
+    *level = s->type->nat;
+    return 1;
+  }
+  if (val_is(t, OP_FAMILY)) {
+    *level = c->m->families[t->inst].universe;
+    return 1;
+  }
+  if (val_is(t, OP_NAT) || val_is(t, OP_FLAG) || val_is(t, OP_FIELD) || val_is(t, OP_UNIT)) {
+    *level = 0;
+    return 1;
+  }
+  if (val_is(t, OP_OPTION) || val_is(t, OP_LIST) || val_is(t, OP_GLUE))
+    return type_level(c, name, t->args[0], level);
+  if (val_is(t, OP_PATHP))
+    return type_level(c, name, closure_apply(c->m, t->args[0], val_ivl_end(c->m, 0)), level);
+  if (val_is(t, OP_PROD) || val_is(t, OP_SUM)) {
+    ok = type_level(c, name, t->args[0], &la) && type_level(c, name, t->args[1], &lb);
+    *level = la > lb ? la : lb;
+    return ok;
+  }
+  if (t != NULL && (t->kind == VAL_PI || t->kind == VAL_SIGMA) && type_level(c, name, t->dom, &la)) {
+    if (!push(c, t->name, t->dom))
+      return 0;
+    ok = type_level(c, name, closure_apply(c->m, t, val_var(c->m, c->level - 1u)), &lb);
+    pop(c);
+    *level = la > lb ? la : lb;
+    return ok;
+  }
+  return c->m->diag->set ? 0 : FAIL(c, "TYPE_INFER", "%s cannot find the universe of the type %s", name, show(c, t));
+}
+
+/* B when FT is a function type A -> B whose codomain does not use the
+   binder, else NULL. */
+static const Value *arrow_cod(Checker *c, const Value *ft) {
+  uint32_t bound = 0;
+  const Value *b = ft == NULL || ft->kind != VAL_PI ? NULL : closure_apply(c->m, ft, val_var(c->m, c->level));
+  return b != NULL && value_bound(c->m, b, &bound) && bound <= c->level ? b : NULL;
+}
+
+/* isContr A : Type n, A : Type n. */
+static const Core *rule_is_contr(Call *k) {
+  uint64_t level = 0;
+  const Core *a = check_type(k->c, k->args[0], &level);
+  k->type = val_univ(k->c->m, level);
+  return core_is_contr(k->c, a);
+}
+
+/* f : A -> B of fiber and isEquiv. *A and *B get the core terms of A and
+   B; the type of the result is the larger universe of A and B. */
+static const Core *equiv_fn(Call *k, const Core **a, const Core **b) {
+  Checker *c = k->c;
+  const Value *ft = NULL;
+  const Core *f = infer(c, k->args[0], &ft);
+  const Value *cod = f == NULL ? NULL : arrow_cod(c, ft);
+  uint64_t la = 0;
+  uint64_t lb = 0;
+  if (f != NULL && cod == NULL)
+    return nul(FAIL(c, "TYPE_NOT_FUNCTION", "%s needs a function f : A -> B, found a term of type %s", k->b->name, show(c, ft)));
+  if (cod == NULL || !type_level(c, k->b->name, ft->dom, &la) || !type_level(c, k->b->name, cod, &lb))
+    return NULL;
+  *a = quote_value(c->m, c->level, ft->dom);
+  *b = quote_value(c->m, c->level, cod);
+  k->type = val_univ(c->m, la > lb ? la : lb);
+  return *a == NULL || *b == NULL ? NULL : f;
+}
+
+/* fiber f y : Type n, f : A -> B, y : B. */
+static const Core *rule_fiber(Call *k) {
+  const Core *a = NULL;
+  const Core *b = NULL;
+  const Core *f = equiv_fn(k, &a, &b);
+  const Core *y = f == NULL ? NULL : check(k->c, k->args[1], here(k->c, b));
+  return y == NULL ? NULL : core_fiber(k->c, a, b, f, y);
+}
+
+/* isEquiv f : Type n, f : A -> B. */
+static const Core *rule_is_equiv(Call *k) {
+  const Core *a = NULL;
+  const Core *b = NULL;
+  const Core *f = equiv_fn(k, &a, &b);
+  return f == NULL ? NULL : core_is_equiv(k->c, a, b, f);
+}
+
+/* Equiv A B : Type n, A : Type n, B : Type m, n the larger level. */
+static const Core *rule_equiv(Call *k) {
+  uint64_t la = 0;
+  uint64_t lb = 0;
+  const Core *a = check_type(k->c, k->args[0], &la);
+  const Core *b = a == NULL ? NULL : check_type(k->c, k->args[1], &lb);
+  k->type = val_univ(k->c->m, la > lb ? la : lb);
+  return b == NULL ? NULL : core_equiv(k->c, a, b);
+}
+
+/* idEquiv A : Equiv A A. */
+static const Core *rule_id_equiv(Call *k) {
+  uint64_t level = 0;
+  const Core *a = check_type(k->c, k->args[0], &level);
+  k->type = a == NULL ? NULL : here(k->c, core_equiv(k->c, a, a));
+  return k->type == NULL ? NULL : core_id_equiv(k->c);
+}
+
+/* The join of the branch faces of the system T, a core interval term. */
+static const Core *sys_face(Checker *c, const char *name, const Term *t) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Ivl *cover = ivl_const(&h, 0);
+  const Term *b;
+  if (t->kind != TERM_SYS)
+    return nul(FAIL(c, "PARTIAL_EXPECTED", "%d:%d: %s needs a system [ phi -> t, ... ] here", t->line, t->col, name));
+  for (b = t; b != NULL && cover != NULL; b = b->next) {
+    const Value *fv = here(c, elab_ivl(c, b->left));
+    const Ivl *f = fv == NULL ? NULL : face_norm(&h, fv->ivl);
+    cover = f == NULL ? NULL : face_join(&h, cover, f);
+  }
+  return cover == NULL ? NULL : quote_value(c->m, c->level, val_ivl(c->m, cover));
+}
+
+/* Glue A [ phi -> pack T e, ... ] : Type n. A : Type n. The system checks
+   against Partial psi (Sigma (T : Type n) (Equiv T A)), psi the join of its
+   faces (D5). */
+static const Core *rule_glue(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *a = check_type(c, k->args[0], &level);
+  const Core *psi = a == NULL ? NULL : sys_face(c, "Glue", k->args[1]);
+  const Core *fam = psi == NULL ? NULL : core_bind(c, CORE_SIGMA, "T", core_leaf(c, CORE_UNIV, level), core_equiv(c, core_index(c, CORE_VAR, 0), up(c, a)));
+  const Value *want = fam == NULL ? NULL : tyop(c, OP_PARTIAL, 2, here(c, psi), here(c, fam), NULL);
+  const Core *sys = want == NULL ? NULL : check(c, k->args[1], want);
+  k->type = val_univ(c->m, level);
+  return sys == NULL ? NULL : op3(c, OP_GLUE, 0, 3, a, psi, sys);
+}
+
+/* GLUE_BOUNDARY: on each conjunction of NORM, (witness e) t converts to a.
+   pack T e is the branch of GSYS, the system of the Glue type; t is the
+   branch of TSYS. */
+static int glue_boundary(Checker *c, const Ivl *norm, const Core *gsys, const Core *tsys, const Core *a) {
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Core *f = op3(c, OP_WITNESS, 0, 1, op3(c, OP_PAYLOAD, 0, 1, gsys, NULL, NULL), NULL, NULL);
+  uint32_t j;
+  for (j = 0; f != NULL && j < norm->count; j++) {
+    const Value *fv = eval_restricted(c, f, norm, j);
+    const Value *tv = fv == NULL ? NULL : eval_restricted(c, tsys, norm, j);
+    const Value *x = tv == NULL ? NULL : apply_value(c->m, fv, tv);
+    const Value *y = x == NULL ? NULL : eval_restricted(c, a, norm, j);
+    if (y == NULL)
+      return 0;
+    if (!conv_values(c->m, c->level, x, y))
+      return c->m->diag->set ? 0 : FAIL(c, "GLUE_BOUNDARY", "glue needs (witness e) t to be a on %s, but (witness e) t is %s and a is %s", show(c, val_ivl(c->m, face_conj(&h, norm, j))), show(c, x), show(c, y));
+  }
+  return f != NULL;
+}
+
+/* glue [ phi -> t, ... ] a against Glue A [ psi -> pack T e, ... ]: the
+   system checks against Partial psi T (FACE_COVER), a : A, GLUE_BOUNDARY. */
+static const Core *rule_glue_elem(Call *k) {
+  Checker *c = k->c;
+  IvlHeap h = {c->m->arena, c->m->diag, c->m->def};
+  const Value *g = k->hint;
+  const Core *gsys;
+  const Value *want;
+  const Core *tsys;
+  const Core *a;
+  const Ivl *norm;
+  const Value *st = NULL;
+  if (!val_is(g, OP_GLUE))
+    return nul(FAIL(c, "GLUE_EXPECTED", "glue needs a declared type Glue A [ ... ] here, found %s", g == NULL ? "no type" : show(c, g)));
+  gsys = quote_value(c->m, c->level, g->args[2]);
+  want = gsys == NULL ? NULL : tyop(c, OP_PARTIAL, 2, g->args[1], here(c, op3(c, OP_WITNESS, 0, 1, gsys, NULL, NULL)), NULL);
+  tsys = want == NULL ? NULL : k->args[0]->kind == TERM_SYS
+    ? check_sys(c, k->args[0], want, &st, 1) : check(c, k->args[0], want);
+  a = tsys == NULL ? NULL : check(c, k->args[1], g->args[0]);
+  norm = a == NULL ? NULL : face_norm(&h, g->args[1]->ivl);
+  if (norm == NULL || !glue_boundary(c, norm, gsys, tsys, a))
+    return NULL;
+  k->type = g;
+  return op3(c, OP_GLUE_ELEM, 0, 3, a, quote_value(c->m, c->level, g->args[1]), tsys);
+}
+
+/* unglue g : A, g : Glue A [ ... ]. The core copies the face and the system
+   of the type of g (D5 of M2). */
+static const Core *rule_unglue(Call *k) {
+  Checker *c = k->c;
+  const Value *gt = NULL;
+  const Core *g = infer(c, k->args[0], &gt);
+  if (g == NULL)
+    return NULL;
+  if (!val_is(gt, OP_GLUE))
+    return nul(FAIL(c, "GLUE_EXPECTED", "unglue needs a term of a type Glue A [ ... ], found a term of type %s", show(c, gt)));
+  k->type = gt->args[0];
+  return op3(c, OP_UNGLUE, 0, 3, g, quote_value(c->m, c->level, gt->args[1]), quote_value(c->m, c->level, gt->args[2]));
+}
+
+/* ua e, e : Equiv A B, A and B in Type n, gives Path (Type n) A B. The core
+   is <i> Glue B [ ~i -> pack A e, i -> pack B (idEquiv B) ]. */
+static const Core *rule_ua(Call *k) {
+  Checker *c = k->c;
+  const Value *et = NULL;
+  const Core *e = infer(c, k->args[0], &et);
+  const Value *fn = et == NULL || et->kind != VAL_SIGMA ? NULL : et->dom;
+  const Value *b = arrow_cod(c, fn);
+  const Core *ak = b == NULL ? NULL : quote_value(c->m, c->level, fn->dom);
+  const Core *bk = ak == NULL ? NULL : quote_value(c->m, c->level, b);
+  const Value *want = bk == NULL ? NULL : here(c, core_equiv(c, ak, bk));
+  uint64_t la = 0;
+  uint64_t lb = 0;
+  const Core *sys[4];
+  if (e == NULL || c->m->diag->set)
+    return NULL;
+  if (want == NULL || !conv_values(c->m, c->level, et, want))
+    return nul(FAIL(c, "TYPE_MISMATCH", "ua needs an equivalence of type Equiv A B, found a term of type %s", show(c, et)));
+  if (!type_level(c, "ua", fn->dom, &la) || !type_level(c, "ua", b, &lb))
+    return NULL;
+  if (la != lb)
+    return nul(FAIL(c, "TYPE_MISMATCH", "ua needs A and B in one universe, found A in Type %llu and B in Type %llu", (unsigned long long)la, (unsigned long long)lb));
+  k->type = tyop(c, OP_PATHP, 3, close_over(c, VAL_PLAM, "i", NULL, val_univ(c->m, la)), fn->dom, b);
+  sys[0] = core_ivl(c, IVL_REV, core_index(c, CORE_VAR, 0), NULL);
+  sys[1] = op3(c, OP_PACK, 0, 2, up(c, ak), up(c, e), NULL);
+  sys[2] = core_index(c, CORE_VAR, 0);
+  sys[3] = op3(c, OP_PACK, 0, 2, up(c, bk), core_id_equiv(c), NULL);
+  return core_bind(c, CORE_PLAM, "i", NULL,
+                   op3(c, OP_GLUE, 0, 3, up(c, bk), core_ivl(c, IVL_JOIN, sys[0], sys[2]), core_op(c, OP_SYS, 2u, 0, sys, 4u)));
 }
 
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {
@@ -2315,7 +2676,7 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
   case TERM_IVL:
     return nul(FAIL(c, "INTERVAL_TERM", "%d:%d: an interval term (~, /\\ or \\/) is not a term of a type", t->line, t->col));
   case TERM_SYS:
-    return check_sys(c, t, hint, type);
+    return check_sys(c, t, hint, type, 0);
   }
   return NULL;
 }
@@ -2326,6 +2687,18 @@ static const Core *elab(Checker *c, const Term *t, const Value *hint, const Valu
     return nul(FAIL(c, "CHECK_DEPTH", "the term is nested deeper than %u levels", CHECK_DEPTH_LIMIT));
   c->depth++;
   k = elab_inner(c, t, hint, type);
+  /* Preserve a checked type's universe through evaluation and substitution.
+     Reconstructing it from its normal form loses neutral type families. */
+  if (k != NULL && *type != NULL && (*type)->kind == VAL_UNIV) {
+    Core *typed = new_core(c, k->kind);
+    if (typed == NULL)
+      k = NULL;
+    else {
+      *typed = *k;
+      typed->sort_level = (*type)->nat + 1u;
+      k = typed;
+    }
+  }
   c->depth--;
   return k;
 }

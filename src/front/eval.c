@@ -29,7 +29,8 @@ static const char *const OP_NAMES[] = {
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
   [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
   [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?",
-  [OP_HCOMP] = "hcomp", [OP_KAN_FIELD] = "?"
+  [OP_HCOMP] = "hcomp", [OP_KAN_FIELD] = "?", [OP_GLUE] = "Glue",
+  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -48,7 +49,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
   [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3,
-  [OP_HCOMP] = 4, [OP_KAN_FIELD] = 1
+  [OP_HCOMP] = 4, [OP_KAN_FIELD] = 1, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
+  [OP_UNGLUE] = 3
 };
 
 typedef enum {
@@ -931,6 +933,70 @@ static const Value *reduce_partial(Machine *m, const Value *const *a) {
   return ivl_is_const(face->ivl, 1) ? a[1] : val_make(m, OP_PARTIAL, 0, 2u, face, a[1], NULL);
 }
 
+/* M3 s4: a projection of one value. The argument array is in the arena,
+   because a stuck projection keeps it. */
+static const Value *project(Machine *m, Op op, const Value *v, Op ctor, uint32_t index) {
+  const Value **a = arena_alloc(m->arena, sizeof *a);
+  if (a == NULL)
+    return oom(m);
+  a[0] = v;
+  return reduce_part(m, op, a, 1u, ctor, index);
+}
+
+/* M3 s4: the Glue operations. args: A (a, g), the face, the system. On the
+   face i1 the system is its branch body (reduce_sys): Glue A [ i1 -> pack T e ]
+   is T, glue [ i1 -> t ] a is t and unglue g is first e g. unglue (glue s a)
+   is a. Else Glue and glue are canonical values and unglue is stuck. */
+static const Value *reduce_glue(Machine *m, const Value *const *a) {
+  const Value *face = face_value(m, a[1]);
+  if (face == NULL)
+    return NULL;
+  return ivl_is_const(face->ivl, 1) ? project(m, OP_WITNESS, a[2], OP_PACK, 0) : val_make(m, OP_GLUE, 0, 3u, a[0], face, a[2]);
+}
+
+static const Value *reduce_glue_elem(Machine *m, const Value *const *a) {
+  const Value *face = face_value(m, a[1]);
+  if (face == NULL)
+    return NULL;
+  return ivl_is_const(face->ivl, 1) ? a[2] : val_make(m, OP_GLUE_ELEM, 0, 3u, a[0], face, a[2]);
+}
+
+static const Value *reduce_unglue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *face = face_value(m, a[1]);
+  const Value *e;
+  const Value *f;
+  const Value *out;
+  if (face == NULL)
+    return NULL;
+  if (ivl_is_const(face->ivl, 1)) {
+    e = project(m, OP_PAYLOAD, a[2], OP_PACK, 1u);
+    f = e == NULL ? NULL : project(m, OP_WITNESS, e, OP_PACK, 0);
+    return f == NULL ? NULL : apply_value(m, f, a[0]);
+  }
+  if (val_is(a[0], OP_GLUE_ELEM))
+    return a[0]->args[0];
+  /* A term checked on an outer face can still be a partial system when
+     evaluated before that face is selected. Preserve its branches. */
+  if (val_is(a[0], OP_SYS)) {
+    const Value *sys = a[0];
+    const Value **out = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *out);
+    uint32_t k;
+    if (out == NULL)
+      return oom(m);
+    for (k = 0; k + 1u < sys->argc; k += 2u) {
+      const Value *args[3] = {sys->args[k + 1u], face, a[2]};
+      out[k] = sys->args[k];
+      out[k + 1u] = reduce_unglue(m, args, 3u);
+      if (out[k + 1u] == NULL)
+        return NULL;
+    }
+    return val_op(m, VAL_OP, OP_SYS, sys->inst, 0, out, sys->argc);
+  }
+  if (blocked(m, a[0], OP_UNGLUE, 0, 0, a, n, &out))
+    return out;
+  return internal(m, "unglue of a value that is not a glue element");
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -975,6 +1041,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return kan_hcomp(m, a[0], face_value(m, a[1]), a[2], a[3]);
   case OP_KAN_FIELD:
     return reduce_field(m, inst, a, n);
+  case OP_GLUE:
+    return reduce_glue(m, a);
+  case OP_GLUE_ELEM:
+    return reduce_glue_elem(m, a);
+  case OP_UNGLUE:
+    return reduce_unglue(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -1201,6 +1273,16 @@ const Value *eval_core(Machine *m, const Env *env, const Core *c) {
   if (c == NULL || !spend(m, 1) || !enter(m))
     return NULL;
   v = eval_inner(m, env, c);
+  if (v != NULL && c->sort_level != 0u && v->sort_level != c->sort_level) {
+    Value *typed = new_value(m, v->kind);
+    if (typed == NULL)
+      v = NULL;
+    else {
+      *typed = *v;
+      typed->sort_level = c->sort_level;
+      v = typed;
+    }
+  }
   m->depth--;
   return v;
 }
@@ -1385,6 +1467,22 @@ static int conv_sys(Machine *m, uint32_t level, const Value *a, const Value *b) 
   return 1;
 }
 
+/* M3 s4: Glue eta. A neutral G is equal to glue [ s ] a when unglue G is
+   equal to a and, on each conjunction of the face, G is equal to the branch
+   of s. The face and the system come from the glue value, not from a type.
+   The stuck unglue keeps s, because conv compares two stuck unglue values
+   by G only (as the ends of a VAL_PAPP). */
+static int conv_glue(Machine *m, uint32_t level, const Value *glue, const Value *g) {
+  const Ivl *face = glue->args[1]->ivl;
+  uint32_t k;
+  if (!conv_values(m, level, glue->args[0], make(m, VAL_STUCK, OP_UNGLUE, 0, 3u, g, glue->args[1], glue->args[2])))
+    return 0;
+  for (k = 0; k < face->count; k++)
+    if (!conv_values(m, level, value_on_face(m, level, g, face, k), value_on_face(m, level, glue->args[2], face, k)))
+      return 0;
+  return 1;
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
@@ -1398,6 +1496,10 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
       return conv_pair(m, level, b, a);
+    if (val_is(a, OP_GLUE_ELEM) && scrut_of(b) == SCRUT_NEUTRAL)
+      return conv_glue(m, level, a, b);
+    if (val_is(b, OP_GLUE_ELEM) && scrut_of(a) == SCRUT_NEUTRAL)
+      return conv_glue(m, level, b, a);
     if (a->kind != b->kind)
       return 0;
     switch (a->kind) {
@@ -1431,6 +1533,11 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_STUCK:
       if (val_is(a, OP_SYS) && val_is(b, OP_SYS))
         return conv_sys(m, level, a, b);
+      if (a->kind == VAL_STUCK && a->op == OP_UNGLUE && b->op == OP_UNGLUE) {
+        a = a->args[0];
+        b = b->args[0];
+        break;
+      }
       if (!same_head(a, b))
         return 0;
       if (a->op == OP_FIELD_LIT)
@@ -1653,6 +1760,16 @@ const Core *quote_value(Machine *m, uint32_t level, const Value *v) {
   if (v == NULL || !enter(m))
     return NULL;
   c = quote_inner(m, level, v);
+  if (c != NULL && v->sort_level != 0u) {
+    Core *typed = new_core(m, c->kind);
+    if (typed == NULL)
+      c = NULL;
+    else {
+      *typed = *c;
+      typed->sort_level = v->sort_level;
+      c = typed;
+    }
+  }
   m->depth--;
   return c;
 }
@@ -1920,6 +2037,32 @@ static void print_other(Printer *p, const Value *v, int atom) {
     put(p, ")");
 }
 
+/* M3 s4: Glue A [ ... ], glue [ ... ] a and unglue g. The face is the join
+   of the branch faces, so the printer does not show it. */
+static int is_glue(const Value *v) {
+  return (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->argc == 3u
+      && (v->op == OP_GLUE || v->op == OP_GLUE_ELEM || v->op == OP_UNGLUE);
+}
+
+static void print_glue(Printer *p, const Value *v, int atom) {
+  if (atom)
+    put(p, "(");
+  put(p, op_name(p->m, v->op, v->inst, v->field));
+  put(p, " ");
+  if (v->op == OP_GLUE) {
+    print_value(p, v->args[0], 1);
+    put(p, " ");
+  }
+  if (v->op != OP_UNGLUE)
+    print_value(p, v->args[2], 0);
+  if (v->op == OP_GLUE_ELEM)
+    put(p, " ");
+  if (v->op != OP_GLUE)
+    print_value(p, v->args[0], 1);
+  if (atom)
+    put(p, ")");
+}
+
 /* An operation prints as its name and its arguments. The last argument is
    printed in the loop, so a long list does not nest. */
 static void print_value(Printer *p, const Value *v, int atom) {
@@ -1943,6 +2086,11 @@ static void print_value(Printer *p, const Value *v, int atom) {
       print_value(p, v->args[i + 1u], 0);
     }
     put(p, " ]");
+    p->depth--;
+    return;
+  }
+  if (is_glue(v)) {
+    print_glue(p, v, atom);
     p->depth--;
     return;
   }

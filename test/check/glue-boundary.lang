@@ -1,0 +1,2 @@
+-- On the face j, first e 5 is 5, which is not the base 6.
+def g : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => glue [ j -> 5 ] 6

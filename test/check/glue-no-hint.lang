@@ -1,0 +1,2 @@
+-- glue needs a declared Glue type: the hint is Nat.
+def g : Nat := glue [ i1 -> 5 ] 5

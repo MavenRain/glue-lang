@@ -74,7 +74,10 @@ typedef enum {
   OP_KAN_DOM,  /* M3 s1: kan.c only. args: L, r. The domain of L @ r */
   OP_KAN_COD,  /* M3 s1: kan.c only. args: L, r, x. The codomain of L @ r at x */
   OP_HCOMP,    /* M3 s2: hcomp A phi u u0. args: A, the face, u, u0 */
-  OP_KAN_FIELD /* M3 s3: kan.c only. args: x. inst: the field index of the constructor x */
+  OP_KAN_FIELD, /* M3 s3: kan.c only. args: x. inst: the field index of the constructor x */
+  OP_GLUE,      /* M3 s4: Glue A [ ... ]. args: A, the face, the system of pack T e */
+  OP_GLUE_ELEM, /* M3 s4: glue [ ... ] a. args: a, the face, the system of t */
+  OP_UNGLUE     /* M3 s4: unglue g. args: g, the face, the system of the Glue type */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -103,6 +106,7 @@ typedef enum {
 typedef struct Core Core;
 struct Core {
   CoreKind kind;
+  uint64_t sort_level; /* checked type in Type (sort_level - 1), or 0 if unknown */
   uint32_t index;
   uint64_t nat;
   Op op;
@@ -144,6 +148,7 @@ struct Env {
 
 struct Value {
   ValKind kind;
+  uint64_t sort_level; /* checked type in Type (sort_level - 1), or 0 if unknown */
   uint64_t nat; /* NAT: the number. UNIV: the level. VAR: the level. */
   Op op;        /* OP, STUCK */
   uint32_t inst;

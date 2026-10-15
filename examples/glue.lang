@@ -1,0 +1,29 @@
+-- M3 s4: equivalences, Glue types, glue, unglue and ua.
+-- Equiv A B is Sigma (f : A -> B) (isEquiv f). first (idEquiv A) is the identity.
+def eqNat : Type 0 := Equiv Nat Nat
+def firstId : Nat := first (idEquiv Nat) 3
+def secondId : isEquiv (first (idEquiv Nat)) := second (idEquiv Nat)
+def contrId : (y : Nat) -> isContr (fiber (first (idEquiv Nat)) y) := second (idEquiv Nat)
+def centerId : Nat := witness (witness (second (idEquiv Nat) 4))
+
+-- The face i1 rule: Glue A [ i1 -> pack T e ] is T.
+def glueAt1 : (e : Equiv Field Nat) -> Path (Type 0) (Glue Nat [ i1 -> pack Field e ]) Field := fun e => refl
+
+-- glue at the face j. unglue (glue s a) is a (Glue beta).
+def gl : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => glue [ j -> 5 ] 5
+def ungl : (j : I) -> Nat := fun j => unglue (gl j)
+def beta : (j : I) -> Path Nat (unglue (gl j)) 5 := fun j => refl
+
+-- Glue eta: g is glue [ j -> g ] (unglue g).
+def eta : (j : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> Path (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) g (glue [ j -> g ] (unglue g)) := fun j => fun g => refl
+
+-- unglue g at the face i1 is first e g.
+def ung : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] -> Nat := fun j => fun g => unglue g
+def ungAt1 : Nat := ung i1 7
+
+-- The ends of ua e are A and B.
+def uaEnd0 : (e : Equiv Nat Field) -> Path (Type 0) (ua e @ i0) Nat := fun e => refl
+def uaEnd1 : (e : Equiv Nat Field) -> Path (Type 0) (ua e @ i1) Field := fun e => refl
+def uaId0 : Path (Type 0) (ua (idEquiv Nat) @ i0) Nat := refl
+def uaId1 : Path (Type 0) (ua (idEquiv Nat) @ i1) Nat := refl
+def uaIdAt0 : Type 0 := ua (idEquiv Nat) @ i0

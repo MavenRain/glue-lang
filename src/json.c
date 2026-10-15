@@ -198,7 +198,10 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_KAN_COD:
   case OP_HCOMP:
   case OP_KAN_FIELD:
+  case OP_UNGLUE:
     return internal(o, "a Kan operation as a type former");
+  case OP_GLUE: /* M3 s4: the face is not i1, else the type is T */
+    return refuse(o, "a value of a Glue type");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))
       return internal(o, "a Prod value that is not a pair");
@@ -249,6 +252,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NAT_LE:
   case OP_FLAG_IF:
   case OP_PROJ:
+  case OP_GLUE_ELEM:
     return internal(o, "a type that is not a type former");
   }
   return internal(o, "an unknown operation");

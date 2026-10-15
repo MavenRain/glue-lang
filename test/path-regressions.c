@@ -51,6 +51,41 @@ static const Case CASES[] = {
   {"cong rejects wrong expected endpoints",
    "def r : Path Nat 0 0 := refl\n"
    "def test : (B : Nat -> Type 0) -> (f g : (x : Nat) -> B x) -> Path (B 0) (f 0) (g 0) := fun B f g => cong f r\n", "TYPE_MISMATCH"},
+  {"ua accepts an applied type family",
+   "def test : (P : Nat -> Type 0) -> (x : Nat) -> Path (Type 0) (ua (idEquiv (P x)) @ i0) (P x) := fun P x => refl\n", NULL},
+  {"ua accepts a domain family",
+   "def test : Path (Type 0) (ua (idEquiv Color) @ i0) Color := refl\n", NULL},
+  {"ua accepts a type computed by fold",
+   "def T : Nat -> Type 0 := fun n => fold (fun A => Option A) Nat n\n"
+   "def test : (n : Nat) -> Path (Type 0) (ua (idEquiv (T n)) @ i0) (T n) := fun n => refl\n", NULL},
+  {"isEquiv accepts a type computed by fold",
+   "def T : Nat -> Type 0 := fun n => fold (fun A => Option A) Nat n\n"
+   "def test : (n : Nat) -> (f : T n -> T n) -> Type 0 := fun n f => isEquiv f\n", NULL},
+  {"ua accepts an applied function computed by fold",
+   "def T : Nat -> Nat -> Type 0 := fun n => fold (fun f => f) (fun x => Nat) n\n"
+   "def test : (n : Nat) -> (e : Equiv (T n 0) (T n 0)) -> Path (Type 0) (ua e @ i0) (T n 0) := fun n e => refl\n", NULL},
+  {"fiber and isEquiv accept applied type families",
+   "def eq : (P : Nat -> Type 0) -> (x : Nat) -> isEquiv (first (idEquiv (P x))) := fun P x => second (idEquiv (P x))\n"
+   "def test : (P : Nat -> Type 0) -> (x : Nat) -> (y : P x) -> isContr (fiber (first (idEquiv (P x))) y) := fun P x y => second (idEquiv (P x)) y\n", NULL},
+  {"ua accepts a neutral path of types",
+   "def test : (p : Path (Type 0) Nat Nat) -> (j : I) -> Path (Type 0) (ua (idEquiv (p @ j)) @ i0) (p @ j) := fun p j => refl\n", NULL},
+  {"ua accepts a projected type",
+   "def test : (s : Sigma (A : Type 0) A) -> Path (Type 0) (ua (idEquiv (witness s)) @ i0) (witness s) := fun s => refl\n", NULL},
+  {"ua respects higher family universes",
+   "def test : (P : Nat -> Type 1) -> (x : Nat) -> Path (Type 1) (ua (idEquiv (P x)) @ i1) (P x) := fun P x => refl\n", NULL},
+  {"isEquiv does not lower a family universe",
+   "def test : (P : Nat -> Type 1) -> (x : Nat) -> Type 0 := fun P x => isEquiv (first (idEquiv (P x)))\n", "TYPE_MISMATCH"},
+  {"ua preserves checked universes under restriction",
+   "def test : (P : I -> Type 0) -> (j k : I) -> (e : Equiv (P j) (P j)) -> Partial k (Path (Type 0) (ua e @ i0) (P j)) := fun P j k e => [ k -> refl ]\n", NULL},
+  {"isEquiv still rejects a dependent function",
+   "def test : (P : Nat -> Type 0) -> (f : (x : Nat) -> P x) -> Type 0 := fun P f => isEquiv f\n", "TYPE_NOT_FUNCTION"},
+  {"unglue distributes through a partial system",
+   "def g : (j k : I) -> Partial k (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) := fun j k => [ k -> glue [ j -> 5 ] 5 ]\n"
+   "def test : (j k : I) -> (f : Partial k Nat -> Nat) -> Path Nat (f [ k -> unglue (g j k) ]) (f [ k -> 5 ]) := fun j k f => refl\n", NULL},
+  {"glue with an empty face still checks its base",
+   "def test : Glue Nat [ i0 -> pack Nat (idEquiv Nat) ] := glue [ i0 -> 5 ] flagYes\n", "TYPE_MISMATCH"},
+  {"an empty glue system must cover its declared face",
+   "def test : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => glue [ i0 -> 5 ] 5\n", "FACE_COVER"},
   {"cong rejects a varying input line",
    "def test : (p : Path Nat 0 1) -> (q : PathP (<i> Path Nat 0 (p @ i)) refl p) -> Path (Path Nat 0 0) refl refl := fun p q => cong (fun (r : Path Nat 0 0) => r) q\n", "TYPE_MISMATCH"}
 };
@@ -62,6 +97,12 @@ typedef struct {
 } EvalCase;
 
 static const EvalCase EVAL_CASES[] = {
+  {"glue accepts an empty face",
+   "def g : Glue Nat [ i0 -> pack Nat (idEquiv Nat) ] := glue [ i0 -> 5 ] 5\n"
+   "def test : Nat := unglue g\n", "5"},
+  {"glue ignores an empty branch beside a live branch",
+   "def g : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => glue [ i0 -> nil, j -> 5 ] 5\n"
+   "def test : (j : I) -> Nat := fun j => unglue (g j)\n", "fun j => 5"},
   {"Option hcomp ignores an empty branch",
    "def test : Option Nat := hcomp (Option Nat) i0 (fun i => [ i0 -> none ]) (some 0)\n",
    "some 0"},

@@ -1,0 +1,2 @@
+-- The glue faces join to j, but the Glue faces join to j \/ k.
+def g : (j : I) -> (k : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat), k -> pack Nat (idEquiv Nat) ] := fun j => fun k => glue [ j -> 5 ] 5

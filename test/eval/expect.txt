@@ -101,3 +101,15 @@ derived sumHcompInr => fun n => fun q => fun k => inr (hcomp Nat k (fun i => [ k
 derived optHcomp => fun n => fun q => fun k => some (hcomp Nat k (fun i => [ k -> q @ i ]) n)
 derived listHcomp => fun n => fun k => cons n nil
 derived sumHcompStuck => fun n => fun q => fun k => hcomp (Sum Nat Nat) k (fun i => [ k -> q @ i ]) (inr n)
+glue firstId => 3
+glue centerId => 4
+glue secondId => fun y => pack (pack y (<_> y)) (fun z => <i> pack ((payload z) @ ~i) (<j> (payload z) @ (~i \/ j)))
+glue glueAt1 => fun e => <i> Field
+glue gl => fun j => glue [ j -> 5 ] 5
+glue ungl => fun j => 5
+glue ung => fun j => fun g => unglue g
+glue ungAt1 => 7
+glue eta => fun j => fun g => <i> g
+glue uaEnd0 => fun e => <i> Nat
+glue uaEnd1 => fun e => <i> Field
+glue uaIdAt0 => Nat

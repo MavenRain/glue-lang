@@ -1,0 +1,3 @@
+-- gi has the type Glue Nat [ i0 -> ... ]: the face is not i1, so the value has no JSON form.
+def gl : (j : I) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => glue [ j -> 5 ] 5
+def gi : Glue Nat [ i0 -> pack Nat (idEquiv Nat) ] := gl i0

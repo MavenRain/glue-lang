@@ -1,0 +1,2 @@
+-- unglue needs a term of a Glue type: 5 is a Nat.
+def u : Nat := unglue 5

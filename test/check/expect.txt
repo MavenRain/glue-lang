@@ -73,3 +73,9 @@ transp-interval.lang PATH_TYPE
 transp-guard.lang TYPE_REFL
 hcomp-base.lang HCOMP_BASE
 comp-base.lang HCOMP_BASE
+glue-no-hint.lang GLUE_EXPECTED
+unglue-nat.lang GLUE_EXPECTED
+glue-boundary.lang GLUE_BOUNDARY
+glue-face-cover.lang FACE_COVER
+reserved-ua.lang REFUSE_NAME
+reserved-Glue-type.lang REFUSE_NAME
