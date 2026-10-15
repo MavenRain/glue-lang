@@ -1,0 +1,3 @@
+-- isEquiv needs f : A -> B. The codomain of lots uses the binder n.
+def lots : (n : Nat) -> Lot n := fun n => makeLot n 7
+def wrong : Type 0 := isEquiv lots

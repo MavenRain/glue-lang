@@ -77,7 +77,9 @@ typedef enum {
   OP_KAN_FIELD, /* M3 s3: kan.c only. args: x. inst: the field index of the constructor x */
   OP_GLUE,      /* M3 s4: Glue A [ ... ]. args: A, the face, the system of pack T e */
   OP_GLUE_ELEM, /* M3 s4: glue [ ... ] a. args: a, the face, the system of t */
-  OP_UNGLUE     /* M3 s4: unglue g. args: g, the face, the system of the Glue type */
+  OP_UNGLUE,    /* M3 s4: unglue g. args: g, the face, the system of the Glue type */
+  OP_KAN_GLUE,  /* M3 s5: kan.c only. args: L, r. inst: 0 = A, 1 + k = the pack of branch k of the Glue line L at r */
+  OP_KAN_L2E    /* M3 s5: kan.c only. args: L. lineToEquiv L, canonical;  a projection unfolds it to a pack */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -216,6 +218,14 @@ typedef struct {
   uint32_t constraint_count;
 } CircuitInfo;
 
+/* M3 s5-i: one opening of a closure at a variable (closure_apply). */
+typedef struct OpenMemo {
+  const Value *binder;
+  uint64_t key;
+  const Value *out;
+  const struct OpenMemo *next;
+} OpenMemo;
+
 /* The checked program and the evaluation state. No global state: every
    function gets this context. */
 typedef struct {
@@ -235,6 +245,8 @@ typedef struct {
   uint32_t circuit_count;
   uint32_t circuit_cap;
   unsigned depth;
+  unsigned probe; /* M3 s5: > 0 while a Kan rule reads the head of a line */
+  const OpenMemo **opens; /* M3 s5-i: closure_apply results, OPEN_BUCKETS lists */
   uint64_t fuel;
   int overflowed;
 } Machine;

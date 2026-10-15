@@ -79,3 +79,5 @@ glue-boundary.lang GLUE_BOUNDARY
 glue-face-cover.lang FACE_COVER
 reserved-ua.lang REFUSE_NAME
 reserved-Glue-type.lang REFUSE_NAME
+equiv-dependent.lang TYPE_NOT_FUNCTION
+ua-dependent.lang TYPE_MISMATCH

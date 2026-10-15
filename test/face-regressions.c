@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "front/check.h"
+#include "front/face.h"
 #include "front/front.h"
 
 typedef enum { CHECK, PRINT_TYPE, QUOTE_TYPE, PRINT_VALUE } Observation;
@@ -171,11 +172,44 @@ static int check_case(const Case *test) {
   return failed;
 }
 
+/* face_forall at the level of i (0), with j at 1 and k at 2. */
+static int check_forall(IvlHeap *h, const char *label, const Ivl *phi, const Ivl *want) {
+  const Ivl *got = face_forall(h, phi, 0u);
+  const Ivl *norm = face_norm(h, want);
+  int failed = got == NULL || norm == NULL || !face_equal(got, norm);
+  if (failed)
+    fprintf(stderr, "FAIL face_forall %s\n", label);
+  return failed;
+}
+
+static int check_foralls(void) {
+  Arena arena;
+  Diag diag;
+  IvlHeap h;
+  int failed;
+  arena_init(&arena, (size_t)1 << 20);
+  diag_init(&diag);
+  h.arena = &arena;
+  h.diag = &diag;
+  h.def = "face_forall";
+  const Ivl *i = ivl_lit(&h, 0u, 0);
+  const Ivl *ni = ivl_lit(&h, 0u, 1);
+  const Ivl *j = ivl_lit(&h, 1u, 0);
+  const Ivl *k = ivl_lit(&h, 2u, 0);
+  failed = check_forall(&h, "(~i \\/ i, i) is i0", ivl_join(&h, ni, i), ivl_const(&h, 0))
+    + check_forall(&h, "(j \\/ (i /\\ k), i) is j", ivl_join(&h, j, ivl_meet(&h, i, k)), j)
+    + check_forall(&h, "(i1, i) is i1", ivl_const(&h, 1), ivl_const(&h, 1));
+  arena_release(&arena);
+  return failed;
+}
+
 int main(void) {
   size_t i;
   int failed = 0;
   for (i = 0; i < sizeof CASES / sizeof CASES[0]; i++)
     failed += check_case(&CASES[i]);
+  failed += check_foralls();
+  i += 3u;
   printf("native face regressions: %lu checked, %d failed\n", (unsigned long)i, failed);
   return failed != 0;
 }

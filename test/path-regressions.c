@@ -97,6 +97,11 @@ typedef struct {
 } EvalCase;
 
 static const EvalCase EVAL_CASES[] = {
+  {"Glue transport with no persistent faces",
+   "def test : Nat := transport (ua (idEquiv Nat)) 7\n", "7"},
+  {"Glue transport with fewer persistent faces than branches",
+   "def test : (j k : I) -> Nat := fun j k => transp (<i> Glue Nat [ ~i -> pack Nat (idEquiv Nat), i -> pack Nat (idEquiv Nat), j -> pack Nat (idEquiv Nat), k -> pack Nat (idEquiv Nat) ]) i0 7\n",
+   "fun j => fun k => 7"},
   {"glue accepts an empty face",
    "def g : Glue Nat [ i0 -> pack Nat (idEquiv Nat) ] := glue [ i0 -> 5 ] 5\n"
    "def test : Nat := unglue g\n", "5"},

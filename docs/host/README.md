@@ -92,7 +92,7 @@ The check and evaluation codes are the same as in `langc check` and
 for each refusal.
 
 `langc eval` also refuses an incomplete normal form with `EVAL_PRINT`
-(a 65536-byte buffer and the same printer depth limit).
+(a 131072-byte buffer and the same printer depth limit).
 
 ## The domain
 

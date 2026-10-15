@@ -1,0 +1,32 @@
+-- M3 s5: the square circuit through ua. transport along ua (swapE Field)
+-- swaps the pair, so the constraint is x * x == y. The IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt), so the circuit name is square.
+-- A .glue file has no import, so the defs below are a copy of examples/iso.lang.
+
+
+-- fill0 i j: the filler of the square from g (p0 @ ~i) to x0 and g y.
+def fill0 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (p0 : Path B (f x0) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun p0 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> t x0 @ (j /\ k), ~i -> g y, ~j -> g (p0 @ ~i) ]) (g (p0 @ ~i))
+
+-- fill2 i j: the filler between the two fill0 lids. fill2 i i1 is the path from x0 to x1.
+def fill2 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 (j /\ k) i1, ~i -> fill0 A B f g t y x0 p0 (j /\ k) i1, ~j -> g y ]) (g y)
+
+-- sq i j: the square in A over the path fill2 i i1.
+def sq : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ j \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 j ~k, ~i -> fill0 A B f g t y x0 p0 j ~k, j -> t (fill2 A B f g t y x0 x1 p0 p1 i i1) @ ~k, ~j -> g y ]) (fill2 A B f g t y x0 x1 p0 p1 i j)
+
+-- sq1 i j: the square in B. sq1 i (~j) is the path part of the fiber path.
+def sq1 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> B := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp B (i \/ ~i \/ j \/ ~j) (fun k => [ i -> s (p1 @ ~j) @ k, ~i -> s (p0 @ ~j) @ k, j -> s (f (fill2 A B f g t y x0 x1 p0 p1 i i1)) @ k, ~j -> s y @ k ]) (f (sq A B f g t y x0 x1 p0 p1 i j))
+
+-- lemIso: two points of a fiber of f are equal.
+def lemIso : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> Path (fiber f y) (pack x0 p0) (pack x1 p1) := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => <i> pack (fill2 A B f g t y x0 x1 p0 p1 i i1) (<j> sq1 A B f g s t y x0 x1 p0 p1 i ~j)
+
+-- isoToEquiv: the center of the fiber over y is g y with s y.
+def isoToEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> Equiv A B := fun A => fun B => fun f => fun g => fun s => fun t => pack f (fun y => pack (pack (g y) (s y)) (fun z => lemIso A B f g s t y (g y) (witness z) (s y) (payload z)))
+
+-- The swap on Prod A A. Both laws are refl by product eta. swapE is a
+-- function of A: a closed Equiv holds a function and has no JSON form.
+def swap : (A : Type 0) -> Prod A A -> Prod A A := fun A => fun p => pair (second p) (first p)
+def swapSect : (A : Type 0) -> (y : Prod A A) -> Path (Prod A A) (swap A (swap A y)) y := fun A => fun y => refl
+def swapRetr : (A : Type 0) -> (x : Prod A A) -> Path (Prod A A) (swap A (swap A x)) x := fun A => fun x => refl
+def swapE : (A : Type 0) -> Equiv (Prod A A) (Prod A A) := fun A => isoToEquiv (Prod A A) (Prod A A) (swap A) (swap A) (swapSect A) (swapRetr A)
+
+circuit square public (y : Field) private (x : Field) := second (transport (ua (swapE Field)) (pair (x * x) y)) == first (transport (ua (swapE Field)) (pair (x * x) y))

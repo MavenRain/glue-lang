@@ -34,6 +34,32 @@ const Ivl *face_norm(IvlHeap *h, const Ivl *a) {
   return out;
 }
 
+/* The conjunctions that do not set LEVEL. A subset of a normal form is a
+   normal form, so no face_norm is necessary after the filter. */
+const Ivl *face_forall(IvlHeap *h, const Ivl *a, uint32_t level) {
+  const Ivl *n = face_norm(h, a);
+  if (n == NULL) return NULL;
+  Ivl *out = arena_alloc(h->arena, sizeof *out);
+  uint32_t *starts = arena_alloc(h->arena, (n->count + 1u) * sizeof *starts);
+  uint32_t *lits = arena_alloc(h->arena, (n->starts[n->count] + 1u) * sizeof *lits);
+  if (out == NULL || starts == NULL || lits == NULL) {
+    diag_fail(h->diag, "OOM", h->def, "the arena limit is reached");
+    return NULL;
+  }
+  uint32_t count = 0, at = 0;
+  for (uint32_t k = 0; k < n->count; k++) {
+    int one = 0;
+    if (face_conj_sets(n, k, level, &one)) continue;
+    starts[count++] = at;
+    for (uint32_t i = n->starts[k]; i < n->starts[k + 1u]; i++) lits[at++] = n->lits[i];
+  }
+  starts[count] = at;
+  out->count = count;
+  out->starts = starts;
+  out->lits = lits;
+  return out;
+}
+
 const Ivl *face_meet(IvlHeap *h, const Ivl *a, const Ivl *b) {
   return face_norm(h, ivl_meet(h, a, b));
 }

@@ -23,5 +23,12 @@ const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value 
 /* hcomp A phi u u0. PHI is in face normal form, U is a function of an
    interval variable. M3-PLAN 3.4 (s2). */
 const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0);
+/* M3 s5 (OP_KAN_GLUE): part SEL of the Glue line L at R:  0 = A, 1 + k =
+   the pack of branch k. At an end where the Glue face is i1 the part is
+   read at a fresh level and then put on that end. */
+const Value *kan_glue(Machine *m, const Value *line, const Value *r, uint32_t sel);
+/* M3 s5 (OP_KAN_L2E): the pack of lineToEquiv L (Cubical Agda), for a
+   projection or a conversion against a value that is not OP_KAN_L2E. */
+const Value *kan_l2e(Machine *m, const Value *line);
 
 #endif

@@ -1,0 +1,5 @@
+-- ua needs e : Equiv A B. The first component of e has a dependent type,
+-- so arrow_cod gives no B and e is not an equivalence.
+def lots : (n : Nat) -> Lot n := fun n => makeLot n 7
+def e : Prod ((n : Nat) -> Lot n) Nat := pair lots 0
+def wrong : Path (Type 0) Nat Nat := ua e

@@ -1,5 +1,6 @@
 /* M3: the Kan operations (see front/kan.h). SHARED by the tcc kits. */
 #include "front/kan.h"
+#include "front/face.h"
 
 static const Value *kan_fail(Machine *m, const char *what) {
   diag_fail(m->diag, "INTERNAL", m->def, "the Kan evaluator found %s", what);
@@ -277,6 +278,28 @@ static int data_type(const Value *t) {
   return val_is(t, OP_SUM) || val_is(t, OP_OPTION) || val_is(t, OP_LIST);
 }
 
+/* M3 s5: a head that a Kan rule of kan_transp reads. */
+static int type_former(const Value *t) {
+  return closed_type(t) || t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) || val_is(t, OP_GLUE);
+}
+
+/* M3 s5: the head of LINE, its body at a probe level. Only the head former
+   is read, so each transp in the body stays stuck (m->probe), else each
+   probe evaluates the probes of the body again (exponential, M3 s5-h). The
+   Kan rules of the universe refuse a probe level, so a head that is not a
+   type former is read again at the level above the line (an hcomp in
+   Type 0 at i gives a Glue head there). */
+static const Value *probe_head(Machine *m, const Value *line) {
+  const Value *head;
+  uint32_t ell = 0;
+  m->probe++;
+  head = closure_apply(m, line, val_ivl_var(m, KAN_PROBE + m->depth));
+  m->probe--;
+  if (head == NULL || type_former(head) || !value_bound(m, line, &ell) || ell >= KAN_PROBE)
+    return head;
+  return closure_apply(m, line, val_ivl_var(m, ell));
+}
+
 static int data_ctor(const Value *v) {
   return val_is(v, OP_INL) || val_is(v, OP_INR) || val_is(v, OP_NONE) || val_is(v, OP_SOME) || val_is(v, OP_NIL) || val_is(v, OP_CONS);
 }
@@ -304,6 +327,452 @@ static const Value *transp_data(Machine *m, const Value *line, const Value *phi,
   return env == NULL || rule == NULL ? NULL : eval_core(m, env, rule);
 }
 
+/* RULE in the environment VALS (VALS[N - 1] is index 0). N > 0. */
+static const Value *run(Machine *m, const Core *rule, const Value *const *vals, uint32_t n) {
+  const Env *env = NULL;
+  uint32_t i;
+  for (i = 0; i < n; i++) {
+    env = vals[i] == NULL ? NULL : env_push(m, env, vals[i]);
+    if (env == NULL)
+      return NULL;
+  }
+  return rule == NULL ? NULL : eval_core(m, env, rule);
+}
+
+static const Value *run1(Machine *m, const Core *rule, const Value *v) {
+  return run(m, rule, &v, 1u);
+}
+
+static const Core **kan_args(Machine *m, uint32_t n) {
+  const Core **args = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *args);
+  if (args == NULL)
+    diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+  return args;
+}
+
+static const Value **kan_vals(Machine *m, uint32_t n) {
+  const Value **vals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *vals);
+  if (vals == NULL)
+    diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+  return vals;
+}
+
+/* KIND (NAME : A) B, KIND = CORE_SIGMA or CORE_PI. */
+static const Core *dep(Machine *m, CoreKind kind, const char *name, const Core *a, const Core *b) {
+  Core *c;
+  if (a == NULL || b == NULL)
+    return NULL;
+  c = kan_core(m, kind);
+  if (c == NULL)
+    return NULL;
+  c->name = name;
+  c->a = a;
+  c->b = b;
+  return c;
+}
+
+static const Core *sigma(Machine *m, const char *name, const Core *a, const Core *b) {
+  return dep(m, CORE_SIGMA, name, a, b);
+}
+
+static const Core *proj(Machine *m, Op o, const Core *x) {
+  return op(m, o, 1u, x, NULL, NULL);
+}
+
+/* V with LEVEL = i1 (ONE) or i0. LEVEL is the top free level of V. */
+static const Value *at_end(Machine *m, uint32_t level, const Value *v, int one) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Ivl *f = ivl_lit(&h, level, !one);
+  return f == NULL || v == NULL ? NULL : value_on_face(m, level + 1u, v, f, 0);
+}
+
+/* Part SEL of the Glue type G (see kan_glue), or NULL. */
+static const Value *glue_part(const Value *g, uint32_t sel) {
+  if (!val_is(g, OP_GLUE))
+    return NULL;
+  if (sel == 0)
+    return g->args[0];
+  if (!val_is(g->args[2], OP_SYS) || sel > g->args[2]->inst)
+    return NULL;
+  return g->args[2]->args[2u * (sel - 1u) + 1u];
+}
+
+const Value *kan_glue(Machine *m, const Value *line, const Value *r, uint32_t sel) {
+  const Value *args[2];
+  const Value *g;
+  const Value *part;
+  uint32_t ell = 0;
+  if (line == NULL || r == NULL)
+    return NULL;
+  if (line->kind != VAL_PLAM || r->kind != VAL_IVL)
+    return kan_fail(m, "a Glue part with a bad line or end");
+  g = closure_apply(m, line, r);
+  part = g == NULL ? NULL : glue_part(g, sel);
+  if (part != NULL || g == NULL)
+    return part;
+  if ((ivl_is_const(r->ivl, 0) || ivl_is_const(r->ivl, 1)) && value_bound(m, line, &ell) && ell < KAN_PROBE) {
+    g = closure_apply(m, line, val_ivl_var(m, ell));
+    part = g == NULL ? NULL : glue_part(g, sel);
+    if (part != NULL)
+      return at_end(m, ell, part, ivl_is_const(r->ivl, 1));
+  }
+  if (m->diag->set)
+    return NULL;
+  args[0] = line;
+  args[1] = r;
+  return val_op(m, VAL_STUCK, OP_KAN_GLUE, sel, 0, args, 2u);
+}
+
+/* fun i => [ F0 -> B0 i, ..., F(N-1) -> B(N-1) i ], VALS = F0, B0, ...
+   Under fun i: i 0, VALS[p] 2N - p. */
+static const Value *tube_of(Machine *m, const Value *const *vals, uint32_t n) {
+  const Core **args = kan_args(m, 2u * n);
+  uint32_t k;
+  if (args == NULL)
+    return NULL;
+  for (k = 0; k < n; k++) {
+    args[2u * k] = var(m, 2u * n - 2u * k);
+    args[2u * k + 1u] = app(m, var(m, 2u * n - 2u * k - 1u), var(m, 0));
+  }
+  return run(m, tube(m, opn(m, OP_SYS, n, args, 2u * n)), vals, 2u * n);
+}
+
+/* glue [ VALS[2] -> VALS[3], ... ] VALS[0] (O = OP_GLUE_ELEM) or
+   Glue VALS[0] [ VALS[2] -> VALS[3], ... ] (O = OP_GLUE) with the face
+   VALS[1], N branches. VALS[p] is index 2N + 1 - p. */
+static const Value *glue_elem(Machine *m, Op o, const Value *const *vals, uint32_t n) {
+  const Core **args = kan_args(m, 2u * n);
+  uint32_t k;
+  if (args == NULL)
+    return NULL;
+  for (k = 0; k < n; k++) {
+    args[2u * k] = var(m, 2u * n - 1u - 2u * k);
+    args[2u * k + 1u] = var(m, 2u * n - 2u - 2u * k);
+  }
+  return run(m, op(m, o, 3u, var(m, 2u * n + 1u), var(m, 2u * n), opn(m, OP_SYS, n, args, 2u * n)), vals, 2u * n + 2u);
+}
+
+/* M3 s5: ghcomp A phi u u0 = hcomp A (phi \/ ~phi) (fun i => [ phi -> u i, ~phi -> u0 ]) u0,
+   so phi = i0 gives u0 by the face i1 rule. Environment [A, phi, u, u0]
+   (u0 is index 0). Under fun i: i 0, u0 1, u 2, phi 3, A 4. */
+static const Core *ghcomp_rule(Machine *m) {
+  const Core *u = tube(m, sys2(m, var(m, 3u), app(m, var(m, 2u), var(m, 0)), ivl(m, IVL_REV, var(m, 3u), NULL), var(m, 1u)));
+  return hcomp4(m, var(m, 3u), ivl(m, IVL_JOIN, var(m, 2u), ivl(m, IVL_REV, var(m, 2u), NULL)), u, var(m, 0));
+}
+
+/* gcomp (<i> A) phi u u0 = ghcomp A(i1) phi (fun i => [ phi -> transp (<j> A(i \/ j)) i (u i) ])
+   (transp (<i> A) i0 u0). The tube: environment [L, phi, u]; under fun i:
+   i 0, u 1, phi 2, L 3;  under <j>: j 0, i 1, u 2, phi 3, L 4. */
+static const Value *gcomp(Machine *m, const Value *line, const Value *phi, const Value *u, const Value *u0) {
+  const Core *aj = papp(m, var(m, 4u), ivl(m, IVL_JOIN, var(m, 1u), var(m, 0)), NULL, NULL);
+  const Core *fill = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "j", aj), var(m, 0), app(m, var(m, 1u), var(m, 0)));
+  const Value *t[3];
+  const Value *b[2];
+  const Value *g[4];
+  t[0] = line;
+  t[1] = phi;
+  t[2] = u;
+  b[0] = line;
+  b[1] = u0;
+  g[0] = run1(m, papp(m, var(m, 0), one(m), NULL, NULL), line);
+  g[1] = phi;
+  g[2] = run(m, tube(m, sys1(m, var(m, 2u), fill)), t, 3u);
+  g[3] = run(m, op(m, OP_TRANSP, 3u, var(m, 1u), zero(m), var(m, 0)), b, 2u);
+  return run(m, ghcomp_rule(m), g, 4u);
+}
+
+/* M3 s5 (Cubical Agda transpGlue, CCHM 6.2): transp L psi u0 for
+   L = <i> Glue A [ phik -> pack Tk ek ]. Brief formulas: a0 = unglue u0;
+   deltak = forall i. phik;  a1' = gcomp (<i> A) (psi \/ delta)
+   (fun i => [ psi -> a0, deltak -> first ek(i) tk(i) ]) a0 with
+   tk(i) = transp (<j> Tk(i /\ j)) (psi \/ ~i) u0;  per branch k the fiber
+   extension fextk = hcomp fibk (xi \/ ~xi) (fun j => [ xi -> second ctrk wk @ j,
+   ~xi -> first ctrk ]) (first ctrk), xi = psi \/ delta;  then
+   glue [ phik(1) -> first fextk ] (hcomp A(1) (phi(1) \/ psi)
+   (fun j => [ phik(1) -> second fextk @ ~j, psi -> a1' ]) a1').
+   Systems are eager, so each branch on a face of the inputs is built per
+   conjunction c on the inputs put on c. The components are read at a fresh
+   level ELL;  the ends come from them by at_end. NULL without a diagnostic
+   when the rule does not apply. */
+static const Value *transp_glue(Machine *m, const Value *line, const Value *psi, const Value *u0) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  uint32_t ell = 0;
+  uint32_t n, k, c, e, count, xn;
+  const Value *g, *sys, *a0, *a1p, *a1, *nxi, *ctr, *fext;
+  const Value *v[4];
+  const Value **pairs, **out, **ts;
+  const Ivl **deltas;
+  const Ivl *delta, *xi, *xf;
+  if (!value_bound(m, line, &ell) || !value_bound(m, psi, &ell) || !value_bound(m, u0, &ell) || ell >= KAN_PROBE)
+    return NULL;
+  g = closure_apply(m, line, val_ivl_var(m, ell));
+  if (g == NULL || !val_is(g, OP_GLUE) || !val_is(g->args[2], OP_SYS))
+    return NULL;
+  sys = g->args[2];
+  n = sys->inst;
+  deltas = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *deltas);
+  delta = ivl_const(&h, 0);
+  count = 0;
+  for (k = 0; deltas != NULL && delta != NULL && k < n; k++) {
+    deltas[k] = face_forall(&h, sys->args[2u * k]->ivl, ell);
+    delta = deltas[k] == NULL ? NULL : face_join(&h, delta, deltas[k]);
+    count += deltas[k] == NULL ? 0 : deltas[k]->count;
+  }
+  xi = delta == NULL ? NULL : face_join(&h, psi->ivl, delta);
+  /* Reused for the n Glue branches after the count persistent faces. */
+  pairs = kan_vals(m, 2u * (count > n ? count : n) + 2u);
+  if (deltas == NULL || xi == NULL || pairs == NULL)
+    return NULL;
+  /* a0 = unglue u0 at the end i0 */
+  v[0] = u0;
+  v[1] = at_end(m, ell, g->args[1], 0);
+  v[2] = at_end(m, ell, sys, 0);
+  a0 = run(m, op(m, OP_UNGLUE, 3u, var(m, 2u), var(m, 1u), var(m, 0)), v, 3u);
+  /* the tube of a1': under fun i: i 0, u0c 1, Lc 2, psi 3, L 4;  under <j>: j 0, i 1, u0c 2, Lc 3, psi 4, L 5 */
+  pairs[0] = psi;
+  pairs[1] = run1(m, tube(m, var(m, 1u)), a0);
+  e = 1;
+  for (k = 0; k < n; k++)
+    for (c = 0; c < deltas[k]->count; c++, e++) {
+      const Core *kg[2];
+      const Core *tk;
+      kg[0] = var(m, 4u);
+      kg[1] = var(m, 0);
+      tk = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "j", papp(m, var(m, 3u), ivl(m, IVL_MEET, var(m, 1u), var(m, 0)), NULL, NULL)),
+              ivl(m, IVL_JOIN, var(m, 3u), ivl(m, IVL_REV, var(m, 0), NULL)), var(m, 1u));
+      xf = face_conj(&h, deltas[k], c);
+      v[0] = line;
+      v[1] = psi;
+      v[2] = value_on_face(m, ell + 1u, line, deltas[k], c);
+      v[3] = value_on_face(m, ell + 1u, u0, deltas[k], c);
+      pairs[2u * e] = xf == NULL ? NULL : val_ivl(m, xf);
+      pairs[2u * e + 1u] = run(m, tube(m, app(m, proj(m, OP_WITNESS, proj(m, OP_PAYLOAD, opn(m, OP_KAN_GLUE, 1u + k, kg, 2u))), tk)), v, 4u);
+    }
+  {
+    const Core *kg[2];
+    kg[0] = var(m, 1u);
+    kg[1] = var(m, 0);
+    a1p = gcomp(m, run1(m, binder(m, CORE_PLAM, "i", opn(m, OP_KAN_GLUE, 0, kg, 2u)), line), val_ivl(m, xi), tube_of(m, pairs, count + 1u), a0);
+  }
+  /* tc = tk(1) on conjunction c of xi (on psi:  u0;  on deltak:  transp of Tk) */
+  xn = xi->count;
+  ts = kan_vals(m, 2u * xn + 2u);
+  out = kan_vals(m, 2u * n + 2u);
+  nxi = val_ivl(m, face_norm(&h, ivl_rev(&h, xi)));
+  if (a1p == NULL || ts == NULL || out == NULL || nxi == NULL)
+    return NULL;
+  for (c = 0; c < xn; c++) {
+    xf = face_conj(&h, xi, c);
+    v[0] = value_on_face(m, ell + 1u, line, xi, c);
+    v[1] = value_on_face(m, ell + 1u, psi, xi, c);
+    v[2] = value_on_face(m, ell + 1u, u0, xi, c);
+    ts[2u * c] = xf == NULL ? NULL : val_ivl(m, xf);
+    ts[2u * c + 1u] = run(m, op(m, OP_TRANSP, 3u, var(m, 2u), var(m, 1u), var(m, 0)), v, 3u);
+  }
+  /* a1 tube pairs in PAIRS:  phik(1) -> alphak @ ~j, then psi -> a1' */
+  out[0] = NULL;
+  out[1] = at_end(m, ell, g->args[1], 1);
+  out[1] = out[1] == NULL ? NULL : val_ivl(m, face_norm(&h, out[1]->ivl));
+  for (k = 0; k < n; k++) {
+    const Value *pk = at_end(m, ell, sys->args[2u * k + 1u], 1);
+    const Value **fs = kan_vals(m, 2u * xn + 2u);
+    v[0] = pk;
+    v[1] = a1p;
+    /* ctrk = second ek(1) a1' */
+    ctr = run(m, app(m, proj(m, OP_PAYLOAD, proj(m, OP_PAYLOAD, var(m, 1u))), var(m, 0)), v, 2u);
+    if (fs == NULL || ctr == NULL)
+      return NULL;
+    /* under fun j: j 0, tc 1, a1' 2, ctr 3;  under <_>: a1' 4. wc = pack tc (<_> a1') */
+    for (c = 0; c < xn; c++) {
+      const Core *w = op(m, OP_PACK, 2u, var(m, 1u), binder(m, CORE_PLAM, "_", var(m, 3u)), NULL);
+      v[0] = ctr;
+      v[1] = a1p;
+      v[2] = ts[2u * c + 1u];
+      fs[2u * c] = ts[2u * c];
+      fs[2u * c + 1u] = run(m, tube(m, papp(m, app(m, proj(m, OP_PAYLOAD, var(m, 3u)), w), var(m, 0), proj(m, OP_WITNESS, var(m, 3u)), w)), v, 3u);
+    }
+    fs[2u * xn] = nxi;
+    fs[2u * xn + 1u] = run1(m, tube(m, proj(m, OP_WITNESS, var(m, 1u))), ctr);
+    /* fibk = Sigma (x : Tk(1)) (Path A(1) (first ek(1) x) a1'):  env [A(1), a1', pk];  under x: x 0, pk 1, a1' 2, A(1) 3 */
+    v[0] = at_end(m, ell, g->args[0], 1);
+    v[1] = a1p;
+    v[2] = pk;
+    v[3] = run(m, sigma(m, "x", proj(m, OP_WITNESS, var(m, 0)),
+                        op(m, OP_PATHP, 3u, binder(m, CORE_PLAM, "_", var(m, 4u)), app(m, proj(m, OP_WITNESS, proj(m, OP_PAYLOAD, var(m, 1u))), var(m, 0)), var(m, 2u))),
+               v, 3u);
+    xf = face_join(&h, xi, nxi->ivl);
+    fext = v[3] == NULL || xf == NULL ? NULL : kan_hcomp(m, v[3], val_ivl(m, xf), tube_of(m, fs, xn + 1u), run1(m, proj(m, OP_WITNESS, var(m, 0)), ctr));
+    if (fext == NULL)
+      return NULL;
+    /* alphak @ ~j:  env [pk, a1', t1k, alphak];  under fun j: j 0, alpha 1, t1 2, a1' 3, pk 4 */
+    v[0] = pk;
+    v[1] = a1p;
+    v[2] = run1(m, proj(m, OP_WITNESS, var(m, 0)), fext);
+    v[3] = run1(m, proj(m, OP_PAYLOAD, var(m, 0)), fext);
+    pairs[2u * k] = at_end(m, ell, sys->args[2u * k], 1);
+    pairs[2u * k + 1u] = run(m, tube(m, papp(m, var(m, 1u), ivl(m, IVL_REV, var(m, 0), NULL), app(m, proj(m, OP_WITNESS, proj(m, OP_PAYLOAD, var(m, 4u))), var(m, 2u)), var(m, 3u))), v, 4u);
+    out[2u + 2u * k] = pairs[2u * k];
+    out[3u + 2u * k] = v[2];
+  }
+  pairs[2u * n] = psi;
+  pairs[2u * n + 1u] = run1(m, tube(m, var(m, 1u)), a1p);
+  xf = out[1] == NULL ? NULL : face_join(&h, out[1]->ivl, psi->ivl);
+  a1 = xf == NULL ? NULL : kan_hcomp(m, at_end(m, ell, g->args[0], 1), val_ivl(m, xf), tube_of(m, pairs, n + 1u), a1p);
+  out[0] = a1;
+  return a1 == NULL ? NULL : glue_elem(m, OP_GLUE_ELEM, out, n);
+}
+
+/* M3 s5 (Agda hcompGlue): A = Glue B [ phik -> pack Tk ek ]:
+   glue [ phik -> hcomp Tk psi u u0 ] (hcomp B (psi \/ phi)
+     (fun i => [ psi -> unglue (u i), phik -> first ek (hfill Tk psi u u0 i) ]) (unglue u0)).
+   Each phik branch is built per conjunction c of phik on the inputs put
+   on c (eager systems). NULL without a diagnostic when the rule does not
+   apply. */
+static const Value *hcomp_glue(Machine *m, const Value *a, const Value *psi, const Value *u, const Value *u0) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Value *sys = a->args[2];
+  const Value **pairs, **out;
+  const Value *v[4];
+  const Ivl *f;
+  uint32_t bound = 0;
+  uint32_t k, c, e, count = 0;
+  if (!val_is(sys, OP_SYS) || !value_bound(m, a, &bound) || !value_bound(m, psi, &bound) || !value_bound(m, u, &bound) || !value_bound(m, u0, &bound) || bound >= KAN_PROBE)
+    return NULL;
+  for (k = 0; k < sys->inst; k++)
+    count += sys->args[2u * k]->ivl->count;
+  pairs = kan_vals(m, 2u * count + 2u);
+  out = kan_vals(m, 2u * count + 2u);
+  if (pairs == NULL || out == NULL)
+    return NULL;
+  /* psi -> unglue (u i):  under fun i: i 0, sys 1, face 2, u 3 */
+  v[0] = u;
+  v[1] = a->args[1];
+  v[2] = sys;
+  pairs[0] = psi;
+  pairs[1] = run(m, tube(m, op(m, OP_UNGLUE, 3u, app(m, var(m, 3u), var(m, 0)), var(m, 2u), var(m, 1u))), v, 3u);
+  e = 0;
+  for (k = 0; k < sys->inst; k++)
+    for (c = 0; c < sys->args[2u * k]->ivl->count; c++, e++) {
+      /* env [p, psi, u, u0];  under fun i: i 0, u0 1, u 2, psi 3, p 4;  under fun j: j 0, i 1, u0 2, u 3, psi 4, p 5 */
+      const Core *inner = tube(m, sys2(m, var(m, 4u), app(m, var(m, 3u), ivl(m, IVL_MEET, var(m, 0), var(m, 1u))), ivl(m, IVL_REV, var(m, 1u), NULL), var(m, 2u)));
+      const Core *fill = hcomp4(m, proj(m, OP_WITNESS, var(m, 4u)), ivl(m, IVL_JOIN, var(m, 3u), ivl(m, IVL_REV, var(m, 0), NULL)), inner, var(m, 1u));
+      f = sys->args[2u * k]->ivl;
+      v[0] = value_on_face(m, bound + 1u, sys->args[2u * k + 1u], f, c);
+      v[1] = value_on_face(m, bound + 1u, psi, f, c);
+      v[2] = value_on_face(m, bound + 1u, u, f, c);
+      v[3] = value_on_face(m, bound + 1u, u0, f, c);
+      f = face_conj(&h, f, c);
+      pairs[2u + 2u * e] = f == NULL ? NULL : val_ivl(m, f);
+      pairs[3u + 2u * e] = run(m, tube(m, app(m, proj(m, OP_WITNESS, proj(m, OP_PAYLOAD, var(m, 4u))), fill)), v, 4u);
+      out[2u + 2u * e] = pairs[2u + 2u * e];
+      out[3u + 2u * e] = run(m, hcomp4(m, proj(m, OP_WITNESS, var(m, 3u)), var(m, 2u), var(m, 1u), var(m, 0)), v, 4u);
+    }
+  /* a1 = hcomp B (psi \/ phi) tube (unglue u0) */
+  f = face_join(&h, psi->ivl, a->args[1]->ivl);
+  v[0] = u0;
+  v[1] = a->args[1];
+  v[2] = sys;
+  out[0] = f == NULL ? NULL : kan_hcomp(m, a->args[0], val_ivl(m, f), tube_of(m, pairs, count + 1u), run(m, op(m, OP_UNGLUE, 3u, var(m, 2u), var(m, 1u), var(m, 0)), v, 3u));
+  out[1] = a->args[1];
+  return out[0] == NULL ? NULL : glue_elem(m, OP_GLUE_ELEM, out, count);
+}
+
+/* Closed templates for lineToEquiv:  isContr = fun T => Sigma (c : T)
+   ((z : T) -> Path T c z);  fiber = fun X Y f y => Sigma (x : X)
+   (Path Y (f x) y);  isEquiv = fun X Y f => (y : Y) -> isContr (fiber X Y f y). */
+static const Core *is_contr_fn(Machine *m) {
+  const Core *path = op(m, OP_PATHP, 3u, binder(m, CORE_PLAM, "_", var(m, 3u)), var(m, 1u), var(m, 0));
+  return binder(m, CORE_LAM, "T", sigma(m, "c", var(m, 0), dep(m, CORE_PI, "z", var(m, 1u), path)));
+}
+
+static const Core *fiber_fn(Machine *m) {
+  const Core *path = op(m, OP_PATHP, 3u, binder(m, CORE_PLAM, "_", var(m, 4u)), app(m, var(m, 2u), var(m, 0)), var(m, 1u));
+  return binder(m, CORE_LAM, "X", binder(m, CORE_LAM, "Y", binder(m, CORE_LAM, "f", binder(m, CORE_LAM, "y", sigma(m, "x", var(m, 3u), path)))));
+}
+
+static const Core *is_equiv_fn(Machine *m) {
+  /* under y: y 0, f 1, Y 2, X 3 */
+  const Core *fib = app(m, app(m, app(m, app(m, fiber_fn(m), var(m, 3u)), var(m, 2u)), var(m, 1u)), var(m, 0));
+  return binder(m, CORE_LAM, "X", binder(m, CORE_LAM, "Y", binder(m, CORE_LAM, "f", dep(m, CORE_PI, "y", var(m, 1u), app(m, is_contr_fn(m), fib)))));
+}
+
+/* second (idEquiv X) = fun y => pack (pack y (<_> y)) (fun z => <i> pack
+   (payload z @ ~i) (<j> payload z @ (~i \/ j))), as check.c core_id_equiv;
+   payload z has the ends witness z and y. */
+static const Core *id_contr(Machine *m) {
+  const Core *z_ij = papp(m, proj(m, OP_PAYLOAD, var(m, 2u)), ivl(m, IVL_JOIN, ivl(m, IVL_REV, var(m, 1u), NULL), var(m, 0)), proj(m, OP_WITNESS, var(m, 2u)), var(m, 3u));
+  const Core *z_i = papp(m, proj(m, OP_PAYLOAD, var(m, 1u)), ivl(m, IVL_REV, var(m, 0), NULL), proj(m, OP_WITNESS, var(m, 1u)), var(m, 2u));
+  const Core *contract = binder(m, CORE_LAM, "z", binder(m, CORE_PLAM, "i", op(m, OP_PACK, 2u, z_i, binder(m, CORE_PLAM, "j", z_ij), NULL)));
+  const Core *center = op(m, OP_PACK, 2u, var(m, 0), binder(m, CORE_PLAM, "_", var(m, 1u)), NULL);
+  return binder(m, CORE_LAM, "y", op(m, OP_PACK, 2u, center, contract, NULL));
+}
+
+/* M3 s5 (Cubical Agda lineToEquiv):  lineToEquiv L = pack (fun x => transp L i0 x)
+   (transp (<k> isEquiv L(i0) L(k) (fun x => transp (<j> L(k /\ j)) ~k x)) i0
+   (second (idEquiv L(i0)))).  At k = i0 the function is the identity.
+   Environment [L];  under <k>: k 0, L 1;  under fun x: x 0, k 1, L 2;
+   under <j>: j 0, x 1, k 2, L 3. */
+static const Core *line_to_equiv(Machine *m) {
+  const Core *fk = binder(m, CORE_LAM, "x", op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "j", papp(m, var(m, 3u), ivl(m, IVL_MEET, var(m, 2u), var(m, 0)), NULL, NULL)),
+                                               ivl(m, IVL_REV, var(m, 1u), NULL), var(m, 0)));
+  const Core *ty = app(m, app(m, app(m, is_equiv_fn(m), papp(m, var(m, 1u), zero(m), NULL, NULL)), papp(m, var(m, 1u), var(m, 0), NULL, NULL)), fk);
+  const Core *f = binder(m, CORE_LAM, "x", op(m, OP_TRANSP, 3u, var(m, 1u), zero(m), var(m, 0)));
+  return op(m, OP_PACK, 2u, f, op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "k", ty), zero(m), id_contr(m)), NULL);
+}
+
+/* A line with a closed type head is constant and transp along it is the
+   identity, so idEquiv L(i0) = pack (fun x => x) (second (idEquiv L(i0)))
+   is a lineToEquiv of it. The general unfold transports the isEquiv nest,
+   and each hcomp in it evaluates its tube again per face:  that grows
+   exponentially (1 GB for a transp in Glue Nat [ k -> .. ], M3 s5-f). */
+const Value *kan_l2e(Machine *m, const Value *line) {
+  const Value *t;
+  if (line == NULL)
+    return NULL;
+  if (line->kind != VAL_PLAM)
+    return kan_fail(m, "a lineToEquiv of a value that is not a path lambda");
+  t = probe_head(m, line);
+  if (t == NULL)
+    return NULL;
+  if (closed_type(t))
+    return run1(m, op(m, OP_PACK, 2u, binder(m, CORE_LAM, "x", var(m, 0)), id_contr(m), NULL), line);
+  return run1(m, line_to_equiv(m), line);
+}
+
+/* M3 s5 (Cubical Agda hcomp in the universe):  hcomp (Type n) phi E A0 =
+   Glue A0 [ phi -> pack (E i1) (lineToEquiv (<i> E (~i))) ], one branch per
+   conjunction c of phi with E put on c (eager systems). NULL without a
+   diagnostic when the rule does not apply. */
+static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *u, const Value *u0) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Value **out;
+  const Value *ec, *lc;
+  const Value *vals[2];
+  const Ivl *f;
+  uint32_t bound = 0;
+  uint32_t c, count;
+  if (!value_bound(m, phi, &bound) || !value_bound(m, u, &bound) || !value_bound(m, u0, &bound) || bound >= KAN_PROBE)
+    return NULL;
+  count = phi->ivl->count;
+  out = kan_vals(m, 2u * count + 2u);
+  if (out == NULL)
+    return NULL;
+  out[0] = u0;
+  out[1] = phi;
+  for (c = 0; c < count; c++) {
+    f = face_conj(&h, phi->ivl, c);
+    ec = value_on_face(m, bound + 1u, u, phi->ivl, c);
+    /* <i> E (~i):  env [E];  under <i>: i 0, E 1 */
+    lc = run1(m, binder(m, CORE_PLAM, "i", app(m, var(m, 1u), ivl(m, IVL_REV, var(m, 0), NULL))), ec);
+    out[2u + 2u * c] = f == NULL ? NULL : val_ivl(m, f);
+    /* pack (E i1) (lineToEquiv L), lineToEquiv lazy (OP_KAN_L2E):  env [E, L];  L 0, E 1 */
+    vals[0] = ec;
+    vals[1] = lc;
+    out[3u + 2u * c] = run(m, op(m, OP_PACK, 2u, app(m, var(m, 1u), one(m)), op(m, OP_KAN_L2E, 1u, var(m, 0), NULL, NULL), NULL), vals, 2u);
+  }
+  return glue_elem(m, OP_GLUE, out, count);
+}
+
 const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const Value *a) {
   const Value *args[3];
   const Value *head;
@@ -313,8 +782,13 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
     return kan_fail(m, "a transp with a bad line or face");
   if (ivl_is_const(phi->ivl, 1))
     return a;
-  /* Only the head is read. A Pi head at a fresh i is a Pi head at each r. */
-  head = closure_apply(m, line, val_ivl_var(m, KAN_PROBE + m->depth));
+  args[0] = line;
+  args[1] = phi;
+  args[2] = a;
+  if (m->probe > 0)
+    return val_op(m, VAL_STUCK, OP_TRANSP, 0, 0, args, 3u);
+  /* A Pi head at a fresh i is a Pi head at each r. */
+  head = probe_head(m, line);
   if (head == NULL)
     return NULL;
   if (closed_type(head))
@@ -329,9 +803,11 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
     return instance(m, pathp_rule(m), line, phi, a);
   if (data_type(head) && data_ctor(a))
     return transp_data(m, line, phi, a);
-  args[0] = line;
-  args[1] = phi;
-  args[2] = a;
+  if (val_is(head, OP_GLUE)) {
+    const Value *v = transp_glue(m, line, phi, a);
+    if (v != NULL || m->diag->set)
+      return v;
+  }
   return val_op(m, VAL_STUCK, OP_TRANSP, 0, 0, args, 3u);
 }
 
@@ -545,6 +1021,7 @@ static const Value *hcomp_data(Machine *m, const Value *a, const Value *phi, con
 /* M3-PLAN 3.4 (s2): the face i1 rule, then the rule of the head former of
    A, else a stuck value. No rule gives u0 for the face i0 on a general A
    (D8). */
+
 const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
   const Value *args[4];
   if (a == NULL || phi == NULL || u == NULL || u0 == NULL)
@@ -569,6 +1046,16 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
     return instance4(m, hcomp_pathp_rule(m), const_line(m, a), phi, u, u0);
   if (data_type(a)) {
     const Value *v = hcomp_data(m, a, phi, u, u0);
+    if (v != NULL || m->diag->set)
+      return v;
+  }
+  if (val_is(a, OP_GLUE)) {
+    const Value *v = hcomp_glue(m, a, phi, u, u0);
+    if (v != NULL || m->diag->set)
+      return v;
+  }
+  if (a->kind == VAL_UNIV) {
+    const Value *v = hcomp_univ(m, phi, u, u0);
     if (v != NULL || m->diag->set)
       return v;
   }

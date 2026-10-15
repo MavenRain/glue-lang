@@ -25,6 +25,9 @@ typedef struct {
 const Ivl *face_norm(IvlHeap *h, const Ivl *a);
 const Ivl *face_meet(IvlHeap *h, const Ivl *a, const Ivl *b);
 const Ivl *face_join(IvlHeap *h, const Ivl *a, const Ivl *b);
+/* CCHM forall LEVEL. A: the join of the conjunctions of A that do not use
+   LEVEL (i0 when there is none). */
+const Ivl *face_forall(IvlHeap *h, const Ivl *a, uint32_t level);
 /* Normal forms are unique, so equality is equality of the arrays. */
 int face_equal(const Ivl *a, const Ivl *b);
 /* Entailment: 1 when A <= B, 0 when not, -1 after a diagnostic. */

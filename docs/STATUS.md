@@ -36,7 +36,9 @@ core of M0 (the sample domain, the former checker, the JSON target). M2
   `contracts/test/fixtures/`.
 - CIRCUIT_UNCONSTRAINED is a syntactic check (SPEC.md O3). A private
   binder that is only in `x == x` passes it.
-- No refusal test for CIRCUIT_LOWER (SPEC.md O4).
+- No refusal test for CIRCUIT_LOWER (SPEC.md O4). M3 s5 found no circuit
+  that gives it: a circuit has only Field binders, thus the closed-type
+  rules reduce each Kan term in a constraint.
 - The Solidity generator takes one instance column, no rotated instance
   query and at least one advice column (halo2/README.md).
 
@@ -44,8 +46,10 @@ core of M0 (the sample domain, the former checker, the JSON target). M2
 
 The C compiler (`src/`, TinyCC) holds the front end, the lowering and the
 witness. `test/gate.sh` checks the examples, the refusal tables, the
-circuit goldens (`test/circuit/`) and the satcheck refusals
-(`test/satcheck/`). docs/IR.md is the only interface between the compiler
+circuit goldens (`test/circuit/`), the same-IR table
+(`test/circuit/same-ir.txt`: a circuit in a second example file must
+give an IR golden byte for byte)
+and the satcheck refusals (`test/satcheck/`). docs/IR.md is the only interface between the compiler
 and the back end.
 
 The halo2 back end (`halo2/`, Rust) reads IR v1 and refuses each document
@@ -856,3 +860,118 @@ different variables of one path type do not convert.
     cases; the fixed implementation passes all 40. ASan and UBSan pass.
     `make -B check` and the full e2e pipeline pass, including 33 Forge
     tests. The pipeline reuses the unchanged Halo2 binary.
+
+### s5: Glue Kan rules, hcomp in the universe and uaBeta (2026-10-15)
+
+The main loop built s5 by hand (sessions s5-a to s5-m). The builder agents
+stopped on a rate limit and on a model error, and wrote no file.
+
+- Faces (face.c, face.h): `face_forall` gives the CCHM forall at a level:
+  the join of the conjunctions that do not use the level (i0 when there
+  is none). test/face-regressions.c has 3 new native cases.
+- Core (core.h): two internal ops, used only in kan.c. OP_KAN_GLUE (args:
+  the Glue line L and r; inst 0 is A, inst 1 + k is the pack of branch k
+  at r). OP_KAN_L2E (args: L) is lineToEquiv L in a canonical form. A
+  projection, or a conversion against a value that is not OP_KAN_L2E,
+  unfolds it to a pack. json.c has a case for each op.
+- Kan rules (kan.c, M3-PLAN 3.4, D8): `ghcomp_rule` and `gcomp`;
+  `transp_glue` and `hcomp_glue` (transp and hcomp at a Glue type);
+  `hcomp_univ` (hcomp in `Type n` gives a Glue type of lineToEquiv);
+  `line_to_equiv` and closed templates for isContr, fiber, isEquiv and
+  idContr. A system body is evaluated eagerly, thus each Glue branch body
+  is restricted to each conjunction with value_on_face. At an end where
+  the Glue face is i1, `kan_glue` reads the part at a fresh level and then
+  puts it on that end.
+- Head probes (Machine.probe, kan.c `probe_head`): a transp in a probe
+  stays stuck. A head that is not a type former is read again at the
+  value_bound of the line.
+- Evaluator (eval.c): `env_bound` reads the closure environment and does
+  not open each closure (that evaluated the tube bodies again).
+  `closure_apply` has a memo (Machine.opens, OpenMemo in core.h, 65536
+  buckets). The key is the closure, the variable level and the kind of
+  the argument. The memo is not used in a probe. This is safe because
+  eval is pure outside a probe and the arena does not reset. print_value
+  has a NULL guard: an arena OOM in the printer now gives a diagnostic
+  (exit 1), not a crash.
+- Typing (check.c): `uaBeta e x` (RULE_UA_BETA), with e : Equiv A B and
+  x : A, gives Path B (transport (ua e) x) (first e x). Its core is `<i>
+  transp (<_> B) i (first e x)`. If the end at i0 does not convert to
+  `transport (ua e) x`, the checker gives PATH_BOUNDARY. `arrow_cod` now
+  converts B at two fresh variables: with the env_bound change, a
+  function type B such as Nat -> Nat looked dependent on the binder.
+  PRINT_MAX (check.c:18) is 128 KB, not 64 KB (USER ruling).
+- Codes: no new code. A dependent function in isEquiv or fiber gives
+  TYPE_NOT_FUNCTION. A pair with a dependent function in ua gives
+  TYPE_MISMATCH.
+- Guest tests:
+  - examples/gluekan.lang (41 definitions): the smoke rows and uaBeta at
+    Nat, Field, a variable B, a variable A and a function type. 19 eval
+    rows. test/eval/thu.txt is the golden of `thu` (106,675 bytes),
+    compared by a cmp block in test/gate.sh.
+  - examples/iso.lang: the general isoToEquiv (option (a), from the
+    Cubical Agda lemIso; each hfill is an hcomp with the extra branch
+    `~j`). Two wrong `~j` branches (in sq1 and in fill0) give FACE_AGREE,
+    thus the check is not vacuous. swapE is generic over A: a closed
+    `def swapE : Equiv ...` is a JSON instance that holds a function
+    (JSON_VALUE). 7 eval rows; test/json/iso.json has 6 instances.
+  - examples/squareUa.glue: the iso.lang definitions (a .glue file has no
+    import) and a circuit `square` with `transport (ua (swapE Field))`.
+    Its IR and witness are byte-equal to test/circuit/square.*.json.
+    test/circuit/same-ir.txt (`PROG NAME GOLDEN`) has the row `squareUa
+    square square`; test/gate.sh checks it. `make e2e` does not read this
+    table. A wrong golden (`range`) gives 1 failure.
+  - test/check/equiv-dependent.lang (TYPE_NOT_FUNCTION) and
+    test/check/ua-dependent.lang (TYPE_MISMATCH): a dependent codomain
+    through `arrow_cod`.
+  - test/emit/stuck-transp.lang is now `fold 1 2 3 (transp (<_> Color) i0
+    red)` (transp stays stuck at a domain family, O8). The old row was
+    stuck only because of a head probe defect.
+- Mutants (each with `make -B check`, source restored after): 6 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| 1 ghcomp drops `~phi -> u0` (ghcomp_rule sys2 -> sys1) | examples/gluekan.lang check at `ubn` (PATH_BOUNDARY from uaBeta), 22 failures |
+| 2 transp_glue drops `~xi -> first ctr` (`tube_of(m, fs, xn + 1u)` -> `xn`) | examples/gluekan.lang check at `ubn` (normal form `[  ]`), 22 failures |
+| 3 face_forall returns phi | native `face_forall (~i \/ i, i) is i0` |
+| 4 memo key forced to 0 (`open_key(arg) * 0u`) | eval gluekan `thp` (OOM at the arena limit), then `thf`; 2 failures |
+| 5 arrow_cod back to the s4 value_bound body | examples/gluekan.lang check at `tf` (TYPE_MISMATCH), 22 failures |
+| 6 arrow_cod without the conv test | native path `isEquiv still rejects a dependent function` (INTERNAL); equiv-dependent.lang gives INTERNAL |
+
+- For mutants 1 and 2, `ubv`, `ubvt` and `uba` each kill the mutant
+  alone. The s5 plan said that the closed-type rule hides a ghcomp defect
+  at Nat and Field. For mutants 1 and 2 that is false: `ubn` (Nat) kills
+  them.
+- ua-dependent.lang does not kill mutant 6. A dependent function type
+  `(n : Nat) -> Lot n` does not convert to a function type `Nat -> B`,
+  thus the Equiv test in `ua_core` refuses it without the conv test of
+  `arrow_cod`.
+- CIRCUIT_LOWER: no circuit gives it (SPEC.md O4). A circuit has only
+  Field binders, thus the closed-type rules reduce each Kan term in a
+  constraint. No refuse.txt row.
+- Gates: `make -B check` exit 0 (examples 23, parse refusals 15, check
+  refusals 83, evals 142, json 19, build refusals 5, circuits 3, same-ir
+  1, circuit refusals 10, satcheck refusals 6, native circuit regressions
+  9, native path regressions 40, native face regressions 35, each with 0
+  failed; gate 0 failures; regressions 6 and 0 failed; printer 2). `make
+  check-clang` clean. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 Forge tests passed).
+- IR check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+  exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+  --root contracts` passes again (33 passed, 0 failed).
+- Open items:
+  - O8 (s5): transp and hcomp at a Glue type and hcomp at `Type n` now
+    reduce. These stay stuck: transp at Family, at a domain family and at
+    a neutral value of a Sum, Option or List; hcomp at a stuck type, and
+    at a Sum, Option or List when `u0` and the branches do not have the
+    same constructor.
+  - `thu` (transp in Glue over a variable A) prints a 107 KB tower of
+    stuck `hcomp A` and `transp (<_> A)` terms. The value is correct
+    without regularity (M3 ruling 9a).
+  - PRINT_MAX is 128 KB by USER ruling (for `thu`). A larger normal form
+    gives EVAL_PRINT.
+  - The normal form of `swapE` (679 bytes) prints a nested system
+    `[ i \/ ~i -> [ ... ] ]` in one Prod component and a flat system in
+    the other. This is a print form, not a semantic value. iso.lang has
+    no eval row for swapE.
+  - O4 stays open (CIRCUIT_LOWER above).

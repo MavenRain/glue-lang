@@ -30,7 +30,8 @@ static const char *const OP_NAMES[] = {
   [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
   [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?",
   [OP_HCOMP] = "hcomp", [OP_KAN_FIELD] = "?", [OP_GLUE] = "Glue",
-  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
+  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue", [OP_KAN_GLUE] = "?",
+  [OP_KAN_L2E] = "lineToEquiv"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -50,7 +51,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
   [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3,
   [OP_HCOMP] = 4, [OP_KAN_FIELD] = 1, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
-  [OP_UNGLUE] = 3
+  [OP_UNGLUE] = 3, [OP_KAN_GLUE] = 2, [OP_KAN_L2E] = 1
 };
 
 typedef enum {
@@ -398,16 +399,60 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   return internal(m, "an application of a value that is not a function");
 }
 
+#define OPEN_BUCKETS 65536u
+
+/* M3 s5-i: the key of an argument that is a variable:  level * 4 + 1 for a
+   term variable, level * 4 + 2 for an interval variable i;  0 for another
+   argument. */
+static uint64_t open_key(const Value *arg) {
+  const Ivl *x = arg->ivl;
+  if (arg->kind == VAL_VAR)
+    return ((uint64_t)arg->nat << 2) + 1u;
+  if (arg->kind != VAL_IVL || x == NULL || x->count != 1u || x->starts[1] - x->starts[0] != 1u || (x->lits[x->starts[0]] & 1u) != 0)
+    return 0;
+  return ((uint64_t)(x->lits[x->starts[0]] >> 1) << 2) + 2u;
+}
+
+static uint32_t open_bucket(const Value *binder, uint64_t key) {
+  uint64_t h = ((uint64_t)(uintptr_t)binder >> 4) ^ (key * 0x9E3779B97F4A7C15u);
+  return (uint32_t)(h ^ (h >> 29)) & (OPEN_BUCKETS - 1u);
+}
+
+/* M3 s5-i: a closure opened again at the same variable gives the value of
+   the first opening (evaluation is pure, and the arena is never reset).
+   Each tube application of a Kan rule template (hcomp_constant, the pair
+   and Pi rules) opens the tube of the level above at one level, so without
+   the memo each level evaluates the templates of the level above again.
+   A head probe (m->probe) is not kept:  its transps stay stuck. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg) {
   const Env *env;
+  const OpenMemo *p;
+  OpenMemo *q;
+  const Value *out;
+  uint64_t key;
+  uint32_t b;
   if (binder == NULL || arg == NULL)
     return NULL;
   if (binder->body == NULL)
     return binder->arg;
+  key = m->probe > 0 ? 0 : open_key(arg);
+  b = open_bucket(binder, key);
+  if (key != 0 && m->opens == NULL)
+    m->opens = arena_alloc(m->arena, OPEN_BUCKETS * sizeof *m->opens);
+  for (p = key != 0 && m->opens != NULL ? m->opens[b] : NULL; p != NULL; p = p->next)
+    if (p->binder == binder && p->key == key)
+      return p->out;
   env = env_push(m, binder->env, arg);
-  if (env == NULL)
-    return NULL;
-  return eval_core(m, env, binder->body);
+  out = env == NULL ? NULL : eval_core(m, env, binder->body);
+  q = key != 0 && out != NULL && m->opens != NULL ? arena_alloc(m->arena, sizeof *q) : NULL;
+  if (q != NULL) {
+    q->binder = binder;
+    q->key = key;
+    q->out = out;
+    q->next = m->opens[b];
+    m->opens[b] = q;
+  }
+  return out;
 }
 
 static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32_t n, Op ctor, uint32_t index);
@@ -434,6 +479,11 @@ static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32
     return out;
   if (val_is(a[0], OP_SYS))
     return sys_project(m, op, a[0], ctor, index);
+  /* M3 s5: lineToEquiv L unfolds to its pack on a projection. */
+  if (ctor == OP_PACK && val_is(a[0], OP_KAN_L2E)) {
+    out = kan_l2e(m, a[0]->args[0]);
+    return out == NULL ? NULL : reduce_part(m, op, &out, 1u, ctor, index);
+  }
   if (!val_is(a[0], ctor))
     return internal(m, "a projection of a value of the wrong type");
   return a[0]->args[index];
@@ -1041,6 +1091,10 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return kan_hcomp(m, a[0], face_value(m, a[1]), a[2], a[3]);
   case OP_KAN_FIELD:
     return reduce_field(m, inst, a, n);
+  case OP_KAN_GLUE:
+    return kan_glue(m, a[0], a[1], inst);
+  case OP_KAN_L2E:
+    return val_op(m, VAL_OP, OP_KAN_L2E, 0, 0, a, 1u);
   case OP_GLUE:
     return reduce_glue(m, a);
   case OP_GLUE_ELEM:
@@ -1363,8 +1417,19 @@ static int interval_levels(Machine *m, uint32_t level, uint32_t free_count, cons
   return ok;
 }
 
-/* M3 s2: raise *BOUND above each free level of V below OPEN. Closures open
-   at LEVEL (OPEN or above), so their binders do not count. */
+static int free_bound(Machine *m, uint32_t level, uint32_t open, const Value *v, uint32_t *bound);
+
+/* M3 s5: a closure is not opened, because its body would evaluate again
+   (with each Kan operation in it). Each value of its environment counts,
+   so the bound is above the free levels of the body. */
+static int env_bound(Machine *m, uint32_t level, uint32_t open, const Env *env, uint32_t *bound) {
+  int ok = 1;
+  for (; ok && env != NULL; env = env->next)
+    ok = env->value == NULL || free_bound(m, level, open, env->value, bound);
+  return ok;
+}
+
+/* M3 s2: raise *BOUND above each free level of V below OPEN. */
 static int free_bound(Machine *m, uint32_t level, uint32_t open, const Value *v, uint32_t *bound) {
   uint32_t i;
   int ok = 1;
@@ -1385,8 +1450,7 @@ static int free_bound(Machine *m, uint32_t level, uint32_t open, const Value *v,
   case VAL_SIGMA:
   case VAL_PLAM:
     ok = (v->dom == NULL || free_bound(m, level, open, v->dom, bound))
-      && free_bound(m, level + 1u, open,
-        closure_apply(m, v, ivl_binder(v) ? val_ivl_var(m, level) : val_var(m, level)), bound);
+      && (v->body == NULL ? free_bound(m, level, open, v->arg, bound) : env_bound(m, level, open, v->env, bound));
     break;
   case VAL_APP:
   case VAL_PAPP:
@@ -1492,6 +1556,12 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       return conv_path(m, level, a, b);
     if (a->kind == VAL_LAM || b->kind == VAL_LAM)
       return conv_fun(m, level, a, b);
+    /* M3 s5: two lineToEquiv compare their lines;  one unfolds to its pack. */
+    if (val_is(a, OP_KAN_L2E) != val_is(b, OP_KAN_L2E)) {
+      a = val_is(a, OP_KAN_L2E) ? kan_l2e(m, a->args[0]) : a;
+      b = val_is(b, OP_KAN_L2E) ? kan_l2e(m, b->args[0]) : b;
+      continue;
+    }
     if ((val_is(a, OP_PAIR) || val_is(a, OP_PACK)) && scrut_of(b) == SCRUT_NEUTRAL)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
@@ -2069,6 +2139,12 @@ static void print_value(Printer *p, const Value *v, int atom) {
   const Value *line;
   uint32_t open = 0;
   uint32_t i;
+  /* A body under a binder that fails to evaluate (OOM) is NULL;  the
+     diagnostic is set and value_print reports it. */
+  if (v == NULL) {
+    p->full = 1;
+    return;
+  }
   if (p->depth >= PRINT_DEPTH_MAX) {
     put(p, "...");
     p->full = 1;

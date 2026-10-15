@@ -15,7 +15,7 @@
 #define SHOW_MAX 512u
 #define NAMES_MAX 64u
 #define UNIVERSE_MAX 2u
-#define PRINT_MAX 65536u
+#define PRINT_MAX 131072u /* M3 s5-i (USER):  thu prints 106,675 bytes */
 #define NO_FAMILY UINT32_MAX
 #define NO_DEF UINT32_MAX
 
@@ -94,7 +94,8 @@ typedef enum {
   RULE_GLUE,
   RULE_GLUE_ELEM,
   RULE_UNGLUE,
-  RULE_UA
+  RULE_UA,
+  RULE_UA_BETA
 } Rule;
 
 typedef struct {
@@ -174,7 +175,8 @@ static const Builtin BUILTINS[] = {
   {"Glue", 2, RULE_GLUE, OP_GLUE, OP_NAT, 0},
   {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0},
   {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0},
-  {"ua", 1, RULE_UA, OP_GLUE, OP_NAT, 0}
+  {"ua", 1, RULE_UA, OP_GLUE, OP_NAT, 0},
+  {"uaBeta", 2, RULE_UA_BETA, OP_TRANSP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -182,7 +184,7 @@ static const Builtin BUILTINS[] = {
 /* Names that no declaration can take (rule R4). M3 D10: each Kan, Glue and
    univalence name is reserved from s1, and its slice moves it to BUILTINS. */
 static const char *const RESERVED[] = {
-  "Bool", "Text", "uaBeta"
+  "Bool", "Text"
 };
 
 typedef enum {
@@ -629,6 +631,7 @@ static const Core *rule_glue(Call *k);
 static const Core *rule_glue_elem(Call *k);
 static const Core *rule_unglue(Call *k);
 static const Core *rule_ua(Call *k);
+static const Core *rule_ua_beta(Call *k);
 static const Core *refl_path(Call *k);
 static const Core *cong_path(Call *k, const Core *p, const Value *pt);
 
@@ -1342,6 +1345,8 @@ static const Core *rule(Call *k) {
     return rule_unglue(k);
   case RULE_UA:
     return rule_ua(k);
+  case RULE_UA_BETA:
+    return rule_ua_beta(k);
   }
   return NULL;
 }
@@ -2452,11 +2457,13 @@ static int type_level(Checker *c, const char *name, const Value *t, uint64_t *le
 }
 
 /* B when FT is a function type A -> B whose codomain does not use the
-   binder, else NULL. */
+   binder, else NULL. B at two fresh variables must convert: value_bound
+   counts each value of a closure environment (M3 s5), so a function type
+   B such as Nat -> Nat would look dependent on the binder. */
 static const Value *arrow_cod(Checker *c, const Value *ft) {
-  uint32_t bound = 0;
   const Value *b = ft == NULL || ft->kind != VAL_PI ? NULL : closure_apply(c->m, ft, val_var(c->m, c->level));
-  return b != NULL && value_bound(c->m, b, &bound) && bound <= c->level ? b : NULL;
+  const Value *b2 = b == NULL ? NULL : closure_apply(c->m, ft, val_var(c->m, c->level + 1u));
+  return b2 != NULL && conv_values(c->m, c->level + 2u, b, b2) ? b : NULL;
 }
 
 /* isContr A : Type n, A : Type n. */
@@ -2612,11 +2619,12 @@ static const Core *rule_unglue(Call *k) {
 }
 
 /* ua e, e : Equiv A B, A and B in Type n, gives Path (Type n) A B. The core
-   is <i> Glue B [ ~i -> pack A e, i -> pack B (idEquiv B) ]. */
-static const Core *rule_ua(Call *k) {
+   is <i> Glue B [ ~i -> pack A e, i -> pack B (idEquiv B) ]. *EP gets the
+   core of e (uaBeta uses it). */
+static const Core *ua_core(Call *k, const Core **ep) {
   Checker *c = k->c;
   const Value *et = NULL;
-  const Core *e = infer(c, k->args[0], &et);
+  const Core *e = *ep = infer(c, k->args[0], &et);
   const Value *fn = et == NULL || et->kind != VAL_SIGMA ? NULL : et->dom;
   const Value *b = arrow_cod(c, fn);
   const Core *ak = b == NULL ? NULL : quote_value(c->m, c->level, fn->dom);
@@ -2640,6 +2648,35 @@ static const Core *rule_ua(Call *k) {
   sys[3] = op3(c, OP_PACK, 0, 2, up(c, bk), core_id_equiv(c), NULL);
   return core_bind(c, CORE_PLAM, "i", NULL,
                    op3(c, OP_GLUE, 0, 3, up(c, bk), core_ivl(c, IVL_JOIN, sys[0], sys[2]), core_op(c, OP_SYS, 2u, 0, sys, 4u)));
+}
+
+static const Core *rule_ua(Call *k) {
+  const Core *e = NULL;
+  return ua_core(k, &e);
+}
+
+/* uaBeta e x, e : Equiv A B, x : A, gives Path B (transport (ua e) x)
+   (first e x). The core is <i> transp (<_> B) i (first e x). The Glue Kan
+   rules must make its end at i0 convert to transport (ua e) x: else
+   PATH_BOUNDARY. */
+static const Core *rule_ua_beta(Call *k) {
+  Checker *c = k->c;
+  const Core *e = NULL;
+  const Core *u = ua_core(k, &e);
+  const Value *ut = u == NULL ? NULL : k->type;
+  const Core *x = ut == NULL ? NULL : check(c, k->args[1], ut->args[1]);
+  const Core *fx = x == NULL ? NULL : core_app(c, op3(c, OP_WITNESS, 0, 1, e, NULL, NULL), x);
+  const Value *start = fx == NULL ? NULL : here(c, transp_zero(c, core_bind(c, CORE_PLAM, "i", NULL, path_body(c, u, ut)), x));
+  const Value *end = start == NULL ? NULL : here(c, transp_zero(c, core_bind(c, CORE_PLAM, "_", NULL, quote_value(c->m, c->level + 1u, ut->args[2])), fx));
+  const Value *line = end == NULL ? NULL : close_over(c, VAL_PLAM, "i", NULL, ut->args[2]);
+  if (line == NULL)
+    return NULL;
+  if (!conv_values(c->m, c->level, start, end))
+    return nul(c->m->diag->set ? 0 : FAIL(c, "PATH_BOUNDARY", "uaBeta needs transport (ua e) x to be transp (<_> B) i0 (first e x), but it normalizes to %s and the other side is %s", show(c, start), show(c, end)));
+  k->type = tyop(c, OP_PATHP, 3, line, start, here(c, fx));
+  return core_bind(c, CORE_PLAM, "i", NULL,
+                   op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, "_", NULL, quote_value(c->m, c->level + 2u, ut->args[2])),
+                       core_index(c, CORE_VAR, 0), up(c, fx)));
 }
 
 static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, const Value **type) {

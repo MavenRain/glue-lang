@@ -113,3 +113,29 @@ glue eta => fun j => fun g => <i> g
 glue uaEnd0 => fun e => <i> Nat
 glue uaEnd1 => fun e => <i> Field
 glue uaIdAt0 => Nat
+gluekan hn => fun k => Glue Nat [ k -> pack Nat (lineToEquiv (<i> Nat)) ]
+gluekan hu => fun k => fun A => Glue A [ k -> pack A (lineToEquiv (<i> A)) ]
+gluekan hu1 => fun A => <i> A
+gluekan hel => fun k => glue [ k -> 3 ] 3
+gluekan ue => fun k => 3
+gluekan hua1 => fun B => fun e => <i> Nat
+gluekan thn3 => fun k => 3
+gluekan tl => fun k => 3
+gluekan tloop => 3
+gluekan thp => fun k => pair 1 2
+gluekan thf => fun k => 5
+gluekan tjv => fun j => 5
+gluekan hgp1 => fun j => fun g => fun p => g
+gluekan ubn => <i> 3
+gluekan ubn0 => 3
+gluekan ubv => fun B => fun e => fun x => <i> transp (<_> B) i ((witness e) x)
+gluekan ubf => fun e => fun x => <i> (witness e) x
+gluekan tfId => 5
+gluekan tf => fun e => fun f => fun y => (witness e) f y
+iso swapT => pair 2 1
+iso swapTT => pair 1 2
+iso swapB => <i> pair 2 1
+iso swapB0 => pair 2 1
+iso center => pair 4 3
+iso contr0 => pair 4 3
+iso contr1 => pair 4 3

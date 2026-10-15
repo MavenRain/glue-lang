@@ -1,0 +1,51 @@
+-- M3 s5: transp and hcomp on Glue, hcomp in the universe and uaBeta.
+-- hcomp in Type 0 is a Glue type. At k = i1 it is the tube at i1.
+def hn : (k : I) -> Type 0 := fun k => hcomp (Type 0) k (fun i => [ k -> Nat ]) Nat
+def hu : (k : I) -> (A : Type 0) -> Type 0 := fun k => fun A => hcomp (Type 0) k (fun i => [ k -> A ]) A
+def hu1 : (A : Type 0) -> Path (Type 0) (hu i1 A) A := fun A => refl
+def hel : (k : I) -> hn k := fun k => glue [ k -> 3 ] 3
+def ue : (k : I) -> Nat := fun k => unglue (hel k)
+def hua : (B : Type 0) -> (e : Equiv Nat B) -> (k : I) -> Type 0 := fun B => fun e => fun k => hcomp (Type 0) k (fun i => [ k -> ua e @ ~i ]) B
+def hua1 : (B : Type 0) -> (e : Equiv Nat B) -> Path (Type 0) (hua B e i1) Nat := fun B => fun e => refl
+
+-- transp along a constant line of a type hcomp. With no regularity, thu
+-- (a type variable A) stays a stuck term.
+def thn : (k : I) -> hn k -> hn k := fun k => fun x => transp (<_> hn k) i0 x
+def thn3 : (k : I) -> Nat := fun k => unglue (thn k (hel k))
+def tloop : hn i1 := transp (<i> hn i) i0 (hel i0)
+def tl : (k : I) -> Nat := fun k => tloop
+def thu : (k : I) -> (A : Type 0) -> hu k A -> hu k A := fun k => fun A => fun x => transp (<_> hu k A) i0 x
+
+-- Products and functions in a type hcomp.
+def hp : (k : I) -> Type 0 := fun k => hcomp (Type 0) k (fun i => [ k -> Prod Nat Nat ]) (Prod Nat Nat)
+def hpel : (k : I) -> hp k := fun k => glue [ k -> pair 1 2 ] (pair 1 2)
+def thp : (k : I) -> Prod Nat Nat := fun k => unglue (transp (<_> hp k) i0 (hpel k))
+def hf : (k : I) -> Type 0 := fun k => hcomp (Type 0) k (fun i => [ k -> Nat -> Nat ]) (Nat -> Nat)
+def hfel : (k : I) -> hf k := fun k => glue [ k -> fun (n : Nat) => n ] (fun (n : Nat) => n)
+def thf : (k : I) -> Nat := fun k => (unglue (transp (<_> hf k) i0 (hfel k))) 5
+
+-- transp and hcomp on Glue at a face j.
+def hgv : (j : I) -> (k : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => fun k => fun g => hcomp (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) k (fun i => [ k -> g ]) g
+def hgp : (j : I) -> (k : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> (p : Path (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) g g) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => fun k => fun g => fun p => hcomp (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) k (fun i => [ k -> p @ i ]) g
+def hgp1 : (j : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> (p : Path (Glue Nat [ j -> pack Nat (idEquiv Nat) ]) g g) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => fun g => fun p => hgp j i1 g p
+def tj : (j : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> Nat := fun j => fun g => transp (<i> Glue Nat [ (j \/ i) -> pack Nat (idEquiv Nat) ]) i0 g
+def tjv : (j : I) -> Nat := fun j => tj j (glue [ j -> 5 ] 5)
+def tpsi : (j : I) -> (g : Glue Nat [ j -> pack Nat (idEquiv Nat) ]) -> Glue Nat [ j -> pack Nat (idEquiv Nat) ] := fun j => fun g => transp (<_> Glue Nat [ j -> pack Nat (idEquiv Nat) ]) j g
+
+-- uaBeta e x : Path B (transport (ua e) x) (first e x). On Nat and Field
+-- refl also checks. With a variable B the Glue Kan rules must give
+-- transport (ua e) x = transp (<_> B) i0 (first e x).
+def ubn : Path Nat (transport (ua (idEquiv Nat)) 3) 3 := uaBeta (idEquiv Nat) 3
+def ubn0 : Nat := ubn @ i0
+def ubnr : Path Nat (transport (ua (idEquiv Nat)) 3) 3 := refl
+def ubf : (e : Equiv Nat Field) -> (x : Nat) -> Path Field (transport (ua e) x) (first e x) := fun e => fun x => uaBeta e x
+def ubfr : (e : Equiv Nat Field) -> (x : Nat) -> Path Field (transport (ua e) x) (first e x) := fun e => fun x => refl
+def ubv : (B : Type 0) -> (e : Equiv Nat B) -> (x : Nat) -> Path B (transport (ua e) x) (first e x) := fun B => fun e => fun x => uaBeta e x
+def ubvt : (B : Type 0) -> (e : Equiv Nat B) -> (x : Nat) -> Path B (transport (ua e) x) (transp (<_> B) i0 (first e x)) := fun B => fun e => fun x => refl
+def uba : (A : Type 0) -> (B : Type 0) -> (e : Equiv A B) -> (x : A) -> Path B (transport (ua e) x) (first e x) := fun A => fun B => fun e => fun x => uaBeta e x
+
+-- transport (ua e) on a function type (DESIGN line 169).
+def tf : (e : Equiv (Nat -> Nat) (Nat -> Nat)) -> (f : Nat -> Nat) -> Nat -> Nat := fun e => fun f => transport (ua e) f
+def tff : (B : Type 0) -> (e : Equiv (Nat -> Nat) B) -> (f : Nat -> Nat) -> Path B (transport (ua e) f) (transp (<_> B) i0 (first e f)) := fun B => fun e => fun f => refl
+def ubfn : (B : Type 0) -> (e : Equiv (Nat -> Nat) B) -> (f : Nat -> Nat) -> Path B (transport (ua e) f) (first e f) := fun B => fun e => fun f => uaBeta e f
+def tfId : Nat := transport (ua (idEquiv (Nat -> Nat))) (fun (n : Nat) => natAdd n 1) 4

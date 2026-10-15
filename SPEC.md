@@ -349,7 +349,13 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   only in `x == x` or `x - x == 0` passes the check, but the proof does not
   constrain it.
 - O4. No gate test gives CIRCUIT_LOWER yet. M1 has no Field-valued normal
-  form other than literals, binders and `+ - *`.
+  form other than literals, binders and `+ - *`. M3 (slice s5) found no
+  circuit that gives it. A circuit has only Field binders (no interval
+  binder and no type binder), thus the closed-type rules reduce each Kan
+  term in a constraint. Examples: `hcomp Field i0 (fun k => [ i0 -> x ])
+  (x * x)` gives `x * x`. With hfT = `hcomp (Type 0) i0 (fun i => [ i0 ->
+  Field ]) Field`, `unglue (transp (<_> hfT) i0 (glue [ i0 -> x ] x))` and
+  `unglue` of an `hcomp` in hfT give `x`. O4 stays open.
 - O5. The JSON target writes a Path component of a data value as `null`,
   because the two ends are in the type (section 2.4). M4 adds loops in
   HITs: a path from a point to itself can then carry content. M4 must look

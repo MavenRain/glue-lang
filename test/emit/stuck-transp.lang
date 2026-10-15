@@ -1,3 +1,2 @@
--- q computes to a PathP hcomp at Type 0, which stays stuck (O8 s2).
-def q : Path (Type 0) Nat Nat := transp (<_> Path (Type 0) Nat Nat) i0 (<j> Nat)
-def stuck : Nat := transp (<i> q @ i) i0 0
+-- transp stays stuck at a domain family (O8 s3), so the fold over it stays stuck.
+def stuck : Nat := fold 1 2 3 (transp (<_> Color) i0 red)

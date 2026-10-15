@@ -67,6 +67,17 @@ while IFS= read -r line; do
     *) echo "FAIL eval $file $name: want $want, got exit $status: $got $first"; fail=$((fail + 1)) ;;
   esac
 done <test/eval/expect.txt
+
+# test/eval/thu.txt is the output of `langc eval examples/gluekan.lang thu`,
+# made by langc (one line, 106,675 bytes, M3 s5). Do not edit it by hand.
+# `langc eval` must exit 0 and print the same bytes.
+status=0
+build/langc eval examples/gluekan.lang thu >"$tmp/thu" 2>"$tmp/err" || status=$?
+evals=$((evals + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/thu" test/eval/thu.txt; then
+  echo "FAIL eval gluekan thu: want test/eval/thu.txt, got exit $status: $(head -c 120 "$tmp/thu") $(head -n 1 "$tmp/err")"
+  fail=$((fail + 1))
+fi
 echo "evals: $evals checked"
 
 # eval_refused STATUS CODE NAME [ARGS]: `langc eval examples/entries.lang NAME
@@ -159,6 +170,20 @@ while read -r prog name args; do
   esac
 done <test/circuit/expect.txt
 echo "circuits: $circuits checked"
+
+# Same IR. Each line of test/circuit/same-ir.txt is `PROG NAME GOLDEN`.
+# `langc circuit examples/PROG.glue NAME` must equal
+# test/circuit/GOLDEN.circuit.json byte for byte. `make e2e` does not read
+# this table.
+sameir=0
+while read -r prog name golden; do
+  sameir=$((sameir + 1))
+  if ! build/langc circuit "examples/$prog.glue" "$name" -o "$tmp/same.json" 2>"$tmp/err" || ! cmp -s "$tmp/same.json" "test/circuit/$golden.circuit.json"; then
+    echo "FAIL same-ir $prog $name: the output differs from test/circuit/$golden.circuit.json"
+    fail=$((fail + 1))
+  fi
+done <test/circuit/same-ir.txt
+echo "same-ir: $sameir checked"
 
 # Without -o, circuit and witness write NAME.circuit.json and NAME.witness.json
 # in the current directory.
