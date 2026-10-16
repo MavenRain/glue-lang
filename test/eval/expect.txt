@@ -159,3 +159,13 @@ otp fieldEncrypt => <i> 7
 otp interpField => fun x => fold Field 7 7 (<i> 7) x
 otp specMessage => message
 otp lawAt => fun j => encrypt @ j
+bag swapAt => fun k => bswap Nat 1 2 (bnil Nat) @ k
+bag sizeThree => 3
+bag sizeSwapAt => fun k => 3
+bag sizeOpen => fun A => fun x => fun y => fun xs => fun k => natAdd (natAdd (fold Nat 0 (fun _x0 => fun n => natAdd n 1) (fun _x0 => fun _x1 => fun _x2 => <i> natAdd (natAdd _x2 1) 1) xs) 1) 1
+bag transpConsAt => fun L => fun a => fun xs => bcons (L i1) (transp (<i> L i) i0 a) (transp (<i> Bag (L i)) i0 xs)
+bag transpSwap => fun L => fun a => fun b => fun xs => fun r => bswap (L i1) (transp (<i> L i) i0 a) (transp (<i> L i) i0 b) (transp (<i> Bag (L i)) i0 xs) @ r
+int negThree => neg 3
+int negZeqAt => fun k => zeq @ ~k
+int twiceAt => fun k => zeq @ k
+int negHcomp => fun k => hcomp Int k (fun i => [ k -> zeq @ ~i ]) (neg 0)

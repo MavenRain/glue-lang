@@ -98,3 +98,7 @@ hit-boundary-square.lang HIT_BOUNDARY
 hit-case-square.lang HIT_CASE
 reserved-isSet.lang REFUSE_NAME
 quot-square-hcomp.lang HCOMP_BASE
+hit-boundary-bag.lang HIT_BOUNDARY
+hit-case-bag.lang HIT_CASE
+hit-int-end.lang TYPE_MISMATCH
+hcomp-i0-int.lang TYPE_REFL

@@ -1,0 +1,16 @@
+-- M5 s1: the integers, a quotient inductive type of the domain. The
+-- equation zeq glues pos 0 to neg 0.
+def zeqPath : Path Int (pos 0) (neg 0) := zeq
+def zeqStart : Path Int (zeq @ i0) (pos 0) := refl
+def zeqEnd : Path Int (zeq @ i1) (neg 0) := refl
+
+-- negate. The case of zeq is zeq in the opposite direction.
+def negate : Int -> Int := fun z => fold Int (fun n => neg n) (fun n => pos n) (<i> zeq @ ~i) z
+def negatePos : (n : Nat) -> Path Int (negate (pos n)) (neg n) := fun n => refl
+def negateNeg : (n : Nat) -> Path Int (negate (neg n)) (pos n) := fun n => refl
+def negateZeq : Path (Path Int (neg 0) (pos 0)) (<i> negate (zeq @ i)) (<i> zeq @ ~i) := refl
+def negateTwice : Path (Path Int (pos 0) (neg 0)) (<i> negate (negate (zeq @ i))) zeq := refl
+def negThree : Int := negate (pos 3)
+def negZeqAt : (k : I) -> Int := fun k => negate (zeq @ k)
+def twiceAt : (k : I) -> Int := fun k => negate (negate (zeq @ k))
+def negHcomp : (k : I) -> Int := fun k => negate (hcomp Int k (fun i => [ k -> zeq @ i ]) (pos 0))

@@ -1,0 +1,2 @@
+-- M5 s1: the end zeq @ i0 is pos 0 of type Int, not a Nat.
+def bad : Nat := zeq @ i0

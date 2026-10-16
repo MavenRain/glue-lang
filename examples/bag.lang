@@ -1,0 +1,23 @@
+-- M5 s1: the bag (a finite multiset), a quotient inductive type of the
+-- domain. Each end of the equation bswap holds the recursive field under
+-- two constructors (M5-PLAN D2).
+def swapPath : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> Path (Bag A) (bcons A x (bcons A y xs)) (bcons A y (bcons A x xs)) := fun A => fun x => fun y => fun xs => bswap A x y xs
+def swapStart : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> Path (Bag A) (bswap A x y xs @ i0) (bcons A x (bcons A y xs)) := fun A => fun x => fun y => fun xs => refl
+def swapEnd : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> Path (Bag A) (bswap A x y xs @ i1) (bcons A y (bcons A x xs)) := fun A => fun x => fun y => fun xs => refl
+def swapAt : (k : I) -> Bag Nat := fun k => bswap Nat 1 2 (bnil Nat) @ k
+
+-- The size of a bag. The case of bswap is refl: the fold gives the same
+-- number at the two ends.
+def bsize : (A : Type 0) -> Bag A -> Nat := fun A => fun b => fold Nat 0 (fun x => fun n => natAdd n 1) (fun x => fun y => fun n => refl) b
+def sizeCons : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> Path Nat (bsize A (bcons A x (bcons A y xs))) (natAdd (natAdd (bsize A xs) 1) 1) := fun A => fun x => fun y => fun xs => refl
+def sizeSwap : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> Path (Path Nat (natAdd (natAdd (bsize A xs) 1) 1) (natAdd (natAdd (bsize A xs) 1) 1)) (<i> bsize A (bswap A x y xs @ i)) (<_> natAdd (natAdd (bsize A xs) 1) 1) := fun A => fun x => fun y => fun xs => refl
+def bagThree : Bag Nat := bcons Nat 1 (bcons Nat 2 (bcons Nat 3 (bnil Nat)))
+def sizeThree : Nat := bsize Nat bagThree
+def sizeSwapAt : (k : I) -> Nat := fun k => bsize Nat (bswap Nat 1 2 (bcons Nat 3 (bnil Nat)) @ k)
+def sizeOpen : (A : Type 0) -> (x : A) -> (y : A) -> (xs : Bag A) -> (k : I) -> Nat := fun A => fun x => fun y => fun xs => fun k => bsize A (bswap A x y xs @ k)
+
+-- transp at Bag moves each field. At bswap the fieldwise result agrees with
+-- the transported ends (transp_pcon_agrees, D2).
+def transpCons : (L : I -> Type 0) -> (a : L i0) -> (xs : Bag (L i0)) -> Path (Bag (L i1)) (transp (<i> Bag (L i)) i0 (bcons (L i0) a xs)) (bcons (L i1) (transp (<i> L i) i0 a) (transp (<i> Bag (L i)) i0 xs)) := fun L => fun a => fun xs => refl
+def transpConsAt : (L : I -> Type 0) -> (a : L i0) -> (xs : Bag (L i0)) -> Bag (L i1) := fun L => fun a => fun xs => transp (<i> Bag (L i)) i0 (bcons (L i0) a xs)
+def transpSwap : (L : I -> Type 0) -> (a : L i0) -> (b : L i0) -> (xs : Bag (L i0)) -> (r : I) -> Bag (L i1) := fun L => fun a => fun b => fun xs => fun r => transp (<i> Bag (L i)) i0 (bswap (L i0) a b xs @ r)

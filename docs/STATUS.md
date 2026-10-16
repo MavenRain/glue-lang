@@ -1825,3 +1825,90 @@ contracts` passes again (33 passed, 0 failed).
   replaced it with test/emit/transp-hcomp.lang) and the `Path Self a b`
   fields (s4). The s2 item on dependent field types (s4). The s3 item on
   k = 2 tests (s4).
+
+## M5
+
+M5 adds quotient inductive types (QITs), the dependent eliminator `elim`
+and an inductive-inductive block. docs/M5-PLAN.md is the plan, with the
+USER rulings of its section 9 (2026-10-16: each recommendation). The M5
+summary comes at the close (s7).
+
+### s1: constructor equations with recursive ends (2026-10-16)
+
+- Plan: docs/M5-PLAN.md (new) is in this commit (D12). s1 covers D1 and
+  D2. No grammar change. No src/ change: each probe passed, so no fix
+  site changed.
+- Names (D11): `rg -w 'Bag|Int|bnil|bcons|bswap|pos|neg|zeq|bsize|negate'
+  examples domain test` gave no hit before s1. The field names bx, bxs,
+  sx, sy, sxs, pn and nn also gave no guest hit.
+- Domain (domain/domain.lang, the section 5 text): `family Bag (A : Type
+  0) := bnil | bcons (bx : A) (bxs : Bag A) | bswap (sx : A) (sy : A)
+  (sxs : Bag A) <i> [ ~i -> bcons A sx (bcons A sy sxs), i -> bcons A sy
+  (bcons A sx sxs) ]` and `family Int := pos (pn : Nat) | neg (nn : Nat)
+  | zeq <i> [ ~i -> pos 0, i -> neg 0 ]`. The existing rows did not
+  change: with only the domain change, `make -B check` gave the M4 counts.
+- Probes (a scratch .lang before the tests):
+  - (a) `bswap A x y xs @ i0` normalizes to `bcons A x (bcons A y xs)`,
+    and `@ i1` to `bcons A y (bcons A x xs)` (the boundary rule). PASS.
+  - (b) `bsize A (bswap A x y xs @ k)` normalizes to `natAdd (natAdd
+    (bsize A xs) 1) 1`. The bswap case type has the folded nested ends
+    (hit_case_end, eval_fold_hit_boundary). PASS.
+  - (c) `transp (<i> Bag (L i)) i0 (bcons (L i0) a xs)` gives `bcons (L
+    i1) (transp (<i> L i) i0 a) (transp (<i> Bag (L i)) i0 xs)`. At
+    `bswap (L i0) a b xs @ r` it gives `bswap (L i1)` of the three
+    transported fields `@ r`: transp_pcon_agrees holds. PASS.
+  - (d) `negate (zeq @ k)` normalizes to `zeq @ ~k`. PASS.
+- D2 result: the hypothesis holds for each s1 equation (bswap, zeq).
+  `transp` commutes with each point constructor of an end, so the
+  fieldwise rule agrees with the transported ends. No s1 equation stays
+  stuck under O12 (c).
+- `succ`: the plan (section 4) writes `succ n`. glue-lang has no `succ`
+  core name, so bsize uses `natAdd n 1`, as `depth` in the domain:
+  `fold Nat 0 (fun x => fun n => natAdd n 1) (fun x => fun y => fun n =>
+  refl)`.
+- examples/bag.lang (new): swapPath, swapStart, swapEnd (the boundary
+  rule), bsize, sizeCons (the point rule), sizeSwap (the path rule, the
+  ends fold the nested constructors), transpCons (the constructor rule),
+  bagThree (a closed Bag value for the JSON golden), and the eval defs.
+- examples/int.lang (new): zeqPath, zeqStart, zeqEnd, negate, negatePos,
+  negateNeg, negateZeq (`<i> negate (zeq @ i) = <i> zeq @ ~i`),
+  negateTwice, and the eval defs.
+- Tests: test/eval/expect.txt +10 (`bag swapAt`, `sizeThree => 3`,
+  `sizeSwapAt => fun k => 3`, `sizeOpen`, `transpConsAt`, `transpSwap`;
+  `int negThree => neg 3`, `negZeqAt => fun k => zeq @ ~k`, `twiceAt =>
+  fun k => zeq @ k`, `negHcomp` (the fold hcomp rule at Int)).
+  test/check/expect.txt +4: hit-boundary-bag.lang HIT_BOUNDARY (a bswap
+  equation with the face ~i only), hit-case-bag.lang HIT_CASE (a bswap
+  case with the ends `natAdd n 1`), hit-int-end.lang TYPE_MISMATCH (`zeq
+  @ i0` at the type Nat), hcomp-i0-int.lang TYPE_REFL (the guard: `hcomp
+  Int i0 (fun i => [ i0 -> pos 0 ]) (pos 0)` does not convert to `pos
+  0`). test/json/bag.json and test/json/int.json (new goldens: a Bag value
+  and an Int value).
+- Mutants (each with `make -B check`, reverted, final `make -B check`
+  GREEN): 4 KILLED, 0 SURVIVED. `make check` stops at the first failing
+  harness, so for mutants 2 and 3 the guest gate (test/gate.sh) also ran
+  alone.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. eval.c eval_fold_hit_boundary keeps the inner constructor unfolded (`recursive == 1 ? x->args[p + i]`) | examples/bag.lang: `INTERNAL: bsize: the evaluator found a Nat operation on a value that is not a Nat`; hit-case-bag.lang; eval bag swapAt, sizeThree, sizeSwapAt. All 27 native HIT rows pass: only the s1 rows kill it. |
+| 2. kan.c transp_pcon_agrees always true (`0 && !transp_pcon_agrees(..)`) | native HIT row `transport respects a path constructor application boundary: normalization changed endpoint i1` (M4, the FunH family). The guest gate alone passes: no Bag or Int equation makes the check false (D2). |
+| 3. check.c hit_case_end takes the `~i` end twice (the second call with `0`) | 3 native HIT rows (M4); the guest gate alone: examples/int.lang `HIT_CASE: negate: the case for zeq must match its boundary and have the type Path Int (neg 0) (neg 0)`, also otp, quot, trunc, quotSq. |
+| 4 (extra). kan.c transp_pcon_agrees always false (`(1 \|\| ..)`) | eval circle meridT (M4) and eval bag transpSwap: the transp stays stuck. |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  27; examples 30, parse refusals 17, check refusals 104, evals 172, json
+  25 builds, build refusals 7, circuits 4, same-ir 2, circuit refusals
+  11, satcheck refusals 6; node regressions 6, printer 2). `make
+  check-clang` exit 0. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed). `git diff --exit-code -- test/circuit
+  contracts/src/verifiers` exit 0: no IR change. contracts/test/fixtures
+  restored from HEAD, then `forge test --root contracts` 33 passed, 0
+  failed.
+- Open items:
+  - (a) Mutant 2 has no guest row. A guest row needs a family with an
+    application in a boundary (the native FunH family), and rule R1 keeps
+    families in domain/domain.lang, which s1 changes only by the section 5
+    text.
+  - (b) The plan writes `succ` in section 4; the rows use `natAdd n 1`.
+    s7 (SPEC) uses the `natAdd` form.

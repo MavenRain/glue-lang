@@ -1,0 +1,3 @@
+-- M5 s1: the bswap case of a fold must join the folded ends, here n + 1 + 1
+-- at each end, not n + 1.
+def bad : (A : Type 0) -> Bag A -> Nat := fun A => fun b => fold Nat 0 (fun x => fun n => natAdd n 1) (fun x => fun y => fun n => <_> natAdd n 1) b

@@ -30,3 +30,8 @@ family OTPSpec := message | cipher | encrypt <i> [ ~i -> message, i -> cipher ]
 -- M4 s5: the graph quotient, Quot without the set truncation squashc. A
 -- fold out of it needs no isSet case (examples/quotSq.glue, M4-PLAN section 6).
 family GQuot (A : Type 0) (R : A -> A -> Type 0) := gcls (gcla : A) | geqc (geqa : A) (geqb : A) (geqr : R geqa geqb) <i> [ ~i -> gcls A R geqa, i -> gcls A R geqb ]
+-- M5 s1: two quotient inductive types (M5-PLAN D1, D2). A path constructor
+-- is an equation: its ends are point terms. The ends of bswap hold the
+-- recursive field sxs under two constructors.
+family Bag (A : Type 0) := bnil | bcons (bx : A) (bxs : Bag A) | bswap (sx : A) (sy : A) (sxs : Bag A) <i> [ ~i -> bcons A sx (bcons A sy sxs), i -> bcons A sy (bcons A sx sxs) ]
+family Int := pos (pn : Nat) | neg (nn : Nat) | zeq <i> [ ~i -> pos 0, i -> neg 0 ]

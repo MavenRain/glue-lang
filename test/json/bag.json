@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"bagThree","type":"Bag Nat","value":{"tag":"bcons","bx":1,"bxs":{"tag":"bcons","bx":2,"bxs":{"tag":"bcons","bx":3,"bxs":{"tag":"bnil"}}}}},{"name":"sizeThree","type":"Nat","value":3}]}

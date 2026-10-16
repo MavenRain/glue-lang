@@ -1,0 +1,3 @@
+-- M5 s1: an equation with a recursive field under two constructors must also
+-- cover both ends of its binder (bswap with the face ~i only).
+family BadBag (A : Type 0) := badNil | badCons (cx : A) (cxs : BadBag A) | badSwap (ux : A) (uy : A) (uxs : BadBag A) <i> [ ~i -> badCons A ux (badCons A uy uxs) ]
