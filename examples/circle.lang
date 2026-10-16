@@ -36,3 +36,10 @@ def elimStuck : Circle -> Nat := fun c => elim (fun y => Nat) 0 refl c
 -- elim at a plain family: the IH of the recursive field rest is the sum of rest.
 def stackSum : Stack -> Nat := fun s => elim (fun y => Nat) 0 (fun t => fun r => fun ih => natAdd t ih) s
 def stackSumFive : Path Nat (stackSum (push 2 (push 3 bottom))) 5 := refl
+-- M5 s3 (USER ruling (d) = (ii)): elim at an empty-face hcomp keeps the empty tube, as fold.
+def elimEmptyFold : Path Circle (elim (fun y => Circle) base (<i> loop @ i) (hcomp Circle i0 (fun i => [ i0 -> base ]) base)) (fold Circle base (<i> loop @ i) (hcomp Circle i0 (fun i => [ i0 -> base ]) base)) := refl
+-- M5 s3 (D5): hcomp at the field dsnd, which uses dfst, is the comp method (hcomp_pair);
+-- transp at dsnd is the M3 Sigma method;  transp at the path field wlp gives the transported ends.
+def dpairHcomp : (B : Nat -> Type 0) -> (p : Path Nat 1 1) -> (b : B 1) -> (q : PathP (<i> B (p @ i)) b b) -> (k : I) -> DPair Nat B := fun B => fun p => fun b => fun q => fun k => hcomp (DPair Nat B) k (fun i => [ k -> dpair Nat B (p @ i) (q @ i) ]) (dpair Nat B 1 b)
+def dpairTransp : (A : I -> Type 0) -> (B : (i : I) -> A i -> Type 0) -> (a : A i0) -> (b : B i0 a) -> DPair (A i1) (B i1) := fun A => fun B => fun a => fun b => transp (<i> DPair (A i) (B i)) i0 (dpair (A i0) (B i0) a b)
+def webTransp : (L : I -> Type 0) -> (x : Web (L i0)) -> (y : Web (L i0)) -> (p : Path (Web (L i0)) x y) -> Web (L i1) := fun L => fun x => fun y => fun p => transp (<i> Web (L i)) i0 (wlink (L i0) x y p)

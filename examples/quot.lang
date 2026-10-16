@@ -13,3 +13,9 @@ def foldCls : (B : Type 0) -> (f : Nat -> B) -> (e : (a : Nat) -> (b : Nat) -> n
 def foldEqc : (B : Type 0) -> (f : Nat -> B) -> (e : (a : Nat) -> (b : Nat) -> natSame a b -> Path B (f a) (f b)) -> (s : isSet B) -> (a : Nat) -> (b : Nat) -> (r : natSame a b) -> Path (Path B (f a) (f b)) (<i> fold B f e s (eqc Nat natSame a b r @ i)) (e a b r) := fun B => fun f => fun e => fun s => fun a => fun b => fun r => refl
 def quotId : Quot Nat natSame -> Quot Nat natSame := fun x => fold (Quot Nat natSame) (fun a => cls Nat natSame a) (fun a => fun b => fun r => <i> eqc Nat natSame a b r @ i) (quotIsSet Nat natSame) x
 def quotRecOne : (sN : isSet Nat) -> Nat := fun sN => quotRec Nat natSame Nat sN (fun n => n) (fun a => fun b => fun r => r) (cls Nat natSame 1)
+-- M5 s3 (D5): transp at the field eqr, which uses the earlier fields, is the M3 Sigma method:
+-- eqr moves along its type at the fills of eqa and eqb.
+def quotEqcTransp : (R : I -> Nat -> Nat -> Type 0) -> (r : R i0 1 2) -> (k : I) -> Quot Nat (R i1) := fun R => fun r => fun k => transp (<i> Quot Nat (R i)) i0 (eqc Nat (R i0) 1 2 r @ k)
+def quotEqcLine : (A : I -> Type 0) -> (R : (i : I) -> A i -> A i -> Type 0) -> (a : A i0) -> (b : A i0) -> (r : R i0 a b) -> (k : I) -> Quot (A i1) (R i1) := fun A => fun R => fun a => fun b => fun r => fun k => transp (<i> Quot (A i) (R i)) i0 (eqc (A i0) (R i0) a b r @ k)
+-- M5 s3: transp at squashc stays stuck. The fieldwise value does not agree with transp on the face ~k (transp_pcon_agrees).
+def quotSquashcStuck : (R : I -> Nat -> Nat -> Type 0) -> (x : Quot Nat (R i0)) -> (y : Quot Nat (R i0)) -> (p : Path (Quot Nat (R i0)) x y) -> (q : Path (Quot Nat (R i0)) x y) -> (k : I) -> (l : I) -> Quot Nat (R i1) := fun R => fun x => fun y => fun p => fun q => fun k => fun l => transp (<i> Quot Nat (R i)) i0 (squashc Nat (R i0) x y p q @ k @ l)

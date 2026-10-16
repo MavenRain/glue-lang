@@ -826,16 +826,69 @@ static const Value *transp_sys(Machine *m, const Value *line, const Value *phi, 
   return val_op(m, VAL_OP, OP_SYS, count, 0, out, 2u * count);
 }
 
+/* M5 s3 (D5): fun params fields => T, the type T of field K of C as a
+   closed function of the parameters and the earlier fields. */
+static const Value *field_type_fun(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k) {
+  const Env *scope = NULL;
+  const Core *t;
+  uint32_t p;
+  for (p = 0; p < f->param_count + k; p++) {
+    scope = env_push(m, scope, val_var(m, p));
+    if (scope == NULL)
+      return NULL;
+  }
+  t = quote_value(m, f->param_count + k, eval_core(m, scope, c->fields[k].type));
+  for (p = 0; p < f->param_count + k; p++)
+    t = binder(m, CORE_LAM, "x", t);
+  return t == NULL ? NULL : eval_core(m, NULL, t);
+}
+
+/* FN applied to G N (R) for each N < K, G N at index G + K - 1 - N. */
+static const Core *fill_apps(Machine *m, const Core *fn, uint32_t g, uint32_t k, const Core *r) {
+  uint32_t n;
+  for (n = 0; n < k; n++)
+    fn = app(m, fn, app(m, var(m, g + k - 1u - n), r));
+  return fn;
+}
+
+/* M5 s3 (D5), the fill of field K of C under transp L phi (the M3 Sigma
+   method, pair_rule):
+   fun i => transp (<j> T[DOM(L, i /\ j, p) / p, F n (i /\ j) / x n]) (phi \/ ~i) x,
+   F n = FILLS[n] the fill of the earlier field n. At i1 it is the field of
+   the result (phi \/ ~i1 = phi, i1 /\ j = j); at i0 it is X. A path field
+   gets a PathP line, so the ends are the fills of its ends (pathp_rule).
+   Environment [L, phi, TF, F 0, ..., F (K - 1), x] (x is index 0, TF =
+   field_type_fun); under fun i: i 0, x 1, F n 2 + K - 1 - n, TF K + 2,
+   phi K + 3, L K + 4; under <j> each index is one more. */
+static const Value *field_fill(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *const *fills, const Value *x) {
+  const Value *tf = field_type_fun(m, f, c, k);
+  const Env *env = tf == NULL ? NULL : env_push(m, env_push(m, env_push(m, NULL, line), phi), tf);
+  const Core *r = ivl(m, IVL_MEET, var(m, 1u), var(m, 0));
+  const Core *t = var(m, k + 3u);
+  const Core *args[2];
+  uint32_t p;
+  for (p = 0; env != NULL && p < k; p++)
+    env = env_push(m, env, fills[p]);
+  env = env == NULL ? NULL : env_push(m, env, x);
+  for (p = 0; p < f->param_count; p++) {
+    args[0] = var(m, k + 5u);
+    args[1] = r;
+    t = app(m, t, opn(m, OP_KAN_DOM, p, args, 2u));
+  }
+  t = op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "j", fill_apps(m, t, 3u, k, r)), ivl(m, IVL_JOIN, var(m, k + 3u), ivl(m, IVL_REV, var(m, 0), NULL)), var(m, 1u));
+  return env == NULL || t == NULL ? NULL : eval_core(m, env, tube(m, t));
+}
+
 /* M4 s2 (D4): transp (<i> T[DOM(L, i, p) / p]) phi x for field K of the
    constructor C of the family F. The field type T is in the scope of the
    parameters (core.h FieldInfo), so each parameter p is read from L at i
    (OP_KAN_DOM with INST = p). A recursive field is the family at its own
    parameters (check.c check_field), so its line is L. Environment [L, phi,
    x] (x is index 0);
-   under <i>: i 0, x 1, phi 2, L 3. M4 s4: a field whose type uses an
-   earlier field, or is a path in the family, keeps the transport stuck
-   (NULL without a diagnostic). */
-static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *x) {
+   under <i>: i 0, x 1, phi 2, L 3. M5 s3 (D5): a field whose type uses an
+   earlier field, or is a path in the family, is its fill (field_fill) at
+   i1: the M3 Sigma method. */
+static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *const *fills, const Value *x) {
   const Core *t = c->fields[k].type;
   const Env *scope = NULL;
   const Core *args[2];
@@ -843,7 +896,7 @@ static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const Cto
   if (c->fields[k].recursive == 1)
     return kan_transp(m, line, phi, x);
   if (c->fields[k].recursive == 2 || c->fields[k].dependent)
-    return NULL;
+    return fills[k] == NULL ? NULL : apply_value(m, fills[k], val_ivl_end(m, 1));
   /* Normalize away the unused earlier field binders before abstracting
      the parameters. Their indices in the stored field type include K. */
   for (p = 0; p < f->param_count + k; p++) {
@@ -935,7 +988,9 @@ static const Value *transp_ctor(Machine *m, const Value *line, const Value *phi,
   const Value *t1;
   const Value *v;
   const Value **out;
+  const Value **fills;
   const Core **vars;
+  int need = 0;
   uint32_t k;
   if (a->inst >= m->ctor_count)
     return NULL;
@@ -947,13 +1002,21 @@ static const Value *transp_ctor(Machine *m, const Value *line, const Value *phi,
   if (!val_is(t1, OP_FAMILY) || t1->inst != c->family || t1->argc != f->param_count || a->argc < f->param_count + c->field_count)
     return NULL;
   out = kan_vals(m, a->argc);
+  fills = kan_vals(m, c->field_count + 1u);
   vars = kan_args(m, a->argc);
-  if (out == NULL || vars == NULL)
+  if (out == NULL || fills == NULL || vars == NULL)
     return NULL;
+  for (k = 0; k < c->field_count; k++)
+    need = need || c->fields[k].dependent || c->fields[k].recursive == 2;
+  for (k = 0; need && k < c->field_count; k++) {
+    fills[k] = field_fill(m, f, c, k, line, phi, fills, a->args[f->param_count + k]);
+    if (fills[k] == NULL)
+      return NULL;
+  }
   for (k = 0; k < a->argc; k++) {
     vars[k] = var(m, a->argc - 1u - k);
     out[k] = k < f->param_count ? t1->args[k]
-      : k < f->param_count + c->field_count ? field_line_transp(m, f, c, k - f->param_count, line, phi, a->args[k])
+      : k < f->param_count + c->field_count ? field_line_transp(m, f, c, k - f->param_count, line, phi, fills, a->args[k])
       : a->args[k];
     if (out[k] == NULL)
       return NULL;
@@ -1081,7 +1144,13 @@ const Value *kan_elim_hcomp(Machine *m, uint32_t family, const Value *mot, const
   body = opn(m, OP_ELIM, family, in, ncases + 2u);
   u = run(m, tube(m, empty ? sys1(m, zero(m), body) : body), vals, ncases + 5u);
   base = run(m, opn(m, OP_ELIM, family, out, ncases + 2u), vals, ncases + 5u);
-  return line == NULL || u == NULL || base == NULL ? NULL : gcomp(m, line, h->args[1], u, base);
+  if (line == NULL || u == NULL || base == NULL)
+    return NULL;
+  /* M5 s3 (USER ruling (d) = (ii)): on the empty face, the comp is
+     hcomp (P h) i0 (the empty tube) (transp line i0 base), as the M4 fold
+     keeps the empty tube (kan_fold_hcomp). h->args[1] is the face i0. */
+  return empty ? kan_hcomp(m, apply_value(m, mot, h), h->args[1], u, kan_transp(m, line, h->args[1], base))
+               : gcomp(m, line, h->args[1], u, base);
 }
 
 /* M4 s2: the rules at a family head with parameters. NULL without a
@@ -1342,6 +1411,48 @@ static const Core *field_hcomp(Machine *m, uint32_t n, uint32_t t, uint32_t phi,
   return hcomp4(m, var(m, t), var(m, phi), tube(m, opn(m, OP_KAN_FIELD, n, args, 1u)), var(m, x));
 }
 
+/* M5 s3 (D5): field_type_fun of field K at the parameters of A. */
+static const Value *field_type_params(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *a) {
+  const Value *t = field_type_fun(m, f, c, k);
+  uint32_t p;
+  for (p = 0; t != NULL && p < f->param_count; p++)
+    t = apply_value(m, t, a->args[p]);
+  return t;
+}
+
+/* M5 s3 (D5), the fill of field K (index N in the constructor) under
+   hcomp A phi u u0 (the M3 comp method, pair_fill and hcomp_pair_rule).
+   A field that does not use an earlier field (DEP 0, T its type):
+   fun r => hcomp T (phi \/ ~r) (fun i => [ phi -> FIELD N (u (i /\ r)), ~r -> x ]) x.
+   A field that uses an earlier field (DEP 1, T = field_type_params,
+   B[s] = T (G 0 s) ... (G (K - 1) s), G n = FILLS[n]):
+   fun r => hcomp B[r] (phi \/ ~r) (fun i => [ phi -> S (FIELD N (u (i /\ r))), ~r -> S x ])
+                  (transp (<i> B[i /\ r]) i0 x),  S = transp (<j> B[(i \/ j) /\ r]) i.
+   At i1 it is the field of the result. Environment [phi, u, G 0, ...,
+   G (K - 1), T, x] (x is index 0); under fun r: r 0, x 1, T 2, G n
+   3 + K - 1 - n, u K + 3, phi K + 4; under fun i or <i> each index is one
+   more, under <j> two more. */
+static const Value *hcomp_fill(Machine *m, uint32_t n, uint32_t k, int dep, const Value *t, const Value *phi, const Value *u, const Value *const *fills, const Value *x) {
+  const Env *env = env_push(m, env_push(m, NULL, phi), u);
+  const Core *args[1];
+  const Core *jline = dep ? binder(m, CORE_PLAM, "j", fill_apps(m, var(m, 4u), 5u, k, ivl(m, IVL_MEET, ivl(m, IVL_JOIN, var(m, 1u), var(m, 0)), var(m, 2u)))) : NULL;
+  const Core *ty = dep ? fill_apps(m, var(m, 2u), 3u, k, var(m, 0)) : var(m, 2u);
+  const Core *base = dep ? op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", fill_apps(m, var(m, 3u), 4u, k, ivl(m, IVL_MEET, var(m, 0), var(m, 1u)))), zero(m), var(m, 1u)) : var(m, 1u);
+  const Core *field;
+  const Core *body;
+  uint32_t p;
+  for (p = 0; env != NULL && p < k; p++)
+    env = env_push(m, env, fills[p]);
+  env = env == NULL ? NULL : env_push(m, env_push(m, env, t), x);
+  args[0] = app(m, var(m, k + 4u), ivl(m, IVL_MEET, var(m, 0), var(m, 1u)));
+  field = opn(m, OP_KAN_FIELD, n, args, 1u);
+  body = hcomp4(m, ty, ivl(m, IVL_JOIN, var(m, k + 4u), ivl(m, IVL_REV, var(m, 0), NULL)),
+                tube(m, sys2(m, var(m, k + 5u), dep ? op(m, OP_TRANSP, 3u, jline, var(m, 0), field) : field,
+                             ivl(m, IVL_REV, var(m, 1u), NULL), dep ? op(m, OP_TRANSP, 3u, jline, var(m, 0), var(m, 2u)) : var(m, 2u))),
+                base);
+  return env == NULL || body == NULL ? NULL : eval_core(m, env, tube(m, body));
+}
+
 /* M3-PLAN 3.4 (s3), the data rule for A a Sum, Option or List: U0 and each
    branch of u are the same constructor C. Then C with hcomp on each field.
    Environment [T, phi, u, x] (x is index 0, T its type): C (field_hcomp).
@@ -1351,13 +1462,16 @@ static const Core *field_hcomp(Machine *m, uint32_t n, uint32_t t, uint32_t phi,
    constructors: U0 and each branch of u are the constructor C at the
    parameters P of A. Then C P with hcomp on each field, at the field type
    at P (core.h FieldInfo; a recursive field has the type A). Environment
-   [T, phi, u, x] per field (x is index 0). NULL without a diagnostic when
-   U0 is not a constructor of A. */
+   [T, phi, u, x] per field (x is index 0). M5 s3 (D5): a field that uses an
+   earlier field is its fill (hcomp_fill) at i1, the comp method. NULL
+   without a diagnostic when U0 is not a constructor of A. */
 static const Value *hcomp_ctor(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
   const CtorInfo *c;
   const FamilyInfo *f;
   const Env *penv = NULL;
   const Value **out;
+  const Value **fills;
+  int need = 0;
   uint32_t k;
   if (u0->inst >= m->ctor_count)
     return NULL;
@@ -1366,8 +1480,11 @@ static const Value *hcomp_ctor(Machine *m, const Value *a, const Value *phi, con
   if (c->family != a->inst || a->argc != f->param_count || u0->argc != f->param_count + c->field_count)
     return NULL;
   out = kan_vals(m, u0->argc);
-  if (out == NULL)
+  fills = kan_vals(m, c->field_count + 1u);
+  if (out == NULL || fills == NULL)
     return NULL;
+  for (k = 0; k < c->field_count; k++)
+    need = need || c->fields[k].dependent;
   for (k = 0; k < f->param_count; k++) {
     penv = env_push(m, penv, a->args[k]);
     out[k] = a->args[k];
@@ -1375,10 +1492,13 @@ static const Value *hcomp_ctor(Machine *m, const Value *a, const Value *phi, con
       return NULL;
   }
   for (k = 0; k < c->field_count; k++) {
-    const Value *t = c->fields[k].dependent ? NULL : c->fields[k].recursive == 1 ? a : eval_core(m, penv, c->fields[k].type);
+    const Value *t = c->fields[k].dependent ? field_type_params(m, f, c, k, a) : c->fields[k].recursive == 1 ? a : eval_core(m, penv, c->fields[k].type);
     const Value *x = u0->args[f->param_count + k];
     penv = env_push(m, penv, x);
-    out[f->param_count + k] = t == NULL ? NULL : instance4(m, field_hcomp(m, f->param_count + k, 3u, 2u, 1u, 0), t, phi, u, x);
+    fills[k] = need && t != NULL ? hcomp_fill(m, f->param_count + k, k, c->fields[k].dependent, t, phi, u, fills, x) : NULL;
+    out[f->param_count + k] = t == NULL || (need && fills[k] == NULL) ? NULL
+      : c->fields[k].dependent ? apply_value(m, fills[k], val_ivl_end(m, 1))
+      : instance4(m, field_hcomp(m, f->param_count + k, 3u, 2u, 1u, 0), t, phi, u, x);
     if (penv == NULL || out[f->param_count + k] == NULL)
       return NULL;
   }

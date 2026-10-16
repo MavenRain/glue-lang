@@ -2011,3 +2011,137 @@ summary comes at the close (s7).
     Options: (i) keep;  (ii) on the empty face, use `hcomp (P h) i0 (fun
     i => [ i0 -> .. ]) (transp line i0 (elim P cases u0))`, as the M4
     fold keeps the empty tube.
+
+### s3: transp and hcomp at dependent and Path fields (2026-10-16)
+
+- Step 0 (s3-a), the USER ruling on s2 open item (d) = (ii). This closes
+  s2 open item (d). src/front/kan.c kan_elim_hcomp on the empty face
+  builds `hcomp (P h) i0 (fun i => [ i0 -> .. ]) (transp line i0 (elim P
+  cases u0))`. The non-empty face keeps gcomp. Probe before:  `elim (fun
+  y => Circle) base (<i> loop @ i) (hcomp Circle i0 (fun i => [ i0 ->
+  base ]) base)` gives `base`, but the fold of the same value stays
+  stuck. After:  the elim gives `hcomp Circle i0 (fun i => [ i0 -> base
+  ]) base`, the same text as the fold. Row:  examples/circle.lang
+  elimEmptyFold (`Path Circle (elim ..) (fold ..) := refl`) and its eval
+  row.
+- Baseline fix:  the native HIT regressions are 32 at de04000, not 27 (s2
+  above gives 27). The s2 commit added rows to test/hit-regressions.c.
+  The s3 baseline is native circuit 9, path 42, face 35, HIT 32.
+- Code (s3-b), src/front/kan.c:
+  - field_type_fun (new):  the field type as a closed function `fun
+    params fields => T` (eval at val_var, quote at the level params + K,
+    CORE_LAM binders).
+  - fill_apps (new):  applies FN to `G n (R)` for each earlier field n.
+  - field_fill (new):  the M3 Sigma method (pair_rule):  `fun i => transp
+    (<j> T[DOM(L, i /\ j) / p, F n (i /\ j) / x n]) (phi \/ ~i) x`. At i1
+    it is the field of the result. A Path field gets a PathP line, so
+    pathp_rule gives the transported ends.
+  - field_line_transp:  takes `fills`. At `recursive == 2` or `dependent`
+    it gives `fills[k]` at i1 (before:  NULL).
+  - transp_ctor:  computes the fills of all fields when a field is
+    dependent or a Path field.
+  - field_type_params (new), hcomp_fill (new):  the M3 comp method
+    (pair_fill, hcomp_pair_rule). The fill of a non-dependent field is the
+    hfill. The fill of a dependent field is `fun r => hcomp B[r] (phi \/
+    ~r) (fun i => [ phi -> S (FIELD N (u (i /\ r))), ~r -> S x ]) (transp
+    (<i> B[i /\ r]) i0 x)`, with S = `transp (<j> B[(i \/ j) /\ r]) i` and
+    B[s] = the field type at the params and the earlier fills at s.
+  - hcomp_ctor:  a dependent field is its fill at i1 (before:  NULL). A
+    non-dependent field keeps the field_hcomp form, so the old rows do not
+    change. A HIT stays canonical under hcomp (D3):  hcomp_ctor is the
+    rule for plain families only.
+  - No conversion change.
+- domain/domain.lang (rule R1), after Int, with a `-- M5 s3 (D5)`
+  comment. Before s3, no domain family had a dependent field (`dependent`
+  = "the type uses an earlier field", core.h:180;  a parameter does not
+  count).
+  - `family DPair (A : Type 0) (B : A -> Type 0) := dpair (dfst : A)
+    (dsnd : B dfst)`.
+  - `family Web (A : Type 0) := wnode (wn : A) | wlink (wlx : Web A) (wly
+    : Web A) (wlp : Path (Web A) wlx wly) | wloop (wa : A) <i> [ ~i ->
+    wnode A wa, i -> wnode A wa ]`. wlink is a POINT constructor with a
+    Path field, so transp_pcon_agrees does not apply.
+  - `rg -w` shows that the names are free. No golden change.
+- Probes before (HEAD + step 0) and after (s3-b). The full texts are the
+  rows of test/eval/expect.txt.
+  - quotEqcTransp (Quot eqc, the dependent field eqr):  before STUCK `fun
+    R => fun r => fun k => transp (<i> Quot Nat (R i)) i0 (eqc Nat (R i0)
+    1 2 r k)`. After `fun R => fun r => fun k => eqc Nat (R i1) 1 2
+    (transp (<j> R j 1 2) i0 r) @ k`.
+  - quotEqcLine (eqc along `<i> Quot (A i) (R i)`):  after `.. eqc (A i1)
+    (R i1) (transp (<i> A i) i0 a) (transp (<i> A i) i0 b) (transp (<j> R
+    j (transp (<_x0> A (j /\ _x0)) ~j a) (transp (<_x0> A (j /\ _x0)) ~j
+    b)) i0 r) @ k`. The fills have the face `~j` (`phi \/ ~i` at phi =
+    i0).
+  - dpairTransp:  after `dpair (A i1) (B i1) (transp (<i> A i) i0 a)
+    (transp (<j> B j (transp (<_x0> A (j /\ _x0)) ~j a)) i0 b)`.
+  - dpairHcomp (DPair, hcomp at the same constructor):  before, no family
+    had a dependent field (hcomp_ctor gave NULL at a dependent field).
+    After `dpair Nat B (hcomp Nat k (fun i => [ k -> p @ i ]) 1) (hcomp (B
+    (hcomp Nat k (fun i => [ k -> [ k -> p @ i ], i0 -> 1 ]) 1)) k (fun i
+    => [ k -> [ k -> transp (<j> B (p @ (i \/ j))) i (q @ i) ], i0 -> ..
+    ]) (transp (<i> B (hcomp Nat (k \/ ~i) ..)) i0 b))`.
+  - webTransp:  after `wlink (L i1) (transp ..x) (transp ..y) (<j> hcomp
+    (Web (L i1)) (j \/ ~j) (fun i => [ i0 -> .., ~j -> transp (<k> Web (L
+    (i \/ k))) i (transp (<_x0> Web (L (i /\ _x0))) ~i x), j -> .. y ])
+    (transp (<i> Web (L i)) i0 (p @ j)))`. The ends are the transported
+    ends.
+  - quotSquashcStuck (Quot squashc, the Path fields sqp and sqq):  before
+    and after STUCK `.. transp (<i> Quot Nat (R i)) i0 (squashc Nat (R
+    i0) x y p q k l)`. See the squashc finding.
+  - `build/langc eval test/emit/elim-instance.lang e` gives `pair (fun c
+    => elim (fun y => Nat) 0 (<i> 0) c) 0`:  s2 open item (c) does not
+    change.
+- The Trunc finding:  squash along `<i> Trunc (L i)` (tT) is ALREADY
+  REDUCED at HEAD and does not change:  `squash (L i1) (transp (<i> Trunc
+  (L i)) i0 x) (transp (<i> Trunc (L i)) i0 y) @ k`. The fields lo and hi
+  are `recursive == 1`, not Path fields. So the plan row "a Path field
+  under transp (a Trunc squash)" has no Path field.
+- The squashc finding:  the cause is transp_pcon_agrees. On the face ~k
+  the fieldwise value is `p' @ l`, with p' the pathp_rule hcomp at the
+  HIT (canonical, D3). The expected value is the stuck `transp (<i> Quot
+  Nat (R i)) i0 (p @ l)`. The two values do not convert. A correct transp
+  at a path constructor needs the boundary correction (an hcomp with the
+  faces of the transported boundary, as in CHM). This is an open item,
+  not s3. So the Path-field row and mutant m2 use Web wlink (a point
+  constructor).
+- Rows (function form, no new JSON instance, `-- M5 s3` comments):
+  examples/quot.lang quotEqcTransp, quotEqcLine, quotSquashcStuck;
+  examples/circle.lang elimEmptyFold, dpairHcomp, dpairTransp, webTransp.
+  test/eval/expect.txt +7 (s3-a: elimEmptyFold;  s3-b: the 6 other rows).
+  No golden change.
+- Mutants (runner run.sh, each with `make -B` and the gate, then
+  reverted;  kan.c is equal to the backup;  final `make -B check` GREEN):
+  5 KILLED, 0 SURVIVED. Each mutant compiles;  each make exits 2 at the
+  gate.
+
+| Mutant | First failing rows |
+|---|---|
+| m0. kan_elim_hcomp (step 0): `return empty ? kan_hcomp` -> `return 0 ? kan_hcomp` | examples/circle.lang `TYPE_REFL` elimEmptyFold (examples: 1 failed);  `gate: 22 failures`. |
+| m1. field_fill: the face `phi \/ ~i` -> `phi` | eval quot quotEqcLine, circle dpairTransp, circle webTransp (the faces `~j` and `~i` become i0);  `gate: 3 failures`. |
+| m2. field_fill: the Path field keeps its old ends (`fill_apps(.., r)` -> `recursive == 2 ? zero(m) : r`) | eval circle webTransp (1 FAIL). |
+| m3. field_line_transp: NULL again at a dependent field | eval quot quotEqcTransp, quot quotEqcLine, circle dpairTransp, circle webTransp (wlp is a Path field AND a dependent field);  `gate: 4 failures`. |
+| m4. (extra) hcomp_ctor: NULL again at a dependent field (`!c->fields[k].dependent` in the fills test) | eval circle dpairHcomp;  `gate: 1 failures`. |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  32 (see the baseline fix);  examples 30, parse refusals 17, check
+  refusals 110, evals 185 (s2: 178), json 25 builds, build refusals 8,
+  circuits 4, same-ir 2, circuit refusals 11, satcheck refusals 6;  node
+  regressions 6, printer 2). `make check-clang` exit 0. `forge build
+  --root contracts --sizes` exit 0. `make e2e` exit 0 (33 passed). `git
+  diff --exit-code -- test/circuit contracts/src/verifiers` exit 0:  no
+  IR change. contracts/test/fixtures restored from HEAD, then `forge test
+  --root contracts` 33 passed, 0 failed.
+- Build record:  s3-a, s3-b and s3-c are hand builds in the main loop (no
+  builder or reviewer agents).
+- Open items:
+  - (a) transp at a path constructor with a Path field (Quot squashc)
+    stays stuck. It needs the boundary correction (see the squashc
+    finding).
+  - (b) The fills at r = i1 keep an `i0 -> ..` branch in the system (the
+    face ~r at r = i1), as the M3 hcomp_pair does (pair_fill). So the type
+    of dsnd prints `B (hcomp Nat k (fun i => [ k -> [ k -> p @ i ], i0 ->
+    1 ]) 1)`, not `B dfst'`. No conv rule removes an i0 branch. If
+    necessary, s4 checks this with a Path row.
+  - s2 open items (a), (b) and (c) do not change. s2 open item (d) is
+    closed (step 0).

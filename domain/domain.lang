@@ -35,3 +35,6 @@ family GQuot (A : Type 0) (R : A -> A -> Type 0) := gcls (gcla : A) | geqc (geqa
 -- recursive field sxs under two constructors.
 family Bag (A : Type 0) := bnil | bcons (bx : A) (bxs : Bag A) | bswap (sx : A) (sy : A) (sxs : Bag A) <i> [ ~i -> bcons A sx (bcons A sy sxs), i -> bcons A sy (bcons A sx sxs) ]
 family Int := pos (pn : Nat) | neg (nn : Nat) | zeq <i> [ ~i -> pos 0, i -> neg 0 ]
+-- M5 s3 (D5): a field that uses an earlier field (hcomp, the comp method) and a point constructor with a path field (transp).
+family DPair (A : Type 0) (B : A -> Type 0) := dpair (dfst : A) (dsnd : B dfst)
+family Web (A : Type 0) := wnode (wn : A) | wlink (wlx : Web A) (wly : Web A) (wlp : Path (Web A) wlx wly) | wloop (wa : A) <i> [ ~i -> wnode A wa, i -> wnode A wa ]

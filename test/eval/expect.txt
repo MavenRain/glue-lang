@@ -154,6 +154,9 @@ circle deg0 => fun c => fold Nat 0 (<i> 0) c
 circle toPathBase => <i> 0
 trunc truncRecInc => fun pB => 0
 quot quotRecOne => fun sN => 1
+quot quotEqcTransp => fun R => fun r => fun k => eqc Nat (R i1) 1 2 (transp (<j> R j 1 2) i0 r) @ k
+quot quotEqcLine => fun A => fun R => fun a => fun b => fun r => fun k => eqc (A i1) (R i1) (transp (<i> A i) i0 a) (transp (<i> A i) i0 b) (transp (<j> R j (transp (<_x0> A (j /\ _x0)) ~j a) (transp (<_x0> A (j /\ _x0)) ~j b)) i0 r) @ k
+quot quotSquashcStuck => fun R => fun x => fun y => fun p => fun q => fun k => fun l => transp (<i> Quot Nat (R i)) i0 (squashc Nat (R i0) x y p q k l)
 otp fieldMessage => 7
 otp fieldEncrypt => <i> 7
 otp interpField => fun x => fold Field 7 7 (<i> 7) x
@@ -172,6 +175,10 @@ int negHcomp => fun k => hcomp Int k (fun i => [ k -> zeq @ ~i ]) (neg 0)
 circle elimHcomp => fun P => fun b => fun l => fun k => hcomp (P (hcomp Circle k (fun i => [ k -> [ k -> loop @ i ], i0 -> base ]) base)) (k \/ ~k) (fun i => [ k -> [ k -> [ k -> transp (<j> P (loop @ (i \/ j))) i (l @ i) ] ], ~k -> transp (<_x0> P (hcomp Circle (k \/ ~_x0) (fun _x1 => [ k -> [ k -> loop @ (_x0 /\ _x1) ], ~_x0 -> base ]) base)) i0 b ]) (transp (<i> P (hcomp Circle (k \/ ~i) (fun _x0 => [ k -> [ k -> loop @ (i /\ _x0) ], ~i -> base ]) base)) i0 b)
 circle elimStuck => fun c => elim (fun y => Nat) 0 (<i> 0) c
 circle stackSumFive => <i> 5
+circle elimEmptyFold => <i> hcomp Circle i0 (fun _x0 => [ i0 -> base ]) base
+circle dpairHcomp => fun B => fun p => fun b => fun q => fun k => dpair Nat B (hcomp Nat k (fun i => [ k -> p @ i ]) 1) (hcomp (B (hcomp Nat k (fun i => [ k -> [ k -> p @ i ], i0 -> 1 ]) 1)) k (fun i => [ k -> [ k -> transp (<j> B (p @ (i \/ j))) i (q @ i) ], i0 -> transp (<j> B (hcomp Nat (k \/ (~i /\ ~j)) (fun _x0 => [ k -> [ k -> p @ ((i /\ _x0) \/ (j /\ _x0)) ], ~i /\ ~j -> 1 ]) 1)) i b ]) (transp (<i> B (hcomp Nat (k \/ ~i) (fun _x0 => [ k -> [ k -> p @ (i /\ _x0) ], ~i -> 1 ]) 1)) i0 b))
+circle dpairTransp => fun A => fun B => fun a => fun b => dpair (A i1) (B i1) (transp (<i> A i) i0 a) (transp (<j> B j (transp (<_x0> A (j /\ _x0)) ~j a)) i0 b)
+circle webTransp => fun L => fun x => fun y => fun p => wlink (L i1) (transp (<i> Web (L i)) i0 x) (transp (<i> Web (L i)) i0 y) (<j> hcomp (Web (L i1)) (j \/ ~j) (fun i => [ i0 -> transp (<k> Web (L (i \/ k))) i (p @ j), ~j -> transp (<k> Web (L (i \/ k))) i (transp (<_x0> Web (L (i /\ _x0))) ~i x), j -> transp (<k> Web (L (i \/ k))) i (transp (<_x0> Web (L (i /\ _x0))) ~i y) ]) (transp (<i> Web (L i)) i0 (p @ j)))
 int negNegZeq => fun k => <j> zeq @ k
 otp flipMessage => <i> cipher
 otp flipLaw => <i> encrypt @ ~i
