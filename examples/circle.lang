@@ -1,0 +1,11 @@
+-- M4 s1: the circle and the suspension, two higher inductive types of the
+-- domain. A path constructor reduces at its ends by the boundary rule.
+def pt : Circle := base
+def loopPath : Path Circle base base := loop
+def loopStart : Path Circle (loop @ i0) base := refl
+def loopEnd : Path Circle (loop @ i1) base := refl
+def loopEta : Path (Path Circle base base) (<i> loop @ i) loop := refl
+def loopInv : Path Circle base base := <i> loop @ ~i
+def m : Path (Susp Nat) (north Nat) (south Nat) := merid Nat 0
+def mStart : Path (Susp Nat) (merid Nat 0 @ i0) (north Nat) := refl
+def mEnd : Path (Susp Nat) (merid Nat 0 @ i1) (south Nat) := refl

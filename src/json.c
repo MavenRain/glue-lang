@@ -147,6 +147,9 @@ static int family_json(Out *o, const Value *type, const Value *v) {
   const Env *env = NULL;
   uint32_t i;
   int ok;
+  /* M4 s1 (D9): a path constructor value has no JSON form. */
+  if (val_is(v, OP_PCON))
+    return refuse(o, "a path constructor value");
   if (type->inst >= o->m->family_count || !val_is(v, OP_CTOR) || v->inst >= o->m->ctor_count)
     return internal(o, "a family value that is not a constructor");
   f = &o->m->families[type->inst];
@@ -233,6 +236,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_CONS:
   case OP_PACK:
   case OP_CTOR:
+  case OP_PCON:
   case OP_FIRST:
   case OP_SECOND:
   case OP_EITHER:

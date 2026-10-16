@@ -43,10 +43,14 @@ build/path-regressions: test/path-regressions.c $(FRONT) $(HEADERS) build/domain
 build/face-regressions: test/face-regressions.c $(FRONT) $(HEADERS) build/domain.c
 	$(TCC) $(CFLAGS) -o $@ test/face-regressions.c $(FRONT) build/domain.c
 
-check: build/langc build/circuit-regressions build/path-regressions build/face-regressions check-clang
+build/hit-regressions: test/hit-regressions.c $(FRONT) $(HEADERS) build/domain.c
+	$(TCC) $(CFLAGS) -o $@ test/hit-regressions.c $(FRONT) build/domain.c
+
+check: build/langc build/circuit-regressions build/path-regressions build/face-regressions build/hit-regressions check-clang
 	build/circuit-regressions
 	build/path-regressions
 	build/face-regressions
+	build/hit-regressions
 	sh test/gate.sh
 	TCC="$(TCC)" node test/regressions.js
 	node test/printer-regressions.js

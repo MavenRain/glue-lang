@@ -39,6 +39,9 @@ typedef enum {
   OP_CONS,
   OP_PACK,
   OP_CTOR,
+  OP_PCON, /* M4 s1: a path constructor at its interval arguments. inst: the
+              constructor. args: the parameters, the fields, then the k
+              interval terms */
   OP_FIRST,
   OP_SECOND,
   OP_EITHER,
@@ -176,6 +179,12 @@ typedef struct {
   uint32_t family;
   const FieldInfo *fields;
   uint32_t field_count;
+  /* M4 s1: a path constructor. binder_count is 0 for a point constructor.
+     boundary: the OP_SYS core in the scope params, fields, binders; NULL
+     for a point constructor. */
+  uint32_t binder_count;
+  const char *const *binders;
+  const Core *boundary;
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family
@@ -186,7 +195,8 @@ typedef struct {
   uint32_t param_count;
   uint32_t first_ctor;
   uint32_t ctor_count;
-  uint64_t universe; /* the largest universe of a constructor field */
+  uint64_t universe;   /* the largest universe of a constructor field */
+  uint32_t path_ctors; /* M4 s1: > 0 means a HIT */
 } FamilyInfo;
 
 typedef struct {
@@ -273,6 +283,10 @@ const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
 /* The body of a LAM, PI or SIGMA value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
+/* M4 s1: the body of the first boundary branch of the path constructor CI
+   whose face is i1 in ENV (params, fields, interval arguments). NULL with
+   no diagnostic when no face is i1. */
+const Value *pcon_boundary(Machine *m, const CtorInfo *ci, const Env *env);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
 const Core *quote_value(Machine *m, uint32_t level, const Value *v);

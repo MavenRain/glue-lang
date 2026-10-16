@@ -13,3 +13,5 @@ papp-no-atom.lang PARSE_EXPECT
 meet-no-left.lang PARSE_EXPECT
 sys-no-body.lang PARSE_EXPECT
 sys-unclosed.lang PARSE_EXPECT
+ctor-no-system.lang PARSE_EXPECT
+ctor-no-binder.lang PARSE_EXPECT

@@ -1,0 +1,2 @@
+-- M4 s1: the branches i -> b and j -> c disagree on the face i /\ j.
+family Bad := b | c | sq <i j> [ ~i -> b, i -> b, ~j -> b, j -> c ]

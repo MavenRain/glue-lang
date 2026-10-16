@@ -2,7 +2,8 @@
      decl    := 'def' 'rec'? NAME ':' term ':=' term
               | 'axiom' NAME ':' term
               | 'family' NAME group* ':=' ctor ('|' ctor)*
-     ctor    := NAME group*
+     ctor    := NAME group* ('<' NAME+ '>' system)?   (M4: a path constructor)
+     system  := '[' join '->' term (',' join '->' term)* ']'
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
@@ -528,6 +529,26 @@ static int parse_axiom(Parser *p, Decl *d) {
   return d->type != NULL;
 }
 
+/* M4 s1: after '<', the interval binders NAME+ '>' and then the boundary
+   system of a path constructor. */
+static int parse_path_ctor(Parser *p, Ctor *ctor) {
+  const char **names = NULL;
+  size_t count = 0;
+  size_t cap = 0;
+  do {
+    names = grow(p, names, count, &cap, sizeof *names);
+    if (names == NULL) return 0;
+    names[count] = take_name(p, count == 0 ? "an interval binder" : "an interval binder or '>'");
+    if (names[count] == NULL) return 0;
+    count++;
+  } while (!eat(p, TOK_RANGLE));
+  if (!at(p, TOK_LBRACKET)) return fail_at(p, cur(p), "'[' (the boundary system of a path constructor)");
+  ctor->binders = names;
+  ctor->binder_count = count;
+  ctor->boundary = parse_system(p);
+  return ctor->boundary != NULL;
+}
+
 static int parse_family(Parser *p, Decl *d) {
   bump(p);
   d->kind = DECL_FAMILY;
@@ -545,8 +566,16 @@ static int parse_family(Parser *p, Decl *d) {
     count++;
     ctor->line = cur(p)->line;
     ctor->col = cur(p)->col;
+    ctor->binders = NULL;
+    ctor->binder_count = 0;
+    ctor->boundary = NULL;
     ctor->name = take_name(p, "a constructor name");
     if (ctor->name == NULL || !parse_fields(p, &ctor->fields, &ctor->field_count)) return 0;
+    if (eat(p, TOK_LANGLE)) {
+      if (!parse_path_ctor(p, ctor)) return 0;
+    } else if (at(p, TOK_LBRACKET)) {
+      return fail_at(p, cur(p), "'|' or a declaration (a boundary system needs interval binders '<i>')");
+    }
   } while (eat(p, TOK_BAR));
   d->ctors = ctors;
   d->ctor_count = count;

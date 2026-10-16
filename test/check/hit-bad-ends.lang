@@ -1,0 +1,2 @@
+-- M4 s1: merid Nat 0 is a path from north Nat to south Nat, not a loop at south Nat.
+def bad : Path (Susp Nat) (south Nat) (south Nat) := merid Nat 0

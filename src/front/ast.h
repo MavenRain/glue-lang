@@ -45,6 +45,12 @@ typedef struct {
   const char *name;
   const Field *fields;
   size_t field_count;
+  /* M4 s1: a path constructor binds interval names and gives a boundary
+     system (the TERM_SYS chain). binder_count is 0 for a point constructor
+     and boundary is NULL. */
+  const char *const *binders;
+  size_t binder_count;
+  const Term *boundary;
   int line;
   int col;
 } Ctor;

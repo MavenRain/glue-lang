@@ -81,3 +81,8 @@ reserved-ua.lang REFUSE_NAME
 reserved-Glue-type.lang REFUSE_NAME
 equiv-dependent.lang TYPE_NOT_FUNCTION
 ua-dependent.lang TYPE_MISMATCH
+hit-boundary.lang HIT_BOUNDARY
+hit-face-agree.lang FACE_AGREE
+hit-body-nat.lang TYPE_MISMATCH
+hit-bad-ends.lang TYPE_MISMATCH
+hit-program.lang REFUSE_DATA

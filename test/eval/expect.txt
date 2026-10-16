@@ -139,3 +139,7 @@ iso swapB0 => pair 2 1
 iso center => pair 4 3
 iso contr0 => pair 4 3
 iso contr1 => pair 4 3
+circle loopPath => <i> loop @ i
+circle loopInv => <i> loop @ ~i
+circle m => <i> merid Nat 0 @ i
+circle pt => base

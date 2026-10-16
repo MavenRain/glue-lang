@@ -17,7 +17,7 @@ static const char *const OP_NAMES[] = {
   [OP_FAMILY] = "?", [OP_UNIT_VAL] = "unit", [OP_FLAG_YES] = "flagYes",
   [OP_FLAG_NO] = "flagNo", [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
-  [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
+  [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
@@ -41,7 +41,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_OPTION] = 1, [OP_LIST] = 1, [OP_FAMILY] = VARIES,
   [OP_UNIT_VAL] = 0, [OP_FLAG_YES] = 0, [OP_FLAG_NO] = 0, [OP_PAIR] = 2,
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
-  [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
+  [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
@@ -929,6 +929,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   const FamilyInfo *f = inst < m->family_count ? &m->families[inst] : NULL;
   if (op == OP_CTOR && c != NULL && c->family < m->family_count)
     return m->families[c->family].param_count + c->field_count;
+  if (op == OP_PCON && c != NULL && c->family < m->family_count)
+    return m->families[c->family].param_count + c->field_count + c->binder_count;
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
@@ -972,6 +974,41 @@ static const Value *reduce_sys(Machine *m, uint32_t inst, const Value *const *a,
     out[k + 1u] = a[k + 1u];
   }
   return val_op(m, VAL_OP, OP_SYS, inst, 0, out, n);
+}
+
+/* M4 s1: the boundary rule. ENV holds the parameters, the fields and the
+   interval arguments of the path constructor CI, in that order. The first
+   branch whose face is i1 gives the value. */
+const Value *pcon_boundary(Machine *m, const CtorInfo *ci, const Env *env) {
+  const Core *sys = ci->boundary;
+  uint32_t k;
+  if (sys == NULL)
+    return internal(m, "a point constructor used as a path constructor");
+  for (k = 0; k + 1u < sys->argc; k += 2u) {
+    const Value *fv = eval_core(m, env, sys->args[k]);
+    fv = fv == NULL ? NULL : face_value(m, fv);
+    if (fv == NULL)
+      return NULL;
+    if (ivl_is_const(fv->ivl, 1))
+      return eval_core(m, env, sys->args[k + 1u]);
+  }
+  return NULL;
+}
+
+/* M4 s1: a path constructor at its arguments reduces by the boundary rule
+   when a boundary face is i1, else it is canonical. */
+static const Value *reduce_pcon(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const Env *env = NULL;
+  const Value *v;
+  uint32_t i;
+  if (inst >= m->ctor_count)
+    return internal(m, "a path constructor outside the family tables");
+  for (i = 0; i < n; i++)
+    env = env_push(m, env, a[i]);
+  v = pcon_boundary(m, &m->ctors[inst], env);
+  if (v != NULL || m->diag->set)
+    return v;
+  return val_op(m, VAL_OP, OP_PCON, inst, 0, a, n);
 }
 
 /* M3 D4: Partial i1 A is A. Under a system branch the restriction makes the
@@ -1077,6 +1114,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_INTERVAL:
   case OP_SSET:
     return val_op(m, VAL_OP, op, inst, field, a, n);
+  case OP_PCON:
+    return reduce_pcon(m, inst, a, n);
   case OP_PARTIAL:
     return reduce_partial(m, a);
   case OP_SYS:
@@ -1847,7 +1886,7 @@ const Core *quote_value(Machine *m, uint32_t level, const Value *v) {
 const char *op_name(const Machine *m, Op op, uint32_t inst, uint32_t field) {
   if (op == OP_FAMILY)
     return inst < m->family_count ? m->families[inst].name : "?";
-  if (op == OP_CTOR)
+  if (op == OP_CTOR || op == OP_PCON)
     return inst < m->ctor_count ? m->ctors[inst].name : "?";
   if (op == OP_PROJ)
     return inst < m->ctor_count && field < m->ctors[inst].field_count ? m->ctors[inst].fields[field].name : "?";
@@ -2133,6 +2172,28 @@ static void print_glue(Printer *p, const Value *v, int atom) {
     put(p, ")");
 }
 
+/* M4 s1: a path constructor at its interval arguments prints as its name,
+   the parameters and the fields as atoms, then ` @ r` for each interval
+   argument. */
+static int is_pcon(const Value *v) {
+  return (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->op == OP_PCON;
+}
+
+static void print_pcon(Printer *p, const Value *v, int atom) {
+  uint32_t k = v->inst < p->m->ctor_count ? p->m->ctors[v->inst].binder_count : 0u;
+  uint32_t fixed = v->argc >= k ? v->argc - k : v->argc;
+  uint32_t i;
+  if (atom)
+    put(p, "(");
+  put(p, op_name(p->m, v->op, v->inst, v->field));
+  for (i = 0; i < v->argc; i++) {
+    put(p, i < fixed ? " " : " @ ");
+    print_value(p, v->args[i], 1);
+  }
+  if (atom)
+    put(p, ")");
+}
+
 /* An operation prints as its name and its arguments. The last argument is
    printed in the loop, so a long list does not nest. */
 static void print_value(Printer *p, const Value *v, int atom) {
@@ -2167,6 +2228,11 @@ static void print_value(Printer *p, const Value *v, int atom) {
   }
   if (is_glue(v)) {
     print_glue(p, v, atom);
+    p->depth--;
+    return;
+  }
+  if (is_pcon(v)) {
+    print_pcon(p, v, atom);
     p->depth--;
     return;
   }

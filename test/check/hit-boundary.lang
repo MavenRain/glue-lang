@@ -1,0 +1,2 @@
+-- M4 s1: the boundary of a path constructor must cover both ends of each binder.
+family Bad := b | l <i> [ ~i -> b ]

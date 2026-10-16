@@ -1106,3 +1106,101 @@ failed).
 - O10 and O11 closed in the s4 staged review. The s5 print facts (`thu`
   107 KB, PRINT_MAX 128 KB by USER ruling, the `swapE` print form) are
   facts, not items.
+
+## M4
+
+### s1: HIT declarations, path constructors and the M4 plan (2026-10-15)
+
+- Plan: docs/M4-PLAN.md (new) is the M4 plan with the USER rulings
+  applied. s1 changes only the section 5 domain row (the Susp family and
+  the two name facts below).
+- Syntax (src/front/ast.h, src/front/parser.c): a constructor can bind
+  interval names and give a boundary system: `loop <i> [ ~i -> base, i ->
+  base ]`. Ctor has binders, binder_count and boundary. parse_path_ctor
+  reads the binders `<i j>` and then a system. A binder list without a
+  system, or a system without a binder list, gives PARSE_EXPECT.
+- Core (src/front/core.h, src/front/eval.c): OP_PCON (after OP_CTOR) is a
+  path constructor value. Its arity is params + fields + binders
+  (varied_arity). CtorInfo has binder_count, binders and boundary.
+  FamilyInfo has path_ctors. pcon_boundary evaluates the boundary system
+  in the constructor's environment and returns the body of the first face
+  that is i1, else NULL. reduce_pcon applies the boundary rule when a face
+  is i1; else the value is canonical. print_pcon prints `loop @ i` and
+  `merid Nat 0 @ i`. conv and quote did not change: the generic VAL_OP
+  rule covers OP_PCON.
+- Typing (src/front/check.c): check_decl checks a family in a program
+  first and then refuses it (REFUSE_DATA), so a bad HIT in a program gives
+  its own code. check_boundary builds the boundary core (boundary_core),
+  then tests each atom `~i` and `i` of each binder against the join of
+  the system faces (HIT_BOUNDARY, hint `Partial join Self`), then checks
+  the system (check_sys: FACE_AGREE, TYPE_MISMATCH). check_ctor fills the
+  new CtorInfo fields. check_family counts path_ctors before checking
+  constructors. pcon_end computes the end of
+  a path constructor at i0 or i1 of binder j: the boundary is evaluated
+  with that binder set to the end, quoted at level L + k (the other
+  binders stay variables), then wrapped in CORE_PLAM for the binders
+  after j. pcon_app gives a path constructor at its fields the type
+  `Path (F params) (end i0) (end i1)` (D5). ctor_app dispatches to
+  pcon_app when binder_count > 0.
+- JSON (src/json.c): OP_PCON is not a type former. family_json refuses a
+  path constructor value in an instance (`a path constructor value`).
+- Domain (domain/domain.lang): `family Circle := base | loop <i> [ ~i ->
+  base, i -> base ]` and `family Susp (A : Type 0) := north | south |
+  merid (apex : A) <i> [ ~i -> north A, i -> south A ]`, appended after
+  the last def. The existing rows did not move. Two facts the plan text
+  did not have: a constructor takes the family parameters explicitly (as
+  `makeLot 3 250` does), so the Susp boundary names `north A` and
+  `south A`; and a field name is a core name (rule R4), so the field is
+  `apex`, not `a` (the name `a` renamed the binder `a` to `_x0` in the
+  kan meetLine and derived substVar eval goldens).
+- Tests: examples/circle.lang (9 defs: pt, loopPath, loopStart, loopEnd,
+  loopEta, loopInv, m, mStart, mEnd) with test/json/circle.json (only `pt`
+  is an instance; a Path-typed def is not). Check rows: hit-boundary.lang
+  HIT_BOUNDARY, hit-face-agree.lang FACE_AGREE, hit-body-nat.lang
+  TYPE_MISMATCH, hit-bad-ends.lang TYPE_MISMATCH, hit-program.lang
+  REFUSE_DATA. Parse rows: ctor-no-system.lang and ctor-no-binder.lang
+  PARSE_EXPECT. Eval rows: `circle loopPath => <i> loop @ i`, `circle
+  loopInv => <i> loop @ ~i`, `circle m => <i> merid Nat 0 @ i`, `circle
+  pt => base`. test/check/self.lang renames `loop` to `spin` (`loop` is
+  now a domain constructor).
+- Mutants (each with `make -B check`, source restored after): 3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| Boundary coverage test off (check.c boundary_core, `face_leq(&h, atom, join) != 1 && 0`) | check hit-boundary.lang (REFUSE_DATA, not HIT_BOUNDARY) |
+| Boundary rule reads the first branch only (eval.c pcon_boundary, `k < 1u`) | examples circle.lang (INTERNAL at loopPath: no face i1 at the end 1 of i); 7 failures in total |
+| Path constructor type takes the i1 body at both ends (check.c pcon_end, `val_ivl_end(m, 1)`) | examples circle.lang (TYPE_MISMATCH at `m`: found `Path (Susp Nat) (south Nat) (south Nat)`); hit-bad-ends.lang gave exit 0; 7 failures in total |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35;
+  examples 24, parse refusals 17, check refusals 88, evals 146, json 20
+  builds, build refusals 5, circuits 3, same-ir 1, circuit refusals 10,
+  satcheck refusals 6; node regressions 6, printer 2). `make check-clang`
+  exit 0. `forge build --root contracts --sizes` exit 0. `make e2e` exit
+  0. `git diff --exit-code -- test/circuit contracts/src/verifiers` exit
+  0. contracts/test/fixtures restored from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Open items:
+  - The emit row for a stuck value at a HIT (M4-PLAN section 5,
+    test/emit/stuck-transp.lang) is deferred to s2.
+  - check_field does not accept a field of type `Path Self a b` as a
+    recursive field (s1-b design item 6). Quot `squashc` (s4) needs it.
+    Milestone: s3.
+
+#### Staged review fixes (2026-10-15)
+
+- HIGH: the plain family fold accepted HIT cases without boundary checks.
+  Mapping the two poles of `Susp Nat` to 0 and 1 let `cong` construct
+  `Path Nat 0 1`. fold_family now refuses HITs with TYPE_MISMATCH until
+  the coherent eliminator in s3. check_family counts every path
+  constructor before checking fields and boundaries, so a boundary
+  cannot use the plain fold while its own family is being checked.
+- MEDIUM: a single path constructor exposed its fields as record
+  projections. Projecting `go x @ i` at a neutral interval failed with
+  INTERNAL. proj_app now refuses these projections with TYPE_MISMATCH.
+- Added test/hit-regressions.c to `make check`: 10 native C regressions
+  cover both refusals, the boundary fold bypass, plain family folds and
+  projections, higher dimensional boundaries, and scoped parameters.
+- Validation: the new tests reproduced both defects before the fixes.
+  `make check` passes, including all 10 HIT regressions. The new C test
+  also passes the Clang warning and switch checks used by the project.

@@ -818,6 +818,10 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   const Value *res = k->hint;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
   uint32_t j;
+  /* HIT cases must respect constructor boundaries. The plain family fold
+     cannot check those cases or evaluate a path constructor interior. */
+  if (f->path_ctors > 0u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "fold over the higher inductive family %s needs boundary-respecting cases; HIT fold is not implemented", f->name));
   if (cores == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   if (res == NULL && m->ctors[f->first_ctor].field_count == 0u)
@@ -1377,6 +1381,72 @@ static const Core *family_app(Call *k, uint32_t fam) {
 }
 
 /* A constructor takes the family parameters (the indices), then its fields. */
+/* M4 s1 (D5): the end E of binder J of the path constructor CI, as a core
+   in the context L + J (the binders before J are at the levels L .. L+J-1).
+   The boundary runs in the env params, fields, then the interval values:
+   binder J is the end, the binders after J are the levels L+J .. L+k-2
+   under the PLAMs that wrap the result. */
+static const Core *pcon_end(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *const *fvals, uint32_t L, uint32_t j, int e) {
+  Machine *m = c->m;
+  uint32_t kb = ci->binder_count;
+  const Env *env = env_of(c, pvals, m->families[ci->family].param_count);
+  const Value *bv;
+  const Core *core;
+  uint32_t i;
+  for (i = 0; i < ci->field_count; i++)
+    env = env_push(m, env, fvals[i]);
+  for (i = 0; i < kb; i++)
+    env = env_push(m, env, i == j ? val_ivl_end(m, e) : val_ivl_var(m, L + (i < j ? i : i - 1u)));
+  bv = env == NULL ? NULL : pcon_boundary(m, ci, env);
+  if (bv == NULL)
+    return m->diag->set ? NULL : nul(FAIL(c, "INTERNAL", "the boundary of %s has no face i1 at the end %d of %s", ci->name, e, ci->binders[j]));
+  core = quote_value(m, L + kb - 1u, bv);
+  for (i = kb; i > j + 1u; i--)
+    core = core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, core);
+  return core;
+}
+
+/* M4 s1: a path constructor use is <i ...> pcon params fields i ... with
+   the type Path ... Self (E^0) (E^1) at its boundary ends (D5). The checked
+   argument cores are quoted at L + k: that is the de Bruijn shift under the
+   k binders (the check_sys face trick). */
+static const Core *pcon_app(Call *k, uint32_t ctor, const Core *const *cores, const Value *const *vals) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const CtorInfo *ci = &m->ctors[ctor];
+  uint32_t p = m->families[ci->family].param_count;
+  uint32_t n = p + ci->field_count;
+  uint32_t kb = ci->binder_count;
+  uint32_t L = c->level;
+  const Core **args = arena_alloc(m->arena, ((size_t)n + kb + 1u) * sizeof *args);
+  const Value **fvals = arena_alloc(m->arena, ((size_t)ci->field_count + 1u) * sizeof *fvals);
+  const Value *selfv = val_op(m, VAL_OP, OP_FAMILY, ci->family, 0, vals, p);
+  const Core *body;
+  const Core *type;
+  uint32_t i;
+  if (args == NULL || fvals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < n; i++) {
+    args[i] = quote_value(m, L + kb, eval_core(m, c->env, cores[i]));
+    if (args[i] == NULL)
+      return NULL;
+  }
+  for (i = 0; i < ci->field_count; i++)
+    fvals[i] = eval_core(m, c->env, cores[p + i]);
+  for (i = 0; i < kb; i++)
+    args[n + i] = core_index(c, CORE_VAR, kb - 1u - i);
+  body = core_op(c, OP_PCON, ctor, 0, args, n + kb);
+  type = quote_value(m, L + kb, selfv);
+  for (i = kb; i > 0; i--) {
+    const Core *e0 = pcon_end(c, ci, vals, fvals, L, i - 1u, 0);
+    const Core *e1 = pcon_end(c, ci, vals, fvals, L, i - 1u, 1);
+    body = core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, body);
+    type = op3(c, OP_PATHP, 0, 3, core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, type), e0, e1);
+  }
+  k->type = here(c, type);
+  return k->type == NULL ? NULL : body;
+}
+
 static const Core *ctor_app(Call *k, uint32_t ctor) {
   Checker *c = k->c;
   const CtorInfo *ci = &c->m->ctors[ctor];
@@ -1397,6 +1467,8 @@ static const Core *ctor_app(Call *k, uint32_t ctor) {
     if (cores[p + j] == NULL)
       return NULL;
   }
+  if (ci->binder_count > 0u)
+    return pcon_app(k, ctor, cores, vals);
   k->type = val_op(c->m, VAL_OP, OP_FAMILY, ci->family, 0, vals, p);
   return core_op(c, OP_CTOR, ctor, 0, cores, n);
 }
@@ -1406,6 +1478,8 @@ static const Core *proj_app(Call *k, uint32_t ctor, uint32_t field) {
   Checker *c = k->c;
   const CtorInfo *ci = &c->m->ctors[ctor];
   const Value *xt = NULL;
+  if (ci->binder_count > 0u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "%s is a field of the path constructor %s; it has no record projection", ci->fields[field].name, ci->name));
   const Core *x = infer(c, k->args[0], &xt);
   if (x == NULL)
     return NULL;
@@ -2803,10 +2877,78 @@ static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *
   return 1;
 }
 
+/* M4 s1: the boundary system of a path constructor, in the scope params,
+   fields, binders (the order of the OP_PCON arguments). The binders are at
+   the levels p + f .. p + f + k - 1. The system must cover the boundary of
+   the cube: each face ~i_j and i_j is below the join of the branch faces.
+   Lattice fact: (~i \/ i \/ ...) <= join iff each atom <= join, so the
+   atom loop is the face_leq of the cube boundary and it names the
+   uncovered face. Then check_sys checks the branches against Partial join
+   Self: FACE_COVER holds by construction, TYPE_MISMATCH and FACE_AGREE
+   come from check_sys. */
+static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor) {
+  Machine *m = c->m;
+  IvlHeap h = {m->arena, m->diag, m->def};
+  uint32_t p = m->families[fam].param_count;
+  uint32_t f = (uint32_t)ctor->field_count;
+  uint32_t k = (uint32_t)ctor->binder_count;
+  const Value **pvals = arena_alloc(m->arena, ((size_t)p + 1u) * sizeof *pvals);
+  const Value *selfv;
+  const Value *hint;
+  const Value *type;
+  const Ivl *join = ivl_const(&h, 0);
+  const Term *b;
+  uint32_t j;
+  int e;
+  if (pvals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (j = 0; j < p; j++)
+    pvals[j] = val_var(m, j);
+  selfv = val_op(m, VAL_OP, OP_FAMILY, fam, 0, pvals, p);
+  for (b = ctor->boundary; b != NULL && join != NULL; b = b->next) {
+    const Value *fv = here(c, elab_ivl(c, b->left));
+    const Ivl *bf = fv == NULL ? NULL : face_norm(&h, fv->ivl);
+    join = bf == NULL ? NULL : face_join(&h, join, bf);
+  }
+  if (join == NULL || selfv == NULL)
+    return NULL;
+  for (j = 0; j < k; j++) {
+    for (e = 0; e < 2; e++) {
+      const Ivl *atom = face_norm(&h, ivl_lit(&h, p + f + j, e == 0));
+      if (atom == NULL)
+        return NULL;
+      if (face_leq(&h, atom, join) != 1)
+        return nul(FAIL(c, "HIT_BOUNDARY", "the path constructor %s does not cover the face %s of its binder %s: the boundary joins to %s",
+                        ctor->name, show(c, val_ivl(m, atom)), ctor->binders[j], show(c, val_ivl(m, join))));
+    }
+  }
+  hint = val_make(m, OP_PARTIAL, 0, 2u, val_ivl(m, join), selfv, NULL);
+  return hint == NULL ? NULL : check_sys(c, ctor->boundary, hint, &type, 0);
+}
+
+/* M4 s1: push the fields and the interval binders of a path constructor
+   above the family parameters, check its boundary, and pop them. */
+static int check_boundary(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, const Core **out) {
+  Machine *m = c->m;
+  const Env *envp = c->env;
+  size_t want = ctor->field_count + ctor->binder_count;
+  size_t pushed = 0;
+  size_t j;
+  for (j = 0; j < ctor->field_count && pushed == j; j++)
+    pushed += push(c, fields[j].name, eval_core(m, envp, fields[j].type)) ? 1u : 0u;
+  for (j = 0; j < ctor->binder_count && pushed == ctor->field_count + j; j++)
+    pushed += push_ivl(c, ctor->binders[j]) ? 1u : 0u;
+  *out = pushed == want ? boundary_core(c, fam, ctor) : NULL;
+  for (j = 0; j < pushed; j++)
+    pop(c);
+  return *out != NULL;
+}
+
 static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
   Machine *m = c->m;
   FieldInfo *fields = arena_alloc(m->arena, (ctor->field_count + 1u) * sizeof *fields);
   CtorInfo *ci = &m->ctors[m->ctor_count];
+  const Core *boundary = NULL;
   size_t j;
   if (fields == NULL)
     return FAIL(c, "OOM", "out of memory");
@@ -2825,10 +2967,15 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
     if (!check_field(c, fam, &ctor->fields[j], &fields[j]))
       return 0;
   }
+  if (ctor->binder_count > 0u && !check_boundary(c, fam, ctor, fields, &boundary))
+    return 0;
   ci->name = ctor->name;
   ci->family = fam;
   ci->fields = fields;
   ci->field_count = (uint32_t)ctor->field_count;
+  ci->binder_count = (uint32_t)ctor->binder_count;
+  ci->binders = ctor->binders;
+  ci->boundary = boundary;
   m->ctor_count++;
   return 1;
 }
@@ -2853,6 +3000,11 @@ static int check_family(Checker *c, const Decl *d) {
   f->param_count = (uint32_t)d->param_count;
   f->first_ctor = m->ctor_count;
   f->ctor_count = (uint32_t)d->ctor_count;
+  f->path_ctors = 0;
+  /* Classify the whole family before checking any constructor, so its
+     boundaries cannot call the plain family fold while it is in scope. */
+  for (i = 0; i < d->ctor_count; i++)
+    f->path_ctors += d->ctors[i].binder_count > 0u ? 1u : 0u;
   m->family_count++;
   c->self = fam;
   for (i = 0; i < d->ctor_count; i++) {
@@ -2943,8 +3095,11 @@ static int check_circuit(Checker *c, const Decl *d) {
 }
 
 static int check_decl(Checker *c, const Decl *d) {
+  /* M4 s1: a program family is checked first, so a malformed one gets its
+     own code (HIT_BOUNDARY, FACE_AGREE, ...). A well formed one is still
+     refused: rule R1 accepts no program family. */
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
-    return FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can");
+    return check_family(c, d) ? FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can") : 0;
   if (d->kind == DECL_AXIOM)
     return FAIL(c, "REFUSE_AXIOM", "an axiom has no proof (rule R2)");
   if (d->is_rec)

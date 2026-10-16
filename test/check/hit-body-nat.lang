@@ -1,0 +1,2 @@
+-- M4 s1: a boundary body must have the type of the family itself.
+family Bad := b | l <i> [ ~i -> 0, i -> b ]

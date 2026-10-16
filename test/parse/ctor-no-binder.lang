@@ -1,0 +1,2 @@
+-- M4 s1: a boundary system needs interval binders.
+family Bad := b | l [ ~i -> b ]

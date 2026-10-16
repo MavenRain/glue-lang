@@ -1,0 +1,2 @@
+-- M4 s1: a well formed HIT in a program is still refused (rule R1).
+family Ring := hub | round <i> [ ~i -> hub, i -> hub ]

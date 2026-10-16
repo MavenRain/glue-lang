@@ -17,3 +17,7 @@ def redTotal : (items : List Item) -> Nat :=
   fun (items : List Item) => total (filter (fun (item : Item) => isRed (itemColor item)) items)
 def depth : (s : Stack) -> Nat :=
   fun (s : Stack) => fold 0 (fun (top : Nat) (rest : Nat) => natAdd rest 1) s
+-- M4 s1: higher inductive types. A path constructor binds interval names
+-- and gives its boundary system. A constructor takes the family parameters.
+family Circle := base | loop <i> [ ~i -> base, i -> base ]
+family Susp (A : Type 0) := north | south | merid (apex : A) <i> [ ~i -> north A, i -> south A ]
