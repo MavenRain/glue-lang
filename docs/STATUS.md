@@ -975,3 +975,134 @@ stopped on a rate limit and on a model error, and wrote no file.
     the other. This is a print form, not a semantic value. iso.lang has
     no eval row for swapE.
   - O4 stays open (CIRCUIT_LOWER above).
+
+### s6: close (2026-10-15)
+
+Summary of M3. glue-lang has the Kan operations of CCHM: `transp` along a
+line (s1) and `hcomp` with a system and a base (s2). The rules cover the
+closed types, Pi, Sigma and Prod, PathP (s2), Sum, Option and List (s3),
+Glue types and the universe (s5). `comp`, `hfill`, `trans`, `transport`,
+`subst`, `transportRefl`, `J` and `JRefl` are checker rules that write
+core terms, so their laws hold by computation (s2, s3). s4 adds the
+equivalences (`isContr`, `fiber`, `isEquiv`, `Equiv`, `idEquiv`), Glue
+types with `glue` and `unglue`, and `ua`. s5 adds `uaBeta`, the Kan rules
+of Glue with `ghcomp` and `gcomp` (D8), `lineToEquiv` and `hcomp` in
+`Type n`. There is no regularity (D3): `transp (<i> P 1200) i0 u` stays
+stuck, and the `moved` row records that normal form. The tests `round` and
+`moved` of M2 s3 came back (s3). The IR did not change: `make e2e` gives
+byte-identical verifiers, and the same-IR gate row (s5,
+`examples/squareUa.glue`) passes. SPEC.md section 2.5 is the reference.
+No definitional proof irrelevance: no conv rule reads a type (review rule
+1 below).
+
+The main loop built s6 by hand (sessions s6-a to s6-c). The review agents
+stopped on a rate limit and on a model error, and wrote no file. s6 adds
+no op, no code and no test row.
+
+- Docs (the s6 change): SPEC.md 2.4 (the partial-element note points to
+  2.5), 2.5 (new: the forms, typing rules, evaluation rules in order, no
+  regularity, conversion, the derived operations and their laws, the D10
+  names, circuits and JSON, the M3 refusal codes), 3 (F12 and F13 DONE in
+  M3), 9 (O7 closed; O8 new). formers/FORMERS.md: the glue-lang text of
+  F12, F13 and F14 and the tcc-json cells of F12, F13 and F14.
+  docs/PLAN.md: M3 DONE 2026-10-15 with the slice commits. docs/STATUS.md:
+  this section.
+
+#### Mutant roll-up
+
+Each mutant ran with `make -B check`, source restored after: 18 KILLED, 0
+SURVIVED (3 in each of s1 to s4, 6 in s5). The slice sections give the
+mutant forms and the failure counts.
+
+| Slice | Mutant | Result | Killing row |
+|---|---|---|---|
+| s1 | TRANSP_CONSTANT check off (rule_transp) | KILLED | check transp-constant.lang, transp-meet.lang |
+| s1 | Pi rule passes `y` for `w i0` (kan.c pi_rule) | KILLED | eval kan piLine |
+| s1 | `Partial i1 A = A` rule off (reduce_partial) | KILLED | examples/kan.lang (d4Var: TYPE_MISMATCH) |
+| s2 | face `i1` rule off (kan_hcomp) | KILLED | examples/kanpath.lang (pathEnd: TYPE_REFL); eval kanpath hcompAt1 |
+| s2 | closed-type rule skips the branch test (hcomp_constant) | KILLED | eval kanpath stuckBase |
+| s2 | PathP transp drops the `~j` branch (pathp_rule) | KILLED | examples/kanpath.lang (pathEnd: TYPE_REFL); eval kanpath pathEnd |
+| s3 | Sum rule ignores `inr` (transp_data) | KILLED | eval derived sumConst, sumInr |
+| s3 | `trans` drops the `~i -> x` branch (rule_trans) | KILLED | examples/derived.lang (transStart: TYPE_REFL) |
+| s3 | `J` gives `p @ i` as the second argument of `P` (rule_j) | KILLED | examples/derived.lang (jReflFive: TYPE_MISMATCH) |
+| s4 | Glue face `i1` rule off (reduce_glue) | KILLED | examples/glue.lang (glueAt1: TYPE_REFL) |
+| s4 | GLUE_BOUNDARY off (glue_boundary) | KILLED | check glue-boundary.lang (exit 0) |
+| s4 | unglue beta off (reduce_unglue) | KILLED | examples/glue.lang (beta: TYPE_REFL) |
+| s5 | ghcomp drops `~phi -> u0` (ghcomp_rule) | KILLED | examples/gluekan.lang (ubn: PATH_BOUNDARY) |
+| s5 | transp_glue drops `~xi -> first ctr` (tube_of) | KILLED | examples/gluekan.lang (ubn: normal form `[  ]`) |
+| s5 | face_forall returns phi | KILLED | native face `face_forall (~i \/ i, i) is i0` |
+| s5 | memo key forced to 0 (open_key) | KILLED | eval gluekan thp (OOM at the arena limit), thf |
+| s5 | arrow_cod back to the s4 value_bound body | KILLED | examples/gluekan.lang (tf: TYPE_MISMATCH) |
+| s5 | arrow_cod without the conv test | KILLED | native path `isEquiv still rejects a dependent function` |
+
+#### Review
+
+Review of the M3 diff (`git diff aad6057..HEAD -- src`: 8 files, +2453
+-32). The review agents stopped on API errors (a Fable rate limit, then
+the Opus fallback once), so the review is a targeted read in the main
+session (s6-a, s6-b). Result: no defect found.
+
+1. No conv rule reads a type, and there is no rule `hcomp A i0 u u0 = u0`
+   for a general `A` (D8). Read: kan.c kan_hcomp, hcomp_constant,
+   hcomp_same_ctor, hcomp_data, hcomp_pi_rule, hcomp_pair_rule,
+   hcomp_pathp_rule, hcomp_pair, hcomp_glue, hcomp_univ, kan_l2e,
+   glue_elem, ghcomp_rule, gcomp, kan_transp, kan_dom, kan_cod,
+   closed_type and data_type; eval.c reduce_glue, reduce_glue_elem,
+   reduce_unglue, the Kan cases of reduce_op, conv_sys, conv_glue and
+   conv_loop. Only the face `i1` rule, the closed-type rule (Nat, Field,
+   Unit, Flag; kan_hcomp excludes `Type n`) and `ghcomp` give the base.
+   hcomp_data gives `u0` for `none` and `nil` only when each branch is
+   that constructor (the data rule with no field). hcomp_univ with the
+   face `i0` gives `Glue u0 [ ]`, and reduce_glue keeps it a Glue value:
+   only the face `i1` reduces. hcomp_glue with the face `i0` still builds
+   `glue`. Conversion is argument by argument. Glue eta reads the `glue`
+   value. Two stuck `unglue` compare `g` only.
+2. Switch cases: `make check-clang` uses `-Wswitch-enum -Werror`.
+   `git diff aad6057..HEAD -- src | rg '^\+.*default\s*:'` gives no line.
+3. Globals: no file-scope declaration on a `+` line of the diff.
+   `rg -n '^(static )?[a-z_A-Z].*;$' src/front/kan.c` gives no line.
+4. NULL on a diagnostic: kan.c kan_fail and the OOM path set a diagnostic
+   and return NULL. hcomp_data, hcomp_glue, hcomp_univ and transp_glue
+   return NULL with no diagnostic when the rule does not apply, and each
+   caller tests `v != NULL || m->diag->set`. check.c rule_transp,
+   hcomp_base, glue_boundary, rule_glue_elem, rule_unglue, ua_core, rule_ua
+   and rule_ua_beta: each FAIL path returns NULL or 0, and each
+   `diag->set` test returns before a second FAIL. closure_apply (eval.c)
+   and conv_values return NULL or 0 on a NULL argument.
+
+#### Gates
+
+Gates on HEAD f5a5dca (s6-a). s6 changes no code or test file, and
+test/gate.sh and the Makefile read no doc file, so the counts hold.
+`make -B check` exit 0 (native circuit regressions 9, native path
+regressions 42, native face regressions 35, examples 23, parse refusals
+15, check refusals 83, evals 142, json 19, build refusals 5, circuits 3,
+same-ir 1, circuit refusals 10, satcheck refusals 6, each with 0 failed;
+gate 0 failures; regressions 6 of 6; printer 2). `make check-clang` exit
+0. `forge build --root contracts --sizes` exit 0. `make e2e` exit 0 (33
+Forge tests passed). IR check: `git diff --exit-code -- test/circuit
+contracts/src/verifiers` exit 0. contracts/test/fixtures is restored from
+HEAD, and `forge test --root contracts` passes again (33 passed, 0
+failed).
+
+#### Open items
+
+- O4 (M1, SPEC.md 9): no gate test gives CIRCUIT_LOWER. s5 found no
+  circuit that gives it. Milestone: none.
+- O5 (M2, SPEC.md 9): the JSON target writes a Path component of a data
+  value as `null`. A loop in a HIT carries content. Milestone: M4.
+- O8 (M3, SPEC.md 9): Kan values that stay stuck. Family and the fold and
+  unfold families have no rule. `transp` stays stuck at a domain family
+  and at a neutral value of a Sum, Option or List. `hcomp` stays stuck at
+  a stuck type, and at a Sum, Option or List when `u0` and the branches do
+  not have the same constructor. Milestone: `hcomp` values in M4; the
+  fold and unfold families in M6.
+- O9 (s3): `refl` cannot be inferred, so it is not accepted as the path
+  argument of `trans`, `transport`, `subst` or `J`. Use a definition.
+  Milestone: none.
+- For the USER (s1): `def px : (i : I) -> Partial i Nat := fun i => [ i
+  -> 0 ]` gave exit 0 for `langc build` in s1. s6 did not run it again.
+  Milestone: none.
+- O10 and O11 closed in the s4 staged review. The s5 print facts (`thu`
+  107 KB, PRINT_MAX 128 KB by USER ruling, the `swapE` print form) are
+  facts, not items.

@@ -206,7 +206,7 @@ conjunctions. Each conjunction is an assignment: `i` means `i = 1`, and
 - `SSet` is a sort, not a binder type. These are refused (SORT_FIBRANT): a
   type in `SSet` as the type of a path, as a Sigma component, under a type
   former or as the type of an instance; `SSet` as a binder type.
-- M2 has no application of a partial element (docs/PLAN.md, M3 row).
+- M2 has no application of a partial element. M3 adds it (section 2.5, O7).
 
 ```
 def sysEnds : (i : I) -> Partial (~i \/ i) Nat
@@ -231,6 +231,151 @@ instance whose type is `Partial phi A` is refused (O6).
 | FACE_COVER | 1 | a system whose branch faces do not join to the face of its `Partial` type |
 | SORT_FIBRANT | 1 | a type in `SSet` as the type of a path, a Sigma component, under a type former or as an instance; `SSet` as a binder type |
 
+### 2.5 Kan operations, Glue and univalence (M3)
+
+M3 adds the Kan operations of CCHM, Glue types and univalence. There is no
+new token. Each form is a core name with arguments, as `Path` and
+`Partial`. The plan and the design calls are in docs/M3-PLAN.md.
+
+| Form | Meaning |
+|---|---|
+| `transp (<i> A) phi a` | Transport along the line `<i> A`. The line is constant on `phi`. |
+| `hcomp A phi u u0` | Homogeneous composition. `u : (i : I) -> Partial phi A`, `u0 : A`. |
+| `Glue A [ phi -> pack T e, ... ]` | Glue type. `T : Type n`, `e : Equiv T A`. |
+| `glue [ phi -> t, ... ] a` | Glue element. Check only. |
+| `unglue g` | The `A` part of `g`. |
+
+The line of `transp` and `comp` uses the line rule of `PathP` (section
+2.4): `<i> A` with `A : Type n`, else PATH_TYPE or SORT_FIBRANT. `witness`
+and `payload` are the Sigma projections and `pack` is the Sigma pair (M1).
+
+**Typing rules.**
+
+| Rule | Premises | Conclusion |
+|---|---|---|
+| transp | `<i> A` is a line in `Type n`; `phi` is an interval term; `a : A[i := i0]`; on each conjunction of `phi`, `A` at a fresh `i` converts to `A[i := i0]` (TRANSP_CONSTANT) | `transp (<i> A) phi a : A[i := i1]` |
+| hcomp | `A : Type n`; `u : (i : I) -> Partial phi A`; `u0 : A`; on each conjunction of `phi`, `u i0` converts to `u0` (HCOMP_BASE) | `hcomp A phi u u0 : A` |
+| Glue | `A : Type n`; the system checks against `Partial psi (Sigma (T : Type n) (Equiv T A))`, where `psi` is the join of its faces | `Glue A [ ... ] : Type n` |
+| glue (check) | Against `Glue A [ psi -> pack T e ]`: the system checks against `Partial psi T` (FACE_COVER); `a : A`; on each conjunction of `psi`, `witness e t` converts to `a` (GLUE_BOUNDARY) | `glue [ ... ] a : Glue A [ ... ]` |
+| unglue (infer) | `g : Glue A [ ... ]`. The checker copies the face and the system of the type of `g` into the core term (as D5 of M2) | `unglue g : A` |
+
+`glue` with no declared Glue type, or `unglue` of a term that is not of a
+Glue type, gives GLUE_EXPECTED.
+
+**Evaluation.** The evaluator tries the rules in this order: (1) the face
+`i1` rules, (2) the rule of the head former of the line or the type, (3)
+else the value is stuck. `A[r]` is the line at `r`.
+
+| Redex | Result |
+|---|---|
+| `transp L i1 a` | `a` |
+| `transp (<i> T) phi a`, `T` is `Nat`, `Field`, `Unit`, `Flag` or `Type n` | `a` |
+| `transp (<i> (x : A) -> B) phi f` | `fun y => transp (<i> B[x := w i]) phi (f (w i0))`, where `w i = transp (<j> A[~j \/ i]) (phi \/ i) y` |
+| `transp (<i> Sigma (x : A) B) phi p`, also Prod | `pack (transp (<i> A) phi (witness p)) (transp (<i> B[x := v i]) phi (payload p))`, where `v i = transp (<j> A[i /\ j]) (phi \/ ~i) (witness p)` |
+| `transp (<i> PathP (<j> A) a b) phi p` | `<j> comp (<i> A) (phi \/ ~j \/ j) (fun i => [ phi -> p @ j, ~j -> a[i], j -> b[i] ]) (p @ j)` |
+| `transp` on Sum, Option, List | the constructor of the argument with `transp` on each field (`none` and `nil` give the argument). A neutral argument gives a stuck value |
+| `Partial i1 A` | `A` |
+| `hcomp A i1 u u0` | `u i1` |
+| `hcomp T phi u u0`, `T` is `Nat`, `Field`, `Unit` or `Flag` | `u0` when each branch body of `u i` (fresh `i`, on its face) converts to `u0` (also when there is no branch); else stuck |
+| `hcomp ((x : A) -> B) phi u f` | `fun x => hcomp B phi (fun i => [ phi -> (u i) x ]) (f x)` |
+| `hcomp (Sigma (x : A) B) phi u p`, also Prod | `pack (hfill A phi u1 (witness p) i1) (comp (<i> B[x := hfill A phi u1 (witness p) i]) phi u2 (payload p))`, where `u1` and `u2` are the projections of `u` |
+| `hcomp (PathP (<j> A) a b) phi u p` | `<j> hcomp A[j] (phi \/ ~j \/ j) (fun i => [ phi -> (u i) @ j, ~j -> a, j -> b ]) (p @ j)` |
+| `hcomp` on Sum, Option, List | when `u0` and each branch body of `u` are the same constructor: that constructor with `hcomp` on each field; else stuck |
+| `Glue A [ i1 -> pack T e ]`, `glue [ i1 -> t ] a`, `unglue g` with the face `i1` | `T`, `t`, `witness e g` |
+| `unglue (glue s a)` | `a` |
+| `transp` along a Glue line, `hcomp` in a Glue type | the Cubical Agda rules (`transpGlue`, `hcompGlue`; CCHM 6.2) with `ghcomp` and `gcomp` (D8) |
+| `hcomp (Type n) phi E A` | `Glue A [ phi -> pack (E i1) (lineToEquiv (<i> E (~i))) ]` |
+
+Other formers (Family, the fold and unfold families) give a stuck value
+(O8).
+
+**No regularity (D3).** `transp` along a line that does not use `i` is not
+the identity in general. Only the closed-type rule gives the argument. For
+example, `transp (<i> P 1200) i0 u` with a variable `P` is stuck (the
+`equality moved` row of test/eval/expect.txt). The rule `hcomp A i0 u u0 =
+u0` for a general `A` does not exist (D8). Only the closed-type rule and
+`ghcomp` give the base `u0` when the system is empty. `Glue A [ ]` (face
+`i0`) is a Glue type, not `A`.
+
+**Conversion.**
+
+- `transp`, `hcomp` and the Glue operations compare argument by argument
+  (the line under a fresh interval variable, the faces by normal form, the
+  systems by conv_sys).
+- Glue eta: a neutral `g` converts to `glue s a` when `unglue g` converts to
+  `a` and, on each conjunction of the face, `g` converts to the branch of
+  `s`. The face and the system come from the `glue` value, not from a type.
+- Two stuck `unglue g` values compare `g` only. Their faces and systems are
+  copies from the type of `g`.
+- Two `lineToEquiv` values compare their lines. When only one side is a
+  `lineToEquiv`, it unfolds to its pair.
+- No rule makes two values equal because of their type (as M2). The
+  closed-type rules read the line or the type argument of the operation,
+  not the type of a value.
+
+**Derived operations.** Each operation is a checker rule that writes a core
+term (D4 of M2).
+
+| Operation | Type | Core term |
+|---|---|---|
+| `comp (<i> A) phi u u0` | `A[i1]` | `hcomp A[i1] phi (fun i => [ phi -> transp (<j> A[i \/ j]) i (u i) ]) (transp (<i> A) i0 u0)` |
+| `hfill A phi u u0 r` | `A` | `hcomp A (phi \/ ~r) (fun i => [ phi -> u (i /\ r), ~r -> u0 ]) u0` |
+| `trans p q` | `p : Path A x y`, `q : Path A y z` give `Path A x z` | `<i> hcomp A (~i \/ i) (fun j => [ ~i -> x, i -> q @ j ]) (p @ i)` |
+| `transport p x` | `p : Path (Type n) A B`, `x : A` give `B` | `transp (<i> p @ i) i0 x` |
+| `subst P p x` | `P : A -> Type n`, `p : Path A a b`, `x : P a` give `P b` | `transp (<i> P (p @ i)) i0 x` |
+| `transportRefl x` | `x : A` gives `Path A (transp (<_> A) i0 x) x` | `<i> transp (<_> A) i x` |
+| `J P d p` | `P : (y : A) -> Path A x y -> Type n`, `d : P x refl`, `p : Path A x y` give `P y p` | `transp (<i> P (p @ i) (<j> p @ (i /\ j))) i0 d` |
+| `JRefl P d` | `Path (P x refl) (J P d refl) d` | `<i> transp (<_> P x refl) i d` |
+| `isContr A` | `Type n` | `Sigma (c : A) ((y : A) -> Path A c y)` |
+| `fiber f y` | `f : A -> B`, `y : B` | `Sigma (x : A) (Path B (f x) y)` |
+| `isEquiv f` | `f : A -> B` | `(y : B) -> isContr (fiber f y)` |
+| `Equiv A B` | `Type n` | `Sigma (f : A -> B) (isEquiv f)` |
+| `idEquiv A` | `Equiv A A` | `pack (fun x => x) (fun y => pack (pack y (<_> y)) (fun z => <i> pack (payload z @ ~i) (<j> payload z @ (~i \/ j))))` |
+| `ua e` | `e : Equiv A B`, `A` and `B` in `Type n`, give `Path (Type n) A B` | `<i> Glue B [ ~i -> pack A e, i -> pack B (idEquiv B) ]` |
+| `uaBeta e x` | `Path B (transport (ua e) x) (witness e x)` | `<i> transp (<_> B) i (witness e x)` |
+
+`uaBeta` checks that `transport (ua e) x` converts to
+`transp (<_> B) i0 (witness e x)`, else PATH_BOUNDARY. The evaluator has
+three internal templates with no surface name: `lineToEquiv (<i> A)` of
+type `Equiv A[i0] A[i1]` (Cubical Agda `lineToEquiv`; a line with a closed
+head gives the identity equivalence), `ghcomp A phi u u0 = hcomp A (phi \/
+~phi) (fun i => [ phi -> u i, ~phi -> u0 ]) u0` and `gcomp`, which is
+`comp` with `ghcomp` in place of `hcomp` (D8).
+
+Laws that hold by computation (each is a `refl` in an example):
+`transp L i1 a = a`; `transp (<_> Nat) phi n = n`, also for a variable `n`;
+`hcomp A i1 u u0 = u i1`; `hfill A phi u u0 i0 = u0`; `trans refl refl` at
+Nat literals is `refl`; `ua e @ i0 = A` and `ua e @ i1 = B`;
+`unglue (glue s a) = a`; `transport (ua e) x = witness e x` for `B` in
+Field or Nat.
+
+**Names.** The new core names are `transp`, `hcomp`, `comp`, `hfill`,
+`trans`, `transport`, `subst`, `transportRefl`, `J`, `JRefl`, `isContr`,
+`fiber`, `isEquiv`, `Equiv`, `idEquiv`, `Glue`, `glue`, `unglue`, `ua` and
+`uaBeta` (D10). A definition with one of these names gives REFUSE_NAME.
+The reserved names are now `Bool` and `Text`.
+
+**Circuits and JSON.** M3 adds no circuit code. A constraint side must
+normalize to a Field normal form (section 7.1), so a stuck Kan term in a
+constraint gives CIRCUIT_LOWER. In an instance, a stuck Kan value or a
+value of a Glue type gives JSON_VALUE (section 9).
+
+**Refusal codes (M3).**
+
+| Code | Exit | The compiler refuses |
+|---|---|---|
+| TRANSP_CONSTANT | 1 | `transp (<i> A) phi a` where `A` is not constant on a conjunction of `phi`. The message gives the conjunction and the two ends of the line |
+| HCOMP_BASE | 1 | `hcomp A phi u u0` (also `comp` and `hfill`) where `u i0` does not convert to `u0` on a conjunction of `phi`. The message gives the conjunction and the two values |
+| GLUE_EXPECTED | 1 | `glue` with no declared Glue type; `unglue` of a term that is not of a Glue type |
+| GLUE_BOUNDARY | 1 | `glue s a` where `witness e t` does not convert to `a` on a conjunction of the face |
+
+Existing codes with new causes: PATH_TYPE and SORT_FIBRANT (a bad line of
+`transp` or `comp`), FACE_COVER and FACE_AGREE (the systems of `hcomp`,
+`Glue` and `glue`), REFUSE_NAME (the D10 names), TYPE_MISMATCH (`ua` of a
+term that is not an equivalence, or `A` and `B` in two universes),
+PATH_BOUNDARY (`uaBeta`), JSON_VALUE (a stuck Kan value or a Glue
+instance).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -243,8 +388,8 @@ the host form of each former.
 
 | ID | Status on tcc-json | Effect on this language | Open item |
 |---|---|---|---|
-| F12 | PARTIAL (M2) | `Path A x y` replaces `Eq` (ruling 2026-10-14). `refl` and `sym` compute (section 2.4). `trans` is reserved: M3 defines it with `hcomp`. | none (docs/PLAN.md, M3 row) |
-| F13 | PARTIAL (M2) | `cong` computes over Path (section 2.4). `transport` is reserved: M3 defines it with `transp`. | none (docs/PLAN.md, M3 row) |
+| F12 | DONE (M3) | `Path A x y` replaces `Eq` (ruling 2026-10-14). `refl` and `sym` compute (section 2.4). `trans p q` is a composition by `hcomp` (section 2.5). | none |
+| F13 | DONE (M3) | `cong` computes over Path (section 2.4). `transport p x` is `transp (<i> p @ i) i0 x` (section 2.5). There is no regularity: `transport refl x = x` holds as the path `transportRefl x`, not by computation (D3). | none |
 
 ## 4. Structures
 
@@ -365,8 +510,21 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   refuses a type in `SSet` under a type former, so only the type of the
   instance itself can be in `SSet`. A function with an interval binder is
   not an instance.
-- O7. M2 has no application of a partial element. M3 adds it with `transp`
-  and `hcomp` (docs/PLAN.md, M3 row).
+- O7. Closed in M3. M2 had no application of a partial element.
+  `Partial i1 A` evaluates to `A`. Under each conjunction of `phi`, a term
+  of type `Partial phi A` has type `A`, so the ordinary elimination rules
+  for `A` apply there (D4 of docs/M3-PLAN.md, slice s1). `transp` and
+  `hcomp` use it (section 2.5).
+- O8. Kan values that stay stuck (docs/M3-PLAN.md 3.4). Family, the fold
+  and unfold families have no Kan rule. `transp` also stays stuck at a
+  domain family (`transp (<_> Color) i0 red`, test/emit/stuck-transp.lang)
+  and at a neutral value of a Sum, Option or List. `hcomp` also stays stuck
+  at a stuck type, and at a Sum, Option or List when `u0` and the branches
+  do not have the same constructor. In an instance, a stuck Kan value or a
+  value of a Glue type gives JSON_VALUE (src/json.c;
+  test/emit/stuck-transp.lang and glue-instance.lang). M4 adds `hcomp`
+  values (docs/PLAN.md, M4 row). The fold and unfold families over the
+  cubical core are M6 (docs/PLAN.md, M6 row).
 
 ## 10. Milestones
 
