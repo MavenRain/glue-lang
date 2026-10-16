@@ -832,13 +832,26 @@ static const Value *transp_sys(Machine *m, const Value *line, const Value *phi, 
    (OP_KAN_DOM with INST = p). A recursive field is the family at its own
    parameters (check.c check_field), so its line is L. Environment [L, phi,
    x] (x is index 0);
-   under <i>: i 0, x 1, phi 2, L 3. */
+   under <i>: i 0, x 1, phi 2, L 3. M4 s4: a field whose type uses an
+   earlier field, or is a path in the family, keeps the transport stuck
+   (NULL without a diagnostic). */
 static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *x) {
   const Core *t = c->fields[k].type;
+  const Env *scope = NULL;
   const Core *args[2];
   uint32_t p;
-  if (c->fields[k].recursive)
+  if (c->fields[k].recursive == 1)
     return kan_transp(m, line, phi, x);
+  if (c->fields[k].recursive == 2 || c->fields[k].dependent)
+    return NULL;
+  /* Normalize away the unused earlier field binders before abstracting
+     the parameters. Their indices in the stored field type include K. */
+  for (p = 0; p < f->param_count + k; p++) {
+    scope = env_push(m, scope, val_var(m, p));
+    if (scope == NULL)
+      return NULL;
+  }
+  t = quote_value(m, f->param_count, eval_core(m, scope, t));
   for (p = 0; p < f->param_count; p++)
     t = binder(m, CORE_LAM, "p", t);
   for (p = 0; p < f->param_count; p++) {
@@ -847,6 +860,27 @@ static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const Cto
     t = app(m, t, opn(m, OP_KAN_DOM, p, args, 2u));
   }
   return instance(m, op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", t), var(m, 1u), var(m, 0)), line, phi, x);
+}
+
+/* M4 s4: the image of a field P that is a path in the family under the fold
+   at RES with CASES: <j> fold RES CASES (P @ j). Environment [res,
+   cases..., p]; under <j>: j 0, p 1, the last case 2, ..., res ncases + 2. */
+const Value *kan_fold_path_field(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p) {
+  const Env *env = env_push(m, NULL, res);
+  const Core **args = kan_args(m, ncases + 2u);
+  const Core *body;
+  uint32_t i;
+  if (args == NULL)
+    return NULL;
+  args[0] = var(m, ncases + 2u);
+  for (i = 0; i < ncases; i++) {
+    env = env_push(m, env, cases[i]);
+    args[i + 1u] = var(m, ncases + 1u - i);
+  }
+  env = env_push(m, env, p);
+  args[ncases + 1u] = papp(m, var(m, 1u), var(m, 0), NULL, NULL);
+  body = args[ncases + 1u] == NULL ? NULL : opn(m, OP_FOLD_HIT, family, args, ncases + 2u);
+  return env == NULL || body == NULL ? NULL : val_closure(m, VAL_PLAM, "j", NULL, env, body);
 }
 
 /* A fieldwise path constructor rule must commute with every boundary
@@ -1284,10 +1318,11 @@ static const Value *hcomp_ctor(Machine *m, const Value *a, const Value *phi, con
       return NULL;
   }
   for (k = 0; k < c->field_count; k++) {
-    const Value *t = c->fields[k].recursive ? a : eval_core(m, penv, c->fields[k].type);
+    const Value *t = c->fields[k].dependent ? NULL : c->fields[k].recursive == 1 ? a : eval_core(m, penv, c->fields[k].type);
     const Value *x = u0->args[f->param_count + k];
+    penv = env_push(m, penv, x);
     out[f->param_count + k] = t == NULL ? NULL : instance4(m, field_hcomp(m, f->param_count + k, 3u, 2u, 1u, 0), t, phi, u, x);
-    if (out[f->param_count + k] == NULL)
+    if (penv == NULL || out[f->param_count + k] == NULL)
       return NULL;
   }
   return val_op(m, VAL_OP, OP_CTOR, u0->inst, u0->field, out, u0->argc);

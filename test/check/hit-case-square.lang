@@ -1,0 +1,3 @@
+-- M4 s4: the squashc case agrees with p and q on the i faces, but on the j = i0 face it is the stuck square at i /\ ~i, not x.
+def natSame : Nat -> Nat -> Type 0 := fun a => fun b => Path Nat a b
+def bad : Quot Nat natSame -> Quot Nat natSame := fun t => fold (Quot Nat natSame) (fun a => cls Nat natSame a) (fun a => fun b => fun r => <i> eqc Nat natSame a b r @ i) (fun x => fun y => fun p => fun q => <i> <j> squashc Nat natSame x y p q @ i @ (j \/ (i /\ ~i))) t

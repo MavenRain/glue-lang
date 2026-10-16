@@ -1,0 +1,2 @@
+-- M4 s4: a square constructor must cover both faces of each binder (3 faces, j is open).
+family Sq := pt | sq <i j> [ ~i -> pt, i -> pt, ~j -> pt ]

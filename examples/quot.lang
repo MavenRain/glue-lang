@@ -1,0 +1,15 @@
+-- M4 s4: the set quotient Quot A R (D10), isSet, and its eliminator into a set.
+def natSame : Nat -> Nat -> Type 0 := fun a => fun b => Path Nat a b
+def quotZero : Quot Nat natSame := cls Nat natSame 0
+def quotEnd : Quot Nat natSame := (eqc Nat natSame 0 0 refl) @ i0
+def quotIsSet : (A : Type 0) -> (R : A -> A -> Type 0) -> isSet (Quot A R) := fun A => fun R => fun x => fun y => fun p => fun q => squashc A R x y p q
+def quotNatIsSet : isSet (Quot Nat natSame) := quotIsSet Nat natSame
+def sqFaceI0 : (x : Quot Nat natSame) -> (y : Quot Nat natSame) -> (p : Path (Quot Nat natSame) x y) -> (q : Path (Quot Nat natSame) x y) -> Path (Path (Quot Nat natSame) x y) (<j> squashc Nat natSame x y p q @ i0 @ j) p := fun x => fun y => fun p => fun q => refl
+def sqFaceI1 : (x : Quot Nat natSame) -> (y : Quot Nat natSame) -> (p : Path (Quot Nat natSame) x y) -> (q : Path (Quot Nat natSame) x y) -> Path (Path (Quot Nat natSame) x y) (<j> squashc Nat natSame x y p q @ i1 @ j) q := fun x => fun y => fun p => fun q => refl
+def sqFaceJ0 : (x : Quot Nat natSame) -> (y : Quot Nat natSame) -> (p : Path (Quot Nat natSame) x y) -> (q : Path (Quot Nat natSame) x y) -> Path (Path (Quot Nat natSame) x x) (<i> squashc Nat natSame x y p q @ i @ i0) (<i> x) := fun x => fun y => fun p => fun q => refl
+def sqFaceJ1 : (x : Quot Nat natSame) -> (y : Quot Nat natSame) -> (p : Path (Quot Nat natSame) x y) -> (q : Path (Quot Nat natSame) x y) -> Path (Path (Quot Nat natSame) y y) (<i> squashc Nat natSame x y p q @ i @ i1) (<i> y) := fun x => fun y => fun p => fun q => refl
+def quotRec : (A : Type 0) -> (R : A -> A -> Type 0) -> (B : Type 0) -> (sB : isSet B) -> (f : A -> B) -> (e : (a : A) -> (b : A) -> R a b -> Path B (f a) (f b)) -> Quot A R -> B := fun A => fun R => fun B => fun sB => fun f => fun e => fun t => fold B f e (fun x => fun y => fun p => fun q => sB x y p q) t
+def foldCls : (B : Type 0) -> (f : Nat -> B) -> (e : (a : Nat) -> (b : Nat) -> natSame a b -> Path B (f a) (f b)) -> (s : isSet B) -> (a : Nat) -> Path B (fold B f e s (cls Nat natSame a)) (f a) := fun B => fun f => fun e => fun s => fun a => refl
+def foldEqc : (B : Type 0) -> (f : Nat -> B) -> (e : (a : Nat) -> (b : Nat) -> natSame a b -> Path B (f a) (f b)) -> (s : isSet B) -> (a : Nat) -> (b : Nat) -> (r : natSame a b) -> Path (Path B (f a) (f b)) (<i> fold B f e s (eqc Nat natSame a b r @ i)) (e a b r) := fun B => fun f => fun e => fun s => fun a => fun b => fun r => refl
+def quotId : Quot Nat natSame -> Quot Nat natSame := fun x => fold (Quot Nat natSame) (fun a => cls Nat natSame a) (fun a => fun b => fun r => <i> eqc Nat natSame a b r @ i) (quotIsSet Nat natSame) x
+def quotRecOne : (sN : isSet Nat) -> Nat := fun sN => quotRec Nat natSame Nat sN (fun n => n) (fun a => fun b => fun r => r) (cls Nat natSame 1)

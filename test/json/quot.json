@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"quotZero","type":"Quot Nat (fun a => fun b => Path Nat a b)","value":{"tag":"cls","cla":0}},{"name":"quotEnd","type":"Quot Nat (fun a => fun b => Path Nat a b)","value":{"tag":"cls","cla":0}}]}

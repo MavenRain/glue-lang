@@ -715,6 +715,24 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
 static const Value *papp_value(Machine *m, const Value *p, const Value *r, const Env *env, const Core *const *ends);
 static const Value *fold_hit(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *x);
 
+int core_free_levels(Machine *m, const Core *core, uint32_t depth, uint32_t free_count, unsigned char *used) {
+  uint32_t i;
+  uint32_t body_depth;
+  int ok;
+  if (core == NULL || !enter(m))
+    return 0;
+  if (core->kind == CORE_VAR && core->index < depth && depth - 1u - core->index < free_count)
+    used[depth - 1u - core->index] = 1;
+  body_depth = depth + (core->kind == CORE_LAM || core->kind == CORE_PI
+    || core->kind == CORE_SIGMA || core->kind == CORE_PLAM ? 1u : 0u);
+  ok = (core->a == NULL || core_free_levels(m, core->a, depth, free_count, used))
+    && (core->b == NULL || core_free_levels(m, core->b, body_depth, free_count, used));
+  for (i = 0; ok && i < core->argc; i++)
+    ok = core_free_levels(m, core->args[i], depth, free_count, used);
+  m->depth--;
+  return ok;
+}
+
 /* Apply a constructor case to fields whose recursive entries are folded. */
 static const Value *eval_hit_case(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x, const Value *const *fields) {
   const FamilyInfo *fam;
@@ -815,7 +833,8 @@ static const Value *fold_hit(Machine *m, uint32_t family, const Value *res, cons
   }
   for (i = 0; i < ctor->field_count; i++) {
     const Value *field = x->args[fam->param_count + i];
-    images[i] = ctor->fields[i].recursive ? fold_hit(m, family, res, cases, ncases, field) : field;
+    images[i] = ctor->fields[i].recursive == 1 ? fold_hit(m, family, res, cases, ncases, field)
+      : ctor->fields[i].recursive == 2 ? kan_fold_path_field(m, family, res, cases, ncases, field) : field;
     if (images[i] == NULL) {
       m->depth--;
       return NULL;
@@ -826,8 +845,51 @@ static const Value *fold_hit(Machine *m, uint32_t family, const Value *res, cons
   return acc;
 }
 
+static int interval_levels(Machine *m, uint32_t level, uint32_t free_count, const Value *v, unsigned char *levels);
+
+/* Map a boundary path pointwise, preserving fields that already denote
+   their images. Use a fresh interval above every free input variable. */
+static const Value *fold_boundary_path(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *p) {
+  const Env *env = NULL;
+  const Value *body;
+  const Core *core;
+  unsigned char *levels;
+  unsigned char *used;
+  uint32_t level = 0;
+  uint32_t i;
+  if (!value_bound(m, p, &level) || !value_bound(m, res, &level))
+    return NULL;
+  for (i = 0; i < ncases; i++)
+    if (!value_bound(m, cases[i], &level))
+      return NULL;
+  for (i = 0; i < boundary->field_count; i++)
+    if (!value_bound(m, fields[i], &level))
+      return NULL;
+  body = eval_fold_hit_boundary(m, boundary, res, cases, ncases, fields,
+    papp_value(m, p, val_ivl_var(m, level), NULL, NULL));
+  core = body == NULL ? NULL : quote_value(m, level + 1u, body);
+  if (core == NULL)
+    return NULL;
+  levels = arena_alloc(m->arena, (size_t)level + 1u);
+  used = arena_alloc(m->arena, (size_t)level + 1u);
+  if (levels == NULL || used == NULL)
+    return oom(m);
+  if (!interval_levels(m, level + 1u, level, body, levels)
+      || !core_free_levels(m, core, level + 1u, level, used))
+    return NULL;
+  for (i = 0; i < level; i++) {
+    const Value *v = !used[i] ? val_nat(m, 0) : levels[i] ? val_ivl_var(m, i) : val_var(m, i);
+    env = env_push(m, env, v);
+    if (env == NULL)
+      return NULL;
+  }
+  return val_closure(m, VAL_PLAM, "j", NULL, env, core);
+}
+
 /* Boundary field variables already denote their images in RES. Preserve
-   them when folding a constructor around a recursive field. */
+   them when folding a constructor around a recursive field. M4 s4: a path
+   field variable applied to an interval (p @ j) is preserved too; a path
+   field inside a boundary constructor folds pointwise (kan_fold_path_field). */
 const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *x) {
   const CtorInfo *ctor;
   const Value **images;
@@ -836,9 +898,11 @@ const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const 
   uint32_t i;
   if (x == NULL)
     return NULL;
-  for (i = 0; i < boundary->field_count; i++)
-    if (boundary->fields[i].recursive && x->kind == VAL_VAR && fields[i]->kind == VAL_VAR && x->nat == fields[i]->nat)
-      return fields[i];
+  for (i = 0; i < boundary->field_count; i++) {
+    const Value *head = x->kind == VAL_PAPP ? x->dom : x;
+    if (boundary->fields[i].recursive && head->kind == VAL_VAR && fields[i]->kind == VAL_VAR && head->nat == fields[i]->nat)
+      return x;
+  }
   if (!(val_is(x, OP_CTOR) || val_is(x, OP_PCON)))
     return fold_hit(m, boundary->family, res, cases, ncases, x);
   if (x->inst >= m->ctor_count || m->ctors[x->inst].family != boundary->family)
@@ -852,8 +916,8 @@ const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const 
     return oom(m);
   }
   for (i = 0; i < ctor->field_count; i++) {
-    images[i] = ctor->fields[i].recursive
-      ? eval_fold_hit_boundary(m, boundary, res, cases, ncases, fields, x->args[p + i]) : x->args[p + i];
+    images[i] = ctor->fields[i].recursive == 1 ? eval_fold_hit_boundary(m, boundary, res, cases, ncases, fields, x->args[p + i])
+      : ctor->fields[i].recursive == 2 ? fold_boundary_path(m, boundary, res, cases, ncases, fields, x->args[p + i]) : x->args[p + i];
     if (images[i] == NULL) {
       m->depth--;
       return NULL;

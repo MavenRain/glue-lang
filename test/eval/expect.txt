@@ -153,3 +153,4 @@ circle degBase => 0
 circle deg0 => fun c => fold Nat 0 (<i> 0) c
 circle toPathBase => <i> 0
 trunc truncRecInc => fun pB => 0
+quot quotRecOne => fun sN => 1

@@ -1448,3 +1448,132 @@ failed).
 - Open items:
   - `Path Self a b` fields (check_field) and k = 2 tests: s4.
   - Dependent `elim`: out of scope.
+
+### s4: higher constructors and the set quotient (2026-10-16)
+
+- Surface form: no new syntax. A field type of a constructor now sees
+  the family parameters and the earlier fields of the same constructor
+  (a dependent field), and a field of a HIT can be a Path in the family
+  (`sqp : Path (Quot A R) sqx sqy`). `isSet` is a core name next to
+  `isProp` and `isContr` (RULE_IS_SET, the BUILTINS row after isProp,
+  core_is_set, rule_is_set): `isSet A = (x : A) -> (y : A) -> (p : Path A
+  x y) -> (q : Path A x y) -> Path (Path A x y) p q`. A cube constructor
+  with two binders (`<i j>`) goes through the s1 boundary code: s4 forced
+  no s1 or s3 fix.
+- Checker (src/front/check.c): FieldInfo (src/front/core.h) gains
+  `dependent` (the type uses an earlier field), `ends[2]` (the ends of a
+  Path field) and `recursive` 0, 1 or 2 (0 plain, 1 the whole family at
+  its own parameters, 2 a Path in the family). check_field takes the
+  count of the earlier fields: the field scope is the parameters, then
+  the earlier fields (check_ctor pushes each field; check_boundary pushes
+  the binders only), and self_applied takes the depth of that scope. The
+  DOMAIN_FAMILY message is now "the recursive field %s must have the type
+  %s applied to its own parameters, or a Path in it". case_type is
+  deleted: fold_family uses hit_case_type for a point case too (kb = 0:
+  the Pi binders, then the result type). case_field_type gives a Path
+  field the case type `PathP (<_> res) a' b'`, where a' and b' are the
+  folded ends (eval_fold_hit_boundary). hit_case_type nests one PathP per
+  binder, from the last binder (inner) to the first (outer), so a square
+  case has the type `(f' : ...) -> PathP (<i> PathP (<j> B) x' y') (<j> p'
+  @ j) (<j> q' @ j)`, and the generic path check (check_plam) tests the
+  inner ends. ctor_app and the new proj_type push the earlier field
+  values before they evaluate a field type. boundary_core checks the cube
+  boundary per binder: a square with three faces gives HIT_BOUNDARY "the
+  path constructor sq does not cover the face j of its binder j: the
+  boundary joins to i \/ ~i \/ ~j". A constructor in a boundary takes
+  its parameters explicitly (`~i -> cls eqa` gives TYPE_ARITY "cls needs
+  3 arguments, found 1").
+- Evaluator (src/front/eval.c): fold_hit gives a recursive-2 field the
+  image kan_fold_path_field. eval_fold_hit_boundary keeps a path field
+  variable applied to an interval (`p @ j`: it tests the head of a
+  VAL_PAPP) and folds a path field inside a boundary constructor
+  pointwise.
+- Kan (src/front/kan.c): kan_fold_path_field is the image of a field P
+  that is a path in the family under the fold: `<j> fold RES CASES (P @
+  j)`, a VAL_PLAM closure over res, the cases and p. field_line_transp
+  returns NULL (stuck, no diagnostic) for a recursive-2 or a dependent
+  field; hcomp_ctor uses a NULL field type for a dependent field.
+- JSON (src/json.c): family_json evaluates a field type that is not
+  recursive-1 in the environment params, then the earlier field values
+  (env_push after each field).
+- Domain (domain/domain.lang, line 26): `family Quot (A : Type 0) (R : A
+  -> A -> Type 0) := cls (cla : A) | eqc (eqa : A) (eqb : A) (eqr : R eqa
+  eqb) <i> [ ~i -> cls A R eqa, i -> cls A R eqb ] | squashc (sqx : Quot
+  A R) (sqy : Quot A R) (sqp : Path (Quot A R) sqx sqy) (sqq : Path (Quot
+  A R) sqx sqy) <i j> [ ~i -> sqp @ j, i -> sqq @ j, ~j -> sqx, j -> sqy
+  ]` (D10). The field names cla, eqa, eqb, eqr, sqx, sqy, sqp and sqq are
+  core names, checked free of every example, test, domain and src binder.
+- Examples: examples/quot.lang is new (15 defs). natSame is `fun a => fun
+  b => Path Nat a b` (`natEq` is a core name, REFUSE_NAME). quotZero `cls
+  Nat natSame 0`; quotEnd `(eqc Nat natSame 0 0 refl) @ i0` (the boundary
+  rule gives the cls form); quotIsSet `fun A => fun R => fun x => fun y
+  => fun p => fun q => squashc A R x y p q` at the type `isSet (Quot A
+  R)`, and quotNatIsSet. Four face refl rows: sqFaceI0 (`<j> squashc Nat
+  natSame x y p q @ i0 @ j` is p), sqFaceI1 (q), sqFaceJ0 (`<i> ... @ i @
+  i0` is `<i> x`), sqFaceJ1 (`<i> y`). quotRec is the eliminator into a
+  set B (`sB : isSet B`, the squashc case `fun x => fun y => fun p => fun
+  q => sB x y p q`). foldCls (`fold B f e s (cls Nat natSame a)` is `f
+  a`, with `s : isSet B` passed directly as the squashc case) and foldEqc
+  (`<i> fold B f e s (eqc Nat natSame a b r @ i)` is `e a b r`) are refl
+  rows. quotId folds Quot into itself with the square case `quotIsSet Nat
+  natSame`. quotRecOne abstracts over `sN : isSet Nat` (Nat has no isSet
+  proof) and gives the eval row `quot quotRecOne => fun sN => 1`.
+  test/json/quot.json holds the instances quotZero and quotEnd, both
+  `{"tag":"cls","cla":0}`. Negative control: sqFaceI0 with the end `q`
+  gives TYPE_REFL "the start normalizes to <j> p @ j, the end normalizes
+  to q".
+- Check rows (test/check/expect.txt, 3 new): hit-boundary-square.lang
+  (`family Sq := pt | sq <i j> [ ~i -> pt, i -> pt, ~j -> pt ]`)
+  HIT_BOUNDARY; hit-case-square.lang HIT_CASE, a fold of `Quot Nat
+  natSame` into itself with the squashc case `fun x => fun y => fun p =>
+  fun q => <i> <j> squashc Nat natSame x y p q @ i @ (j \/ (i /\ ~i))`:
+  right on both i faces, but on the j = i0 face it is the stuck square
+  at `i /\ ~i`, not x (`i /\ ~i` is not i0 in the De Morgan interval: the
+  probe `<i> p @ (i /\ ~i)` against `<i> 1` gives TYPE_REFL); the message
+  is "the case for squashc must match its boundary and have the type (_x0
+  : Quot ...) -> ... -> Path (Path (Quot ...) _x0 _x1) (<j> _x2 @ j) (<j>
+  _x3 @ j): the path <j> ... does not have the end points of its type: at
+  i0 it normalizes to squashc Nat ..."; reserved-isSet.lang (`def isSet :
+  Nat := 0`) REFUSE_NAME.
+- Mutants (each with `make -B check`, source restored by the inverse
+  edit, `git diff | md5` identical before and after): 3 KILLED, 0
+  SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| boundary_core checks the first binder only (`j < k && j < 1u`, check.c) | hit-boundary-square.lang: the 3-face Sq family is accepted, so the row fails as REFUSE_DATA `Sq: a program cannot declare a family (rule R1)` (want exit 1 and HIT_BOUNDARY, got exit 1: REFUSE_DATA) |
+| check_plam skips the end test of a path nested inside another path (a static depth counter: the inner j faces untested, the outer i faces tested; check.c) | hit-case-square.lang `want exit 1 and HIT_CASE, got exit 0`; every other row stays GREEN |
+| rule_is_set returns core_is_prop (check.c) | `make check-clang`: `error: unused function 'core_is_set' [-Werror,-Wunused-function]`; the tcc build with `sh test/gate.sh` fails examples/quot.lang at quotIsSet (TYPE_MISMATCH `a function is not a term of type Path (Quot A R) x y`), then the eval row quotRecOne and the quot.json golden |
+
+  Mutant 2 realization: the case check is the generic path check
+  (check_plam) over the nested PathP type that hit_case_type builds. The
+  binder loop of hit_case_type has no face test to drop (a dropped layer
+  drops its fiber and breaks every square), so the mutant lives in
+  check_plam. Only hit-case-square.lang kills it: no older row tests the
+  inner ends of a square.
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  20; examples 26, parse refusals 17, check refusals 99, evals 157, json
+  22 builds, build refusals 7, circuits 3, same-ir 1, circuit refusals
+  10, satcheck refusals 6; node regressions 6, printer 2). `make
+  check-clang` exit 0. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (the 3 deploy simulations ran). `git diff
+  --exit-code -- test/circuit contracts/src/verifiers` exit 0.
+  contracts/test/fixtures restored from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Review fixes (2026-10-16): later independent fields retain the correct
+  parameter scope during transport and hcomp. Dependency detection scans
+  the normalized field type instead of counting unused closure captures.
+  Boundary path fields fold pointwise with their existing images preserved;
+  unused future case variables are excluded from the resulting closure.
+  A plain field that depends on an earlier recursive field is refused with
+  DOMAIN_FAMILY because the non-dependent fold cannot type its case.
+- Review validation: seven native C regressions added (six fail against
+  the original staged source, one checks supported dependent projections).
+  The three independent-field controls also pass against HEAD. `make check`
+  and `make check-clang` pass; native HIT regressions: 27 checked, 0 failed.
+- Open items:
+  - Transport and hcomp are stuck (NULL, no diagnostic) on a dependent
+    field and on a Path field.
+  - quotRecOne abstracts over `isSet Nat`: Nat has no isSet proof.
+  - hit-case-square.lang is the only row that tests the inner ends of a
+    square (the mutant 2 proof).

@@ -50,6 +50,52 @@ static const Case FACE_CASES[] = {
 };
 
 static const Case CASES[] = {
+  {"dependent non-recursive constructor fields and projections compute",
+   "family Dep := dep (depType : Type 0) (depValue : depType)\n",
+   "def test : Nat := depValue (dep Nat 7)\n", NULL, "7"},
+  {"plain fields cannot depend on folded recursive fields",
+   "family Evidence := evidenceZero"
+   " | evidenceNext (evidencePrior : Evidence)"
+   " (evidenceProof : Path Nat (fold 0 0 evidencePrior) 0)\n",
+   "def test : Evidence := evidenceNext (evidenceNext evidenceZero refl) refl\n",
+   "DOMAIN_FAMILY", NULL},
+  {"fold maps a boundary path lambda without folding its images again",
+   "family PathField := pathPoint"
+   " | pathEdge (edgePath : Path PathField pathPoint pathPoint) <i>"
+   " [ ~i -> pathPoint, i -> pathPoint ]"
+   " | pathSquare (squarePath : Path PathField pathPoint pathPoint) <i j>"
+   " [ ~i -> pathEdge (<k> squarePath @ ~k) @ j,"
+   " i -> pathEdge (<k> squarePath @ ~k) @ j,"
+   " ~j -> pathPoint, j -> pathPoint ]\n",
+   "def test : (B : Type 0) -> (b : B)"
+   " -> (e : Path B b b -> Path B b b) -> PathField -> B"
+   " := fun B b e x => fold B b e (fun p => <i> <j> e (<k> p @ ~k) @ j) x\n", NULL, NULL},
+  {"later function fields remain independent despite captured fields",
+   "family Duo (A : Type 0) := duo (duoLeft : A) (duoRight : A -> A)\n",
+   "def test : (L : I -> Type 0) -> (a : L i0) -> (f : L i0 -> L i0)"
+   " -> Path (L i1 -> L i1)"
+   " (duoRight (transp (<i> Duo (L i)) i0 (duo (L i0) a f)))"
+   " (transp (<i> L i -> L i) i0 f) := fun L a f => refl\n", NULL, NULL},
+  {"fold preserves path field images inside boundary constructors",
+   "family PathField := pathPoint"
+   " | pathEdge (edgePath : Path PathField pathPoint pathPoint) <i>"
+   " [ ~i -> pathPoint, i -> pathPoint ]"
+   " | pathSquare (squarePath : Path PathField pathPoint pathPoint) <i j>"
+   " [ ~i -> pathEdge squarePath @ j, i -> pathEdge squarePath @ j,"
+   " ~j -> pathPoint, j -> pathPoint ]\n",
+   "def test : (B : Type 0) -> (b : B)"
+   " -> (e : Path B b b -> Path B b b) -> PathField -> B"
+   " := fun B b e x => fold B b e (fun p => <i> <j> e p @ j) x\n", NULL, NULL},
+  {"transport keeps the parameter scope of later independent fields",
+   "family Duo (A : Type 0) := duo (duoLeft : A) (duoRight : A)\n",
+   "def test : (L : I -> Type 0) -> (a b : L i0) -> Path (L i1)"
+   " (duoRight (transp (<i> Duo (L i)) i0 (duo (L i0) a b)))"
+   " (transp (<i> L i) i0 b) := fun L a b => refl\n", NULL, NULL},
+  {"composition keeps the parameter scope of later independent fields",
+   "family Duo (A : Type 0) := duo (duoLeft : A) (duoRight : A)\n",
+   "def test : (A : Type 0) -> (a b : A) -> (j : I) -> Path A"
+   " (duoRight (hcomp (Duo A) j (fun i => [ j -> duo A a b ]) (duo A a b)))"
+   " (hcomp A j (fun i => [ j -> b ]) b) := fun A a b j => refl\n", NULL, NULL},
   {"fold erases an empty neutral hcomp tube", "",
    "def test : (B : Type 0) -> (b : B) -> (l : Path B b b)"
    " -> (u : (i : I) -> Partial i0 Circle)"

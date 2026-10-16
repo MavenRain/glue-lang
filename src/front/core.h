@@ -173,8 +173,10 @@ struct Value {
 
 typedef struct {
   const char *name;
-  const Core *type; /* in the context of the family parameters */
-  int recursive;    /* the field type is the family itself */
+  const Core *type; /* in the context of the family parameters, then the earlier fields of the constructor (M4 s4) */
+  int recursive;    /* 1: the field type is the family itself. 2 (M4 s4): a Path in the family; ends[0], ends[1] are its ends in the context of type */
+  int dependent;    /* M4 s4: the type uses an earlier field */
+  const Core *ends[2];
 } FieldInfo;
 
 typedef struct {
@@ -293,6 +295,8 @@ const Value *pcon_boundary(Machine *m, const CtorInfo *ci, const Env *env);
 /* Fold a boundary body to type a path case. Recursive FIELDS already
    denote their images in RES, including below constructor applications. */
 const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *x);
+/* M4 s4 (kan.c): the image <j> fold RES CASES (P @ j) of a field that is a path in the family. */
+const Value *kan_fold_path_field(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
 const Core *quote_value(Machine *m, uint32_t level, const Value *v);
@@ -302,6 +306,8 @@ const Core *quote_value(Machine *m, uint32_t level, const Value *v);
 /* M3 s2: raise *BOUND above each free level of V below this scan's open
    level, including the temporary levels of active outer scans. */
 int value_bound(Machine *m, const Value *v, uint32_t *bound);
+/* Mark free levels below FREE_COUNT in a core term at DEPTH binders. */
+int core_free_levels(Machine *m, const Core *core, uint32_t depth, uint32_t free_count, unsigned char *used);
 /* V on conjunction K of the face normal form FACE. LEVEL is above each free
    level of V. */
 const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl *face, uint32_t k);

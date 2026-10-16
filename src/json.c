@@ -140,7 +140,8 @@ static int is_enum(const Machine *m, const FamilyInfo *f) {
 
 /* Only constants: the name. One constructor: an object of the fields.
    Otherwise: an object with "tag" and the fields. A field type is in the
-   context of the family parameters, as in check.c. */
+   context of the family parameters, then the earlier fields (M4 s4), as
+   in check.c. */
 static int family_json(Out *o, const Value *type, const Value *v) {
   const FamilyInfo *f;
   const CtorInfo *ci;
@@ -168,10 +169,12 @@ static int family_json(Out *o, const Value *type, const Value *v) {
     ok = ok && put_text(o, "\"tag\":") && put_string(o, ci->name);
   for (i = 0; ok && i < ci->field_count; i++) {
     const FieldInfo *fi = &ci->fields[i];
-    const Value *ft = fi->recursive ? type : eval_core(o->m, env, fi->type);
+    const Value *fv = v->args[f->param_count + i];
+    const Value *ft = fi->recursive == 1 ? type : eval_core(o->m, env, fi->type);
     int lead = i == 0 && f->ctor_count == 1;
+    env = env_push(o->m, env, fv);
     ok = ft != NULL && (lead || put_text(o, ",")) && put_string(o, fi->name) && put_text(o, ":")
-      && value_json(o, ft, v->args[f->param_count + i]);
+      && value_json(o, ft, fv);
   }
   return ok && put_text(o, "}");
 }

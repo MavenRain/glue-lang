@@ -88,6 +88,7 @@ typedef enum {
   RULE_J_REFL,
   RULE_IS_CONTR,
   RULE_IS_PROP,
+  RULE_IS_SET,
   RULE_FIBER,
   RULE_IS_EQUIV,
   RULE_EQUIV,
@@ -170,6 +171,7 @@ static const Builtin BUILTINS[] = {
   {"JRefl", 2, RULE_J_REFL, OP_TRANSP, OP_NAT, 0},
   {"isContr", 1, RULE_IS_CONTR, OP_PATHP, OP_NAT, 0},
   {"isProp", 1, RULE_IS_PROP, OP_PATHP, OP_NAT, 0},
+  {"isSet", 1, RULE_IS_SET, OP_PATHP, OP_NAT, 0},
   {"fiber", 2, RULE_FIBER, OP_PATHP, OP_NAT, 0},
   {"isEquiv", 1, RULE_IS_EQUIV, OP_PATHP, OP_NAT, 0},
   {"Equiv", 2, RULE_EQUIV, OP_PATHP, OP_NAT, 0},
@@ -626,7 +628,10 @@ static const Core *rule_j(Call *k);
 static const Core *rule_j_refl(Call *k);
 static const Core *rule_is_contr(Call *k);
 static const Core *rule_is_prop(Call *k);
+static const Core *rule_is_set(Call *k);
 static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t field, uint32_t ivl, uint32_t level);
+static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cvals, uint32_t done);
+static const Value *close_over(Checker *c, ValKind kind, const char *name, const Value *dom, const Value *body);
 static const Core *rule_fiber(Call *k);
 static const Core *rule_is_equiv(Call *k);
 static const Core *rule_equiv(Call *k);
@@ -801,24 +806,14 @@ static const Core *fold_simple(Call *k, const Core *s, const Value *st) {
   return op3(c, list ? OP_FOLD_LIST : OP_FOLD_NAT, 0, 3, f, z, s);
 }
 
-/* The type of the fold case of CTOR: one argument for each field (a
-   recursive field arrives folded, so its type is RES), then RES. */
-static const Value *case_type(Checker *c, const CtorInfo *ctor, const Env *env, const Value *res) {
-  const Value *t = res;
-  uint32_t i = ctor->field_count;
-  while (i > 0u && t != NULL) {
-    const FieldInfo *field = &ctor->fields[--i];
-    t = val_arrow(c->m, field->recursive ? res : eval_core(c->m, env, field->type), t);
-  }
-  return t;
-}
-
-/* fold case... x over a domain family: one case for each constructor. */
+/* fold case... x over a domain family: one case for each constructor. The
+   type of a case (M4 s4): one Pi binder for each field (a recursive field
+   arrives folded, so its type is RES; a later field type sees the earlier
+   fields), then RES: hit_case_type with no interval binder. */
 static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   Checker *c = k->c;
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[st->inst];
-  const Env *env = env_of(c, st->args, st->argc);
   const Value *res = k->hint;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
   uint32_t j;
@@ -829,7 +824,7 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   if (res == NULL)
     return nul(FAIL(c, "TYPE_INFER", "fold over %s needs a declared result type here", f->name));
   for (j = 0; j < f->ctor_count; j++) {
-    cores[j] = cores[j] != NULL ? cores[j] : check(c, k->args[j], case_type(c, &m->ctors[f->first_ctor + j], env, res));
+    cores[j] = cores[j] != NULL ? cores[j] : check(c, k->args[j], hit_case_type(c, &m->ctors[f->first_ctor + j], st->args, res, NULL, 0u));
     if (cores[j] == NULL)
       return NULL;
   }
@@ -876,11 +871,33 @@ static const Core *hit_case_end(Checker *c, const CtorInfo *ci, const Value *con
   return core;
 }
 
+/* M4 s4: the type of field I of CI in its case: RES for a recursive field;
+   Path RES at the folded ends for a path in the family (the field
+   variables FVALS denote their images: eval_fold_hit_boundary); else the
+   field type at the parameters and the earlier fields (FENV). */
+static const Value *case_field_type(Checker *c, const CtorInfo *ci, const Value *res, const Value *const *cases, const Value *const *fvals, const Env *fenv, uint32_t i) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[ci->family];
+  const FieldInfo *fi = &ci->fields[i];
+  const Value *a;
+  const Value *b;
+  const Value *line;
+  if (fi->recursive == 1)
+    return res;
+  if (fi->recursive != 2)
+    return eval_core(m, fenv, fi->type);
+  a = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, eval_core(m, fenv, fi->ends[0]));
+  b = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, eval_core(m, fenv, fi->ends[1]));
+  line = close_over(c, VAL_PLAM, "_", NULL, res);
+  return a == NULL || b == NULL || line == NULL ? NULL : val_make(m, OP_PATHP, 0, 3u, line, a, b);
+}
+
 /* M4 s3 (D6): the type of the path case of CI at the result type RES.
-   The fields are Pi binders (a recursive field has the type RES); the
-   codomain is the path type over the k binders whose ends are the folded
-   boundary bodies (hit_case_end). CVALS: the values of the DONE cases
-   checked so far, in declaration order. */
+   The fields are Pi binders (case_field_type: a recursive field has the
+   type RES); the codomain is the path type over the k binders whose ends
+   are the folded boundary bodies (hit_case_end). CVALS: the values of the
+   DONE cases checked so far, in declaration order. M4 s4: also the type of
+   a point case (kb = 0: the Pi binders, then RES). */
 static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cvals, uint32_t done) {
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[ci->family];
@@ -888,6 +905,7 @@ static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *c
   uint32_t kb = ci->binder_count;
   uint32_t L = c->level;
   const Env *penv = env_of(c, pvals, f->param_count);
+  const Env *fenv = penv;
   const Value **fvals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *fvals);
   const Value **ftypes = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *ftypes);
   const Value **cases = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cases);
@@ -901,9 +919,10 @@ static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *c
     cases[i] = i < done ? cvals[i] : val_var(m, L + n + kb + i);
   for (i = 0; i < n; i++) {
     fvals[i] = val_var(m, L + i);
-    ftypes[i] = ci->fields[i].recursive ? res : eval_core(m, penv, ci->fields[i].type);
+    ftypes[i] = fvals[i] == NULL ? NULL : case_field_type(c, ci, res, cases, fvals, fenv, i);
     if (fvals[i] == NULL || ftypes[i] == NULL)
       return NULL;
+    fenv = env_push(m, fenv, fvals[i]);
   }
   type = quote_value(m, L + n + kb, res);
   for (i = kb; i > 0; i--) {
@@ -941,7 +960,6 @@ static const Core *fold_hit_rule(Call *k, const Core *s, const Value *st) {
   Checker *c = k->c;
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[st->inst];
-  const Env *env = env_of(c, st->args, st->argc);
   uint64_t level = 0;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
   const Value **cvals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cvals);
@@ -957,7 +975,7 @@ static const Core *fold_hit_rule(Call *k, const Core *s, const Value *st) {
     return NULL;
   for (j = 0; j < f->ctor_count; j++) {
     const CtorInfo *ci = &m->ctors[f->first_ctor + j];
-    const Value *want = ci->binder_count == 0u ? case_type(c, ci, env, res) : hit_case_type(c, ci, st->args, res, cvals, j);
+    const Value *want = hit_case_type(c, ci, st->args, res, cvals, j);
     cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
     if (cores[1u + j] == NULL)
       return recode_case(c, ci, want);
@@ -1494,6 +1512,8 @@ static const Core *rule(Call *k) {
     return rule_is_contr(k);
   case RULE_IS_PROP:
     return rule_is_prop(k);
+  case RULE_IS_SET:
+    return rule_is_set(k);
   case RULE_FIBER:
     return rule_fiber(k);
   case RULE_IS_EQUIV:
@@ -1624,14 +1644,32 @@ static const Core *ctor_app(Call *k, uint32_t ctor) {
     return NULL;
   env = env_of(c, vals, p);
   for (j = 0; j < ci->field_count; j++) {
+    const Value *fv;
     cores[p + j] = check(c, k->args[p + j], eval_core(c->m, env, ci->fields[j].type));
-    if (cores[p + j] == NULL)
+    fv = cores[p + j] == NULL ? NULL : here(c, cores[p + j]);
+    if (fv == NULL)
       return NULL;
+    env = env_push(c->m, env, fv);
   }
   if (ci->binder_count > 0u)
     return pcon_app(k, ctor, cores, vals);
   k->type = val_op(c->m, VAL_OP, OP_FAMILY, ci->family, 0, vals, p);
   return core_op(c, OP_CTOR, ctor, 0, cores, n);
+}
+
+/* M4 s4: the type of the field FIELD of X (a value of the family at XT):
+   the field type at the parameters, then the earlier projections of X. */
+static const Value *proj_type(Checker *c, uint32_t ctor, uint32_t field, const Core *x, const Value *xt) {
+  const CtorInfo *ci = &c->m->ctors[ctor];
+  const Env *env = env_of(c, xt->args, xt->argc);
+  int ok = 1;
+  uint32_t j;
+  for (j = 0; ok && j < field; j++) {
+    const Value *pv = here(c, core_op(c, OP_PROJ, ctor, j, &x, 1));
+    ok = pv != NULL;
+    env = ok ? env_push(c->m, env, pv) : env;
+  }
+  return ok ? eval_core(c->m, env, ci->fields[field].type) : NULL;
 }
 
 /* A field of a one-constructor family is a projection. */
@@ -1646,8 +1684,8 @@ static const Core *proj_app(Call *k, uint32_t ctor, uint32_t field) {
     return NULL;
   if (!val_is(xt, OP_FAMILY) || xt->inst != ci->family)
     return nul(FAIL(c, "TYPE_MISMATCH", "%s needs a value of the family %s, found a term of type %s", ci->fields[field].name, c->m->families[ci->family].name, show(c, xt)));
-  k->type = eval_core(c->m, env_of(c, xt->args, xt->argc), ci->fields[field].type);
-  return core_op(c, OP_PROJ, ctor, field, &x, 1);
+  k->type = proj_type(c, ctor, field, x, xt);
+  return k->type == NULL ? NULL : core_op(c, OP_PROJ, ctor, field, &x, 1);
 }
 
 static int find_known(Checker *c, const char *name, Head *h) {
@@ -2612,6 +2650,16 @@ static const Core *core_is_prop(Checker *c, const Core *a) {
   return core_bind(c, CORE_PI, "x", a, core_bind(c, CORE_PI, "y", up(c, a), path));
 }
 
+/* M4 s4 (D10): isSet A = (x : A) -> (y : A) -> (p : Path A x y) -> (q : Path A x y) -> Path (Path A x y) p q */
+static const Core *core_is_set(Checker *c, const Core *a) {
+  const Core *pxy2 = path_core(c, core_shift(c, a, 2u, 0), core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0));
+  const Core *pxy3 = path_core(c, core_shift(c, a, 3u, 0), core_index(c, CORE_VAR, 2u), core_index(c, CORE_VAR, 1u));
+  const Core *pxy4 = path_core(c, core_shift(c, a, 4u, 0), core_index(c, CORE_VAR, 3u), core_index(c, CORE_VAR, 2u));
+  const Core *square = path_core(c, pxy4, core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0));
+  const Core *q = core_bind(c, CORE_PI, "q", pxy3, square);
+  return core_bind(c, CORE_PI, "x", a, core_bind(c, CORE_PI, "y", up(c, a), core_bind(c, CORE_PI, "p", pxy2, q)));
+}
+
 /* fiber f y = Sigma (x : A) (Path B (f x) y), f : A -> B, y : B */
 static const Core *core_fiber(Checker *c, const Core *a, const Core *b, const Core *f, const Core *y) {
   const Core *fx = core_app(c, up(c, f), core_index(c, CORE_VAR, 0));
@@ -2721,6 +2769,14 @@ static const Core *rule_is_prop(Call *k) {
   const Core *a = check_type(k->c, k->args[0], &level);
   k->type = val_univ(k->c->m, level);
   return core_is_prop(k->c, a);
+}
+
+/* M4 s4 (D10): isSet A : Type n, A : Type n. */
+static const Core *rule_is_set(Call *k) {
+  uint64_t level = 0;
+  const Core *a = check_type(k->c, k->args[0], &level);
+  k->type = val_univ(k->c->m, level);
+  return core_is_set(k->c, a);
 }
 
 /* f : A -> B of fiber and isEquiv. *A and *B get the core terms of A and
@@ -3032,38 +3088,63 @@ static int name_free(Checker *c, const char *name) {
 /* M4 s3: a recursive field is the family applied to its own parameters in
    order (the uniform occurrence; p = 0 is the family itself). Then the fold,
    transport and hcomp rules can treat the field type as RES or the family
-   line. A parameter j is at the level j in the field scope, so its de Bruijn
-   index is p - 1 - j. */
-static int self_applied(const Core *t, uint32_t fam, uint32_t p) {
+   line. A parameter j is at the level j in the field scope of DEPTH binders
+   (the parameters, then the earlier fields: M4 s4), so its de Bruijn index
+   is depth - 1 - j. */
+static int self_applied(const Core *t, uint32_t fam, uint32_t p, uint32_t depth) {
   uint32_t j;
   if (t->kind != CORE_OP || t->op != OP_FAMILY || t->inst != fam || t->argc != p)
     return 0;
   for (j = 0; j < p; j++)
-    if (t->args[j]->kind != CORE_VAR || t->args[j]->index != p - 1u - j)
+    if (t->args[j]->kind != CORE_VAR || t->args[j]->index != depth - 1u - j)
       return 0;
   return 1;
 }
 
-/* A recursive field must be the whole field type: the family at its own
-   parameters. */
-static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *out) {
+/* A recursive field is the whole field type: the family at its own
+   parameters (recursive 1), or (M4 s4, a HIT only) a Path in it whose ends
+   are terms over the parameters and the EARLIER fields (recursive 2). The
+   field scope holds the parameters, then the earlier fields (check_ctor);
+   a type that uses an earlier field is marked dependent. */
+static int check_field(Checker *c, uint32_t fam, const Field *field, uint32_t earlier, const FieldInfo *prior, FieldInfo *out) {
+  Machine *m = c->m;
+  uint32_t p = m->families[fam].param_count;
+  uint32_t depth = p + earlier;
   uint64_t level = 0;
+  unsigned char *used;
+  uint32_t j;
   const Core *t;
+  const Value *tv;
   int whole;
+  int path;
   if (!name_free(c, field->name))
     return 0;
   c->self_uses = 0;
   t = check_type(c, field->type, &level);
-  if (t == NULL)
+  tv = here(c, t);
+  used = arena_alloc(m->arena, (size_t)depth + 1u);
+  if (used == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  if (tv == NULL || !core_free_levels(m, quote_value(m, depth, tv), depth, depth, used))
     return 0;
-  if (level > c->m->families[fam].universe)
-    c->m->families[fam].universe = level;
-  whole = self_applied(t, fam, c->m->families[fam].param_count);
+  if (level > m->families[fam].universe)
+    m->families[fam].universe = level;
+  whole = self_applied(t, fam, p, depth);
+  path = !whole && m->families[fam].path_ctors > 0u && t->kind == CORE_OP && t->op == OP_PATHP && t->argc == 3u
+    && t->args[0]->kind == CORE_PLAM && self_applied(t->args[0]->b, fam, p, depth + 1u);
   out->name = field->name;
   out->type = t;
-  out->recursive = c->self_uses > 0u;
-  if (out->recursive && !whole)
-    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s applied to its own parameters", field->name, c->m->families[fam].name);
+  out->recursive = whole ? 1 : path ? 2 : 0;
+  out->dependent = 0;
+  for (j = p; j < depth; j++) {
+    out->dependent = out->dependent || used[j];
+    if (out->recursive == 0 && used[j] && prior[j - p].recursive != 0)
+      return FAIL(c, "DOMAIN_FAMILY", "the field %s depends on the recursive field %s; a non-dependent fold cannot type this field", field->name, prior[j - p].name);
+  }
+  out->ends[0] = path ? t->args[1] : NULL;
+  out->ends[1] = path ? t->args[2] : NULL;
+  if (c->self_uses > 0u && !whole && !path)
+    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s applied to its own parameters, or a Path in it", field->name, m->families[fam].name);
   return 1;
 }
 
@@ -3116,17 +3197,14 @@ static const Core *boundary_core(Checker *c, uint32_t fam, const Ctor *ctor) {
   return hint == NULL ? NULL : check_sys(c, ctor->boundary, hint, &type, 0);
 }
 
-/* M4 s1: push the fields and the interval binders of a path constructor
-   above the family parameters, check its boundary, and pop them. */
-static int check_boundary(Checker *c, uint32_t fam, const Ctor *ctor, const FieldInfo *fields, const Core **out) {
-  Machine *m = c->m;
-  const Env *envp = c->env;
-  size_t want = ctor->field_count + ctor->binder_count;
+/* M4 s1: push the interval binders of a path constructor above the family
+   parameters and the fields (check_ctor pushes each field, M4 s4), check
+   its boundary, and pop them. */
+static int check_boundary(Checker *c, uint32_t fam, const Ctor *ctor, const Core **out) {
+  size_t want = ctor->binder_count;
   size_t pushed = 0;
   size_t j;
-  for (j = 0; j < ctor->field_count && pushed == j; j++)
-    pushed += push(c, fields[j].name, eval_core(m, envp, fields[j].type)) ? 1u : 0u;
-  for (j = 0; j < ctor->binder_count && pushed == ctor->field_count + j; j++)
+  for (j = 0; j < ctor->binder_count && pushed == j; j++)
     pushed += push_ivl(c, ctor->binders[j]) ? 1u : 0u;
   *out = pushed == want ? boundary_core(c, fam, ctor) : NULL;
   for (j = 0; j < pushed; j++)
@@ -3154,11 +3232,13 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
         return FAIL(c, "REFUSE_NAME", "%s is already a field of this constructor (rule R4)", name);
     if (m->families[fam].ctor_count > 1u && strcmp(name, "tag") == 0)
       return FAIL(c, "DOMAIN_FAMILY", "tag is reserved for the JSON constructor tag in a family with multiple constructors");
-    if (!check_field(c, fam, &ctor->fields[j], &fields[j]))
+    if (!check_field(c, fam, &ctor->fields[j], (uint32_t)j, fields, &fields[j]) || !push(c, fields[j].name, here(c, fields[j].type)))
       return 0;
   }
-  if (ctor->binder_count > 0u && !check_boundary(c, fam, ctor, fields, &boundary))
+  if (ctor->binder_count > 0u && !check_boundary(c, fam, ctor, &boundary))
     return 0;
+  for (j = 0; j < ctor->field_count; j++)
+    pop(c);
   ci->name = ctor->name;
   ci->family = fam;
   ci->fields = fields;

@@ -94,3 +94,6 @@ hit-cases-point.lang HIT_CASES
 reserved-isProp.lang REFUSE_NAME
 hit-vars-circle.lang TYPE_REFL
 hit-vars-trunc.lang TYPE_REFL
+hit-boundary-square.lang HIT_BOUNDARY
+hit-case-square.lang HIT_CASE
+reserved-isSet.lang REFUSE_NAME
