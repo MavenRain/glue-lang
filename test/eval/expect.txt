@@ -169,3 +169,9 @@ int negThree => neg 3
 int negZeqAt => fun k => zeq @ ~k
 int twiceAt => fun k => zeq @ k
 int negHcomp => fun k => hcomp Int k (fun i => [ k -> zeq @ ~i ]) (neg 0)
+circle elimHcomp => fun P => fun b => fun l => fun k => hcomp (P (hcomp Circle k (fun i => [ k -> [ k -> loop @ i ], i0 -> base ]) base)) (k \/ ~k) (fun i => [ k -> [ k -> [ k -> transp (<j> P (loop @ (i \/ j))) i (l @ i) ] ], ~k -> transp (<_x0> P (hcomp Circle (k \/ ~_x0) (fun _x1 => [ k -> [ k -> loop @ (_x0 /\ _x1) ], ~_x0 -> base ]) base)) i0 b ]) (transp (<i> P (hcomp Circle (k \/ ~i) (fun _x0 => [ k -> [ k -> loop @ (i /\ _x0) ], ~i -> base ]) base)) i0 b)
+circle elimStuck => fun c => elim (fun y => Nat) 0 (<i> 0) c
+circle stackSumFive => <i> 5
+int negNegZeq => fun k => <j> zeq @ k
+otp flipMessage => <i> cipher
+otp flipLaw => <i> encrypt @ ~i

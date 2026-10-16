@@ -1,0 +1,2 @@
+-- M5 s2 (D3, section 7): elim at Circle needs the motive, 2 cases, then the scrutinee.
+def a : (x : Circle) -> Nat := fun x => elim (fun y => Nat) 0 x

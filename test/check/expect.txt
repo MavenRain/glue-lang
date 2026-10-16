@@ -102,3 +102,9 @@ hit-boundary-bag.lang HIT_BOUNDARY
 hit-case-bag.lang HIT_CASE
 hit-int-end.lang TYPE_MISMATCH
 hcomp-i0-int.lang TYPE_REFL
+elim-missing-case.lang ELIM_CASES
+elim-no-ih.lang ELIM_CASES
+elim-path-ends.lang ELIM_CASE
+elim-motive-nat.lang TYPE_MISMATCH
+elim-def.lang REFUSE_NAME
+elim-int-vars.lang TYPE_REFL

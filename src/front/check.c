@@ -64,6 +64,7 @@ typedef enum {
   RULE_BIND,
   RULE_FILTER,
   RULE_FOLD,
+  RULE_ELIM,
   RULE_UNFOLD,
   RULE_CONG,
   RULE_NAT2,
@@ -141,6 +142,7 @@ static const Builtin BUILTINS[] = {
   {"bind", 2, RULE_BIND, OP_BIND, OP_NAT, 0},
   {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0},
   {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0},
+  {"elim", 2, RULE_ELIM, OP_ELIM, OP_NAT, 0},
   {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0},
   {"cong", 2, RULE_CONG, OP_PATHP, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
@@ -629,7 +631,7 @@ static const Core *rule_j_refl(Call *k);
 static const Core *rule_is_contr(Call *k);
 static const Core *rule_is_prop(Call *k);
 static const Core *rule_is_set(Call *k);
-static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t field, uint32_t ivl, uint32_t level);
+static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t pis, uint32_t field, uint32_t ivl, uint32_t level);
 static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cvals, uint32_t done);
 static const Value *close_over(Checker *c, ValKind kind, const char *name, const Value *dom, const Value *body);
 static const Core *rule_fiber(Call *k);
@@ -842,7 +844,7 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
    cases checked so far; a case not yet checked (a constructor declared
    later) is a variable above the context, so a body that needs it is
    refused. Quoted at L + n + k - 1 under the binders after J. */
-static const Core *hit_case_end(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cases, const Value *const *fvals, uint32_t L, uint32_t j, int e) {
+static const Core *hit_case_end(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cases, const Value *const *fvals, const Value *const *ihs, uint32_t pis, uint32_t L, uint32_t j, int e) {
   Machine *m = c->m;
   const FamilyInfo *f = &m->families[ci->family];
   uint32_t n = ci->field_count;
@@ -856,16 +858,16 @@ static const Core *hit_case_end(Checker *c, const CtorInfo *ci, const Value *con
   for (i = 0; i < n; i++)
     env = env_push(m, env, fvals[i]);
   for (i = 0; i < kb; i++)
-    env = env_push(m, env, i == j ? val_ivl_end(m, e) : val_ivl_var(m, L + n + (i < j ? i : i - 1u)));
+    env = env_push(m, env, i == j ? val_ivl_end(m, e) : val_ivl_var(m, L + pis + (i < j ? i : i - 1u)));
   bv = env == NULL ? NULL : pcon_boundary(m, ci, env);
   if (bv == NULL)
     return m->diag->set ? NULL : nul(FAIL(c, "INTERNAL", "the boundary of %s has no face i1 at the end %d of %s", ci->name, e, ci->binders[j]));
-  fv = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, bv);
+  fv = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, ihs, bv);
   if (fv == NULL)
     return NULL;
-  if (!value_bound(m, fv, &bound) || bound > L + n + kb - 1u)
+  if (!value_bound(m, fv, &bound) || bound > L + pis + kb - 1u)
     return nul(FAIL(c, "INTERNAL", "the boundary of %s at the end %d of %s folds a case of a constructor declared after it; not supported", ci->name, e, ci->binders[j]));
-  core = quote_value(m, L + n + kb - 1u, fv);
+  core = quote_value(m, L + pis + kb - 1u, fv);
   for (i = kb; i > j + 1u; i--)
     core = core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, core);
   return core;
@@ -886,8 +888,8 @@ static const Value *case_field_type(Checker *c, const CtorInfo *ci, const Value 
     return res;
   if (fi->recursive != 2)
     return eval_core(m, fenv, fi->type);
-  a = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, eval_core(m, fenv, fi->ends[0]));
-  b = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, eval_core(m, fenv, fi->ends[1]));
+  a = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, NULL, eval_core(m, fenv, fi->ends[0]));
+  b = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, NULL, eval_core(m, fenv, fi->ends[1]));
   line = close_over(c, VAL_PLAM, "_", NULL, res);
   return a == NULL || b == NULL || line == NULL ? NULL : val_make(m, OP_PATHP, 0, 3u, line, a, b);
 }
@@ -926,8 +928,8 @@ static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *c
   }
   type = quote_value(m, L + n + kb, res);
   for (i = kb; i > 0; i--) {
-    const Core *e0 = hit_case_end(c, ci, pvals, res, cases, fvals, L, i - 1u, 0);
-    const Core *e1 = hit_case_end(c, ci, pvals, res, cases, fvals, L, i - 1u, 1);
+    const Core *e0 = hit_case_end(c, ci, pvals, res, cases, fvals, NULL, n, L, i - 1u, 0);
+    const Core *e1 = hit_case_end(c, ci, pvals, res, cases, fvals, NULL, n, L, i - 1u, 1);
     type = op3(c, OP_PATHP, 0, 3, core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, type), e0, e1);
   }
   for (i = n; i > 0; i--)
@@ -939,7 +941,7 @@ static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *c
    boundary or refl mismatch becomes HIT_CASES (a point case) or HIT_CASE
    (a path case) with the constructor and the expected type; another inner
    code stays. */
-static const Core *recode_case(Checker *c, const CtorInfo *ci, const Value *want) {
+static const Core *recode_case(Checker *c, const CtorInfo *ci, const Value *want, int dep) {
   Diag *d = c->m->diag;
   char inner[sizeof d->msg];
   int mismatch = d->set && d->code != NULL
@@ -949,8 +951,8 @@ static const Core *recode_case(Checker *c, const CtorInfo *ci, const Value *want
   memcpy(inner, d->msg, sizeof inner);
   d->set = 0;
   if (ci->binder_count == 0u)
-    return nul(FAIL(c, "HIT_CASES", "the case for %s must have the type %s: %s", ci->name, show(c, want), inner));
-  return nul(FAIL(c, "HIT_CASE", "the case for %s must match its boundary and have the type %s: %s", ci->name, show(c, want), inner));
+    return nul(FAIL(c, dep ? "ELIM_CASES" : "HIT_CASES", "the case for %s must have the type %s: %s", ci->name, show(c, want), inner));
+  return nul(FAIL(c, dep ? "ELIM_CASE" : "HIT_CASE", "the case for %s must match its boundary and have the type %s: %s", ci->name, show(c, want), inner));
 }
 
 /* M4 s3 (D6): fold B case... x at a HIT. B is explicit; one case for each
@@ -978,9 +980,9 @@ static const Core *fold_hit_rule(Call *k, const Core *s, const Value *st) {
     const Value *want = hit_case_type(c, ci, st->args, res, cvals, j);
     cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
     if (cores[1u + j] == NULL)
-      return recode_case(c, ci, want);
+      return recode_case(c, ci, want, 0);
     if (ci->binder_count > 0u)
-      cores[1u + j] = hit_case_eta(c, ci, cores[1u + j], want, 0u, 0u, c->level);
+      cores[1u + j] = hit_case_eta(c, ci, cores[1u + j], want, ci->field_count, 0u, 0u, c->level);
     cvals[j] = eval_core(m, c->env, cores[1u + j]);
     if (cvals[j] == NULL)
       return NULL;
@@ -1212,25 +1214,183 @@ static const Core *core_papp(Checker *c, uint32_t level, const Core *p, const Va
 
 /* Keep the checked ends on every path application performed by fold_hit.
    A neutral case is expanded through its fields and interval binders. */
-static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t field, uint32_t ivl, uint32_t level) {
+static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t pis, uint32_t field, uint32_t ivl, uint32_t level) {
   const Core *body;
   const Core *arg;
   const Value *next;
   if (term == NULL || type == NULL)
     return NULL;
-  if (field == ci->field_count && ivl == ci->binder_count)
+  if (field == pis && ivl == ci->binder_count)
     return term;
   arg = core_index(c, CORE_VAR, 0u);
-  if (field < ci->field_count) {
+  if (field < pis) {
     body = core_app(c, core_shift(c, term, 1u, 0u), arg);
     next = closure_apply(c->m, type, val_var(c->m, level));
-    body = hit_case_eta(c, ci, body, next, field + 1u, ivl, level + 1u);
-    return core_bind(c, CORE_LAM, ci->fields[field].name, quote_value(c->m, level, type->dom), body);
+    body = hit_case_eta(c, ci, body, next, pis, field + 1u, ivl, level + 1u);
+    return core_bind(c, CORE_LAM, pis == ci->field_count ? ci->fields[field].name : "_", quote_value(c->m, level, type->dom), body);
   }
   body = core_papp(c, level + 1u, core_shift(c, term, 1u, 0u), type, arg);
   next = closure_apply(c->m, type->args[0], val_ivl_var(c->m, level));
-  body = hit_case_eta(c, ci, body, next, field, ivl + 1u, level + 1u);
+  body = hit_case_eta(c, ci, body, next, pis, field, ivl + 1u, level + 1u);
   return core_bind(c, CORE_PLAM, ci->binders[ivl], NULL, body);
+}
+
+/* M5 s2 (D3): the IH type PathP (<j> MOT (P @ j)) ha hb of the path field
+   FI with the value P. ha, hb: elim of the field ends (the recursive field
+   variables FVALS eliminate to their IHS). Environment of the line
+   [MOT, P, a, b]; under <j>: j 0, b 1, a 2, P 3, MOT 4. */
+static const Value *elim_path_ih(Checker *c, const CtorInfo *ci, const Value *mot, const Value *const *cases, const Value *const *fvals, const Value *const *ihs, const Env *fenv, const FieldInfo *fi, const Value *p) {
+  Machine *m = c->m;
+  uint32_t nc = m->families[ci->family].ctor_count;
+  const Value *a = eval_core(m, fenv, fi->ends[0]);
+  const Value *b = eval_core(m, fenv, fi->ends[1]);
+  const Value *ha = a == NULL ? NULL : eval_fold_hit_boundary(m, ci, mot, cases, nc, fvals, ihs, a);
+  const Value *hb = b == NULL ? NULL : eval_fold_hit_boundary(m, ci, mot, cases, nc, fvals, ihs, b);
+  const Env *env = ha == NULL || hb == NULL ? NULL : env_push(m, env_push(m, env_push(m, env_push(m, NULL, mot), p), a), b);
+  const Core *body = core_app(c, core_index(c, CORE_VAR, 4u),
+    papp_ends(c, core_index(c, CORE_VAR, 3u), core_index(c, CORE_VAR, 0), core_index(c, CORE_VAR, 2u), core_index(c, CORE_VAR, 1u)));
+  const Value *line = env == NULL || body == NULL ? NULL : val_closure(m, VAL_PLAM, "j", NULL, env, body);
+  return line == NULL ? NULL : val_make(m, OP_PATHP, 0, 3u, line, ha, hb);
+}
+
+/* M5 s2 (D3): the type of the case of CI under elim at the motive MOT.
+   Each field is a Pi binder; after a recursive field f an IH binder of
+   type MOT f; after a path field an IH binder (elim_path_ih). The
+   codomain: MOT (c params fields) for a point case; for a path case the
+   PathP over the k binders of MOT (c params fields @ i1 .. @ ik) whose ends
+   are elim MOT cases t of the boundary bodies t (hit_case_end with the
+   IHs). CVALS: the DONE cases checked so far. *PIS: the Pi binder count. */
+static const Value *elim_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *mot, const Value *const *cvals, uint32_t done, uint32_t *pis) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[ci->family];
+  uint32_t n = ci->field_count;
+  uint32_t kb = ci->binder_count;
+  uint32_t np = f->param_count;
+  uint32_t L = c->level;
+  uint32_t nb = 0;
+  const Env *fenv = env_of(c, pvals, np);
+  const Value **fvals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *fvals);
+  const Value **ihs = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *ihs);
+  const Value **btypes = arena_alloc(m->arena, ((size_t)2u * n + 1u) * sizeof *btypes);
+  const char **names = arena_alloc(m->arena, ((size_t)2u * n + 1u) * sizeof *names);
+  const Value **cases = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cases);
+  const Value **cargs = arena_alloc(m->arena, ((size_t)np + n + kb + 1u) * sizeof *cargs);
+  const Value *at;
+  const Core *type;
+  uint32_t i;
+  if (fvals == NULL || ihs == NULL || btypes == NULL || names == NULL || cases == NULL || cargs == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    fvals[i] = val_var(m, L + nb);
+    ihs[i] = ci->fields[i].recursive ? val_var(m, L + nb + 1u) : fvals[i];
+    nb += ci->fields[i].recursive ? 2u : 1u;
+  }
+  for (i = 0; i < f->ctor_count; i++)
+    cases[i] = i < done ? cvals[i] : val_var(m, L + nb + kb + i);
+  for (i = 0; i < np; i++)
+    cargs[i] = pvals[i];
+  nb = 0;
+  for (i = 0; i < n; i++) {
+    const FieldInfo *fi = &ci->fields[i];
+    names[nb] = fi->name;
+    btypes[nb++] = eval_core(m, fenv, fi->type);
+    if (fi->recursive) {
+      names[nb] = "ih";
+      btypes[nb++] = fi->recursive == 1 ? apply_value(m, mot, fvals[i]) : elim_path_ih(c, ci, mot, cases, fvals, ihs, fenv, fi, fvals[i]);
+    }
+    if (btypes[nb - 1u] == NULL || (fi->recursive && btypes[nb - 2u] == NULL))
+      return NULL;
+    cargs[np + i] = fvals[i];
+    fenv = env_push(m, fenv, fvals[i]);
+  }
+  for (i = 0; i < kb; i++)
+    cargs[np + n + i] = val_ivl_var(m, L + nb + i);
+  at = val_op(m, VAL_OP, kb == 0u ? OP_CTOR : OP_PCON, (uint32_t)(ci - m->ctors), 0, cargs, np + n + kb);
+  at = at == NULL ? NULL : apply_value(m, mot, at);
+  type = at == NULL ? NULL : quote_value(m, L + nb + kb, at);
+  for (i = kb; i > 0; i--) {
+    const Core *e0 = hit_case_end(c, ci, pvals, mot, cases, fvals, ihs, nb, L, i - 1u, 0);
+    const Core *e1 = hit_case_end(c, ci, pvals, mot, cases, fvals, ihs, nb, L, i - 1u, 1);
+    type = op3(c, OP_PATHP, 0, 3, core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, type), e0, e1);
+  }
+  for (i = nb; i > 0; i--)
+    type = core_bind(c, CORE_PI, names[i - 1u], quote_value(m, L + i - 1u, btypes[i - 1u]), type);
+  *pis = nb;
+  return type == NULL ? NULL : here(c, type);
+}
+
+/* M5 s2 (D3): elim P cases x at a domain family (plain or HIT). P is
+   explicit, a family of types over the scrutinee type; one case for each
+   constructor in declaration order (elim_case_type); the scrutinee last. */
+static const Core *rule_elim(Call *k) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const Value *st = NULL;
+  const Value *pt = NULL;
+  const Value *cod;
+  const Value *mot;
+  const FamilyInfo *f;
+  const Core **cores;
+  const Value **cvals;
+  uint32_t j;
+  const Core *s = infer(c, k->args[k->argc - 1u], &st);
+  if (s == NULL)
+    return NULL;
+  if (!val_is(st, OP_FAMILY) || st->inst >= m->family_count)
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family; found a last argument of type %s", show(c, st)));
+  f = &m->families[st->inst];
+  if (k->argc != f->ctor_count + 2u)
+    return nul(FAIL(c, "ELIM_CASES", "elim at the family %s needs the motive, then %u cases, then the scrutinee; found %u arguments", f->name, f->ctor_count, k->argc));
+  cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
+  cvals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cvals);
+  if (cores == NULL || cvals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  cores[0] = try_infer(c, k->args[0], &pt);
+  if (cores[0] == NULL && k->args[0]->kind == TERM_LAM && k->args[0]->left == NULL) {
+    const Term *p = k->args[0];
+    const Core *body;
+    uint64_t level = 0;
+    /* The scrutinee supplies the domain of an unannotated motive. Infer
+       its body's universe instead of fixing the codomain at Type 0. */
+    if (!push(c, p->name, st))
+      return NULL;
+    body = check_type(c, p->right, &level);
+    pop(c);
+    if (body == NULL)
+      return NULL;
+    pt = val_arrow(m, st, val_univ(m, level));
+    cores[0] = core_bind(c, CORE_LAM, p->name, NULL, body);
+  }
+  if (cores[0] == NULL) {
+    pt = val_arrow(m, st, val_univ(m, 0));
+    cores[0] = pt == NULL ? NULL : check(c, k->args[0], pt);
+    if (cores[0] == NULL)
+      return NULL;
+  }
+  cod = pt == NULL || pt->kind != VAL_PI || !conv_values(m, c->level, pt->dom, st) ? NULL
+    : pt->body == NULL ? pt->arg : closure_apply(m, pt, val_var(m, c->level));
+  if (cod == NULL || cod->kind != VAL_UNIV)
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a motive P : (y : %s) -> Type n; found a motive of type %s", show(c, st), show(c, pt)));
+  mot = here(c, cores[0]);
+  for (j = 0; j < f->ctor_count; j++) {
+    const CtorInfo *ci = &m->ctors[f->first_ctor + j];
+    uint32_t pis = 0;
+    const Value *want = mot == NULL ? NULL : elim_case_type(c, ci, st->args, mot, cvals, j, &pis);
+    cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
+    if (cores[1u + j] == NULL)
+      return recode_case(c, ci, want, 1);
+    if (ci->binder_count > 0u)
+      cores[1u + j] = hit_case_eta(c, ci, cores[1u + j], want, pis, 0u, 0u, c->level);
+    cvals[j] = cores[1u + j] == NULL ? NULL : eval_core(m, c->env, cores[1u + j]);
+    if (cvals[j] == NULL)
+      return NULL;
+  }
+  cores[f->ctor_count + 1u] = s;
+  k->used = f->ctor_count + 2u;
+  k->type = apply_value(m, mot, here(c, s));
+  return k->type == NULL ? NULL : core_op(c, OP_ELIM, st->inst, 0, cores, f->ctor_count + 2u);
 }
 
 /* The closure of KIND (VAL_LAM, VAL_PI or VAL_PLAM) with the body BODY, a
@@ -1464,6 +1624,8 @@ static const Core *rule(Call *k) {
     return rule_filter(k);
   case RULE_FOLD:
     return rule_fold(k);
+  case RULE_ELIM:
+    return rule_elim(k);
   case RULE_UNFOLD:
     return rule_unfold(k);
   case RULE_CONG:

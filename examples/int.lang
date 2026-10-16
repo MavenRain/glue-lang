@@ -14,3 +14,8 @@ def negThree : Int := negate (pos 3)
 def negZeqAt : (k : I) -> Int := fun k => negate (zeq @ k)
 def twiceAt : (k : I) -> Int := fun k => negate (negate (zeq @ k))
 def negHcomp : (k : I) -> Int := fun k => negate (hcomp Int k (fun i => [ k -> zeq @ i ]) (pos 0))
+
+-- M5 s2: negate is an involution, by the dependent eliminator. The case of
+-- zeq is a square: negate (negate (zeq @ i)) = zeq @ ~~i = zeq @ i.
+def negNeg : (x : Int) -> Path Int (negate (negate x)) x := fun x => elim (fun y => Path Int (negate (negate y)) y) (fun n => refl) (fun n => refl) (<i> <j> zeq @ i) x
+def negNegZeq : (k : I) -> Path Int (zeq @ k) (zeq @ k) := fun k => negNeg (zeq @ k)

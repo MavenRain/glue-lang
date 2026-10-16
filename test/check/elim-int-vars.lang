@@ -1,0 +1,2 @@
+-- M5 s2 (guard): two variables of a QIT do not convert (no proof irrelevance).
+def a : (x : Int) -> (y : Int) -> Path Int x y := fun x => fun y => refl

@@ -1,0 +1,6 @@
+-- M5 s2 (3.5): a closed instance cannot hold a stuck elim. A closed scrutinee
+-- is a constructor, an hcomp at a plain family reduces before elim reads it,
+-- the elim of an empty-face hcomp at a HIT is a comp at i0, which is a transp,
+-- and an axiom is refused (R2). So the nearest form holds a stuck elim under
+-- a function in a pair, and the function gives JSON_VALUE.
+def e : Prod (Circle -> Nat) Nat := pair (fun (c : Circle) => elim (fun y => Nat) 0 (<i> 0) c) 0

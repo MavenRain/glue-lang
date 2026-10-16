@@ -28,6 +28,26 @@ static const char SHAPE[] =
   " j -> square @ i @ k, ~k -> point, k -> point ]\n";
 
 static const Case FACE_CASES[] = {
+  {"elim path field IHs preserve checked endpoints", "",
+   "def mapQ : Quot Nat (fun a b => Nat) -> Quot Nat (fun a b => Nat) := fun t =>"
+   " elim (fun y => Quot Nat (fun a b => Nat)) (fun a => cls Nat (fun a b => Nat) a)"
+   " (fun a b r => eqc Nat (fun a b => Nat) a b r)"
+   " (fun x hx y hy p hp q hq => squashc Nat (fun a b => Nat) hx hy hp hq) t\n"
+   "def test : (x y : Quot Nat (fun a b => Nat))"
+   " -> (p q : Path (Quot Nat (fun a b => Nat)) x y)"
+   " -> Path (Quot Nat (fun a b => Nat)) (mapQ x) (mapQ y)"
+   " := fun x y p q => <j> mapQ (squashc Nat (fun a b => Nat) x y p q @ (j /\\ ~j) @ j)\n",
+   NULL, NULL},
+  {"fold path field images preserve checked endpoints", "",
+   "def mapQ : Quot Nat (fun a b => Nat) -> Quot Nat (fun a b => Nat) := fun t =>"
+   " fold (Quot Nat (fun a b => Nat)) (fun a => cls Nat (fun a b => Nat) a)"
+   " (fun a b r => eqc Nat (fun a b => Nat) a b r)"
+   " (fun x y p q => squashc Nat (fun a b => Nat) x y p q) t\n"
+   "def test : (x y : Quot Nat (fun a b => Nat))"
+   " -> (p q : Path (Quot Nat (fun a b => Nat)) x y)"
+   " -> Path (Quot Nat (fun a b => Nat)) (mapQ x) (mapQ y)"
+   " := fun x y p q => <j> mapQ (squashc Nat (fun a b => Nat) x y p q @ (j /\\ ~j) @ j)\n",
+   NULL, NULL},
   {"fold preserves endpoints after applying recursive field cases", "",
    "def test : (B : Type 0) -> (b : B) -> (pB : isProp B) -> (unused : Nat) -> Path B b b"
    " := fun B b pB unused => <j> fold B (fun n => b) (fun x y => pB x y)"
@@ -50,6 +70,15 @@ static const Case FACE_CASES[] = {
 };
 
 static const Case CASES[] = {
+  {"elim infers the universe of an unannotated motive", "",
+   "def test : Type 0 := elim (fun y => Type 0) Nat (<i> Nat) base\n",
+   NULL, "Nat"},
+  {"elim retains annotated higher universe motives", "",
+   "def test : Type 0 := elim (fun (y : Circle) => Type 0) Nat (<i> Nat) base\n",
+   NULL, "Nat"},
+  {"elim infers a neutral higher universe codomain", "",
+   "def test : (B : Type 1) -> B -> Circle -> B"
+   " := fun B b x => elim (fun y => B) b refl x\n", NULL, NULL},
   {"dependent non-recursive constructor fields and projections compute",
    "family Dep := dep (depType : Type 0) (depValue : depType)\n",
    "def test : Nat := depValue (dep Nat 7)\n", NULL, "7"},

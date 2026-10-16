@@ -1,0 +1,2 @@
+-- M5 s2 (D3, section 7): the case of push takes the field rest and then its IH.
+def a : (x : Stack) -> Nat := fun x => elim (fun y => Nat) 0 (fun t => fun r => t) x

@@ -863,23 +863,28 @@ static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const Cto
 }
 
 /* M4 s4: the image of a field P that is a path in the family under the fold
-   at RES with CASES: <j> fold RES CASES (P @ j). Environment [res,
-   cases..., p]; under <j>: j 0, p 1, the last case 2, ..., res ncases + 2. */
-const Value *kan_fold_path_field(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p) {
+   at RES with CASES: <j> fold RES CASES (P @ j) (O = OP_FOLD_HIT), or
+   <j> elim RES CASES (P @ j) (O = OP_ELIM, RES = the motive). Environment [res,
+   cases..., p, a, b]; under <j>: j 0, b 1, a 2, p 3, the last case 4,
+   ..., res ncases + 4. Keep the checked endpoints A and B of P so the
+   image still computes on faces after normalization. */
+const Value *kan_fold_path_field(Machine *m, Op o, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p, const Value *a, const Value *b) {
   const Env *env = env_push(m, NULL, res);
   const Core **args = kan_args(m, ncases + 2u);
   const Core *body;
   uint32_t i;
   if (args == NULL)
     return NULL;
-  args[0] = var(m, ncases + 2u);
+  args[0] = var(m, ncases + 4u);
   for (i = 0; i < ncases; i++) {
     env = env_push(m, env, cases[i]);
-    args[i + 1u] = var(m, ncases + 1u - i);
+    args[i + 1u] = var(m, ncases + 3u - i);
   }
   env = env_push(m, env, p);
-  args[ncases + 1u] = papp(m, var(m, 1u), var(m, 0), NULL, NULL);
-  body = args[ncases + 1u] == NULL ? NULL : opn(m, OP_FOLD_HIT, family, args, ncases + 2u);
+  env = env_push(m, env, a);
+  env = env_push(m, env, b);
+  args[ncases + 1u] = papp(m, var(m, 3u), var(m, 0), var(m, 2u), var(m, 1u));
+  body = args[ncases + 1u] == NULL ? NULL : opn(m, o, family, args, ncases + 2u);
   return env == NULL || body == NULL ? NULL : val_closure(m, VAL_PLAM, "j", NULL, env, body);
 }
 
@@ -1025,6 +1030,58 @@ const Value *kan_fold_hcomp(Machine *m, uint32_t family, const Value *res, const
   rule = hcomp4(m, var(m, ncases + 3u), var(m, 2u), tube(m, empty ? sys1(m, zero(m), body) : body),
                 opn(m, OP_FOLD_HIT, family, out, ncases + 2u));
   return run(m, rule, vals, ncases + 4u);
+}
+
+/* M5 s2 (D4): elim P cases (hcomp D phi u u0) at a HIT
+   = comp (<i> P (hfill D phi u u0 i)) phi (fun i => [ phi -> elim P cases (u i) ]) (elim P cases u0),
+   hfill D phi u u0 i = hcomp D (phi \/ ~i) (fun j => [ phi -> u (i /\ j), ~i -> u0 ]) u0.
+   Environment [P, case_1 .. case_n, phi, u, u0, D] (D is index 0): u0 1,
+   u 2, phi 3, case_n 4 .. case_1 n + 3, P n + 4; under each binder each
+   index is one more. The line, the tube and the base are values for gcomp. */
+const Value *kan_elim_hcomp(Machine *m, uint32_t family, const Value *mot, const Value *const *cases, uint32_t ncases, const Value *h) {
+  const Value **vals = arena_alloc(m->arena, ((size_t)ncases + 5u) * sizeof *vals);
+  const Core **in = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *in);
+  const Core **out = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *out);
+  const Core *fill;
+  const Core *body;
+  const Value *line;
+  const Value *u;
+  const Value *base;
+  int empty;
+  uint32_t i;
+  if (vals == NULL || in == NULL || out == NULL) {
+    diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+    return NULL;
+  }
+  if (h->argc != 4u) {
+    diag_fail(m->diag, "INTERNAL", m->def, "the evaluator found an hcomp value without 4 arguments");
+    return NULL;
+  }
+  empty = h->args[1]->kind == VAL_IVL && ivl_is_const(h->args[1]->ivl, 0);
+  vals[0] = mot;
+  for (i = 0; i < ncases; i++)
+    vals[i + 1u] = cases[i];
+  vals[ncases + 1u] = h->args[1];
+  vals[ncases + 2u] = h->args[2];
+  vals[ncases + 3u] = h->args[3];
+  vals[ncases + 4u] = h->args[0];
+  out[0] = var(m, ncases + 4u);
+  in[0] = var(m, ncases + 5u);
+  for (i = 0; i < ncases; i++) {
+    out[i + 1u] = var(m, ncases + 3u - i);
+    in[i + 1u] = var(m, ncases + 4u - i);
+  }
+  out[ncases + 1u] = var(m, 1u);
+  in[ncases + 1u] = empty ? var(m, 2u) : app(m, var(m, 3u), var(m, 0));
+  /* Under <i>: i 0, D 1, u0 2, u 3, phi 4; under fun j: j 0, i 1, D 2, u0 3, u 4, phi 5. */
+  fill = hcomp4(m, var(m, 1u), ivl(m, IVL_JOIN, var(m, 4u), ivl(m, IVL_REV, var(m, 0), NULL)),
+                tube(m, sys2(m, var(m, 5u), app(m, var(m, 4u), ivl(m, IVL_MEET, var(m, 1u), var(m, 0))),
+                             ivl(m, IVL_REV, var(m, 1u), NULL), var(m, 3u))), var(m, 2u));
+  line = run(m, binder(m, CORE_PLAM, "i", app(m, var(m, ncases + 5u), fill)), vals, ncases + 5u);
+  body = opn(m, OP_ELIM, family, in, ncases + 2u);
+  u = run(m, tube(m, empty ? sys1(m, zero(m), body) : body), vals, ncases + 5u);
+  base = run(m, opn(m, OP_ELIM, family, out, ncases + 2u), vals, ncases + 5u);
+  return line == NULL || u == NULL || base == NULL ? NULL : gcomp(m, line, h->args[1], u, base);
 }
 
 /* M4 s2: the rules at a family head with parameters. NULL without a

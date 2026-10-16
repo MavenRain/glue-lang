@@ -1,0 +1,2 @@
+-- M5 s2 (D11): elim is a core name.
+def elim : Nat := 0

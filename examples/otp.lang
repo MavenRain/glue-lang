@@ -42,7 +42,8 @@ def fieldEncrypt : Path Field 7 7 := <i> interpField (encrypt @ i)
 -- closed Equiv holds a function and has no JSON form). OTPSpec is the
 -- walking interval. An inverse into a type other than OTPSpec needs the
 -- retraction (x : OTPSpec) -> Path OTPSpec (g (f x)) x for a variable x,
--- and the non-dependent fold cannot give it (no elim in M4, D6). So the
+-- and the non-dependent fold cannot give it (D6 of M4; the dependent
+-- eliminator elim of M5 gives it, see ret below). So the
 -- rows below use the identity iso of OTPSpec, and
 -- interp OTPSpec message cipher encrypt is the fold that agrees with it.
 def specImpl : (Impl : Type 0) -> (f : OTPSpec -> Impl) -> (g : Impl -> OTPSpec) -> (s : (y : Impl) -> Path Impl (f (g y)) y) -> (t : (x : OTPSpec) -> Path OTPSpec (g (f x)) x) -> Equiv OTPSpec Impl := fun Impl => fun f => fun g => fun s => fun t => isoToEquiv OTPSpec Impl f g s t
@@ -59,3 +60,16 @@ def specMessage : OTPSpec := transport (ua (specImpl OTPSpec otpId otpId idSect 
 -- The transport of the law: encrypt moved along ua specImpl is encrypt.
 def lawAt : (j : I) -> OTPSpec := fun j => transport (ua (specImpl OTPSpec otpId otpId idSect idSect)) (encrypt @ j)
 def lawImpl : Path (Path OTPSpec message cipher) (<j> lawAt j) encrypt := refl
+
+-- M5 s2: flip swaps message and cipher and reverses encrypt. ret is the
+-- retraction of flip by the dependent eliminator elim. The case of encrypt
+-- is a square: flip (flip (encrypt @ i)) = encrypt @ ~~i = encrypt @ i.
+-- isoToEquiv OTPSpec OTPSpec flip flip ret ret is an iso of OTPSpec that is
+-- not the identity, so transport along its ua moves message to cipher and
+-- reverses encrypt. A closed Equiv holds a function and has no JSON form, so
+-- flipPath holds the ua path (a path is not an instance).
+def flip : OTPSpec -> OTPSpec := fun x => fold OTPSpec cipher message (<i> encrypt @ ~i) x
+def ret : (x : OTPSpec) -> Path OTPSpec (flip (flip x)) x := fun x => elim (fun y => Path OTPSpec (flip (flip y)) y) refl refl (<i> <j> encrypt @ i) x
+def flipPath : Path (Type 0) OTPSpec OTPSpec := ua (isoToEquiv OTPSpec OTPSpec flip flip ret ret)
+def flipMessage : Path OTPSpec (transport flipPath message) cipher := refl
+def flipLaw : Path OTPSpec cipher message := <i> transport flipPath (encrypt @ i)

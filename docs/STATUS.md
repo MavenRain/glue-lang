@@ -1912,3 +1912,102 @@ summary comes at the close (s7).
     text.
   - (b) The plan writes `succ` in section 4; the rows use `natAdd n 1`.
     s7 (SPEC) uses the `natAdd` form.
+
+### s2: the dependent eliminator elim (2026-10-16)
+
+- Plan: D3, D4, 3.4, 3.5, 7 and 8 of docs/M5-PLAN.md. `elim P cases x`:
+  `P : (y : D params) -> Type n` is explicit, one case for each
+  constructor in declaration order, the scrutinee last. A case takes each
+  field;  after a recursive field `f` it takes the IH `P f`. A path case
+  with k binders has the type `PathP (<i1> .. PathP (<ik> P (pc params
+  fields @ i1 .. @ ik)) ..)`, with the ends `elim P cases t` of the
+  boundary bodies t. `fold` does not change.
+- src/front/core.h: the op OP_ELIM. src/front/check.c: the elim rule (the
+  motive is a family of types over D, else TYPE_MISMATCH;  the case types,
+  ELIM_CASES and ELIM_CASE;  `elim` is a core name, so `def elim` gives
+  REFUSE_NAME). hit_case_end, case_field_type, hit_case_type and
+  recode_case take the IHs. src/front/eval.c: eval_hit_case applies each
+  case to the fields and, for OP_ELIM, the IHs;  the path rule applies the
+  path case, then `@ r1 .. @ rk`;  a neutral scrutinee gives a stuck elim;
+  the printer writes `elim P cases x`. src/front/kan.c, kan.h:
+  kan_elim_hcomp (the D4 hcomp rule at a HIT, through gcomp). A plain
+  family has no hcomp rule for elim. src/json.c: OP_ELIM is a stuck op
+  (JSON_VALUE).
+- Probes (s2-c): the recursive field type is `D params` (check_type,
+  self_applied);  the constructor values are OP_CTOR and OP_PCON
+  (reduce_pcon gives the same kind at fresh interval variables);  the
+  printer writes `elim P cases x`;  `def elim` gives REFUSE_NAME. The
+  index arithmetic of kan_elim_hcomp agrees with D4 binder by binder (the
+  line, the tube, the base).
+- The hcomp row (eval circle elimHcomp): derived by hand first (a scratch
+  file), then run:  MATCH. One expected deviation:  the `k` branch is
+  restricted to `k = i1`, so hfill at `i \/ j` prints as `loop @ (i \/ j)`
+  (the face rule).
+- Examples: examples/circle.lang elimBase (the point rule), elimLoop (the
+  path rule at PathP), elimHcomp, elimStuck, stackSum and stackSumFive
+  (elim at the plain family Stack, the IH of the recursive field rest).
+  examples/int.lang negNeg (negate is an involution, the zeq case is the
+  square `<i> <j> zeq @ i`), negNegZeq. examples/otp.lang flip, ret (the
+  retraction of flip by elim), flipPath (`ua (isoToEquiv OTPSpec OTPSpec
+  flip flip ret ret)`), flipMessage (`transport flipPath message =
+  cipher` by refl), flipLaw (`<i> transport flipPath (encrypt @ i)`). A
+  closed Equiv holds a function and has no JSON form, so flipPath holds
+  the ua path and test/json/otp.json does not change. No golden changes.
+- Tests: test/eval/expect.txt +6 (circle elimHcomp (exact text),
+  elimStuck, stackSumFive `<i> 5`;  int negNegZeq;  otp flipMessage `<i>
+  cipher`, flipLaw `<i> encrypt @ ~i`). test/check/expect.txt +6:
+  elim-missing-case.lang ELIM_CASES, elim-no-ih.lang ELIM_CASES (a Stack
+  push case without the IH), elim-path-ends.lang ELIM_CASE, elim-motive-
+  nat.lang TYPE_MISMATCH, elim-def.lang REFUSE_NAME, elim-int-vars.lang
+  TYPE_REFL (the guard: two variables `x y : Int` do not convert).
+  test/emit/expect.txt +1: elim-instance.lang JSON_VALUE (see open item
+  (c)).
+- Mutants (each with `make -B check`, reverted, final `make -B check`
+  GREEN): 3 KILLED, 0 SURVIVED.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. eval.c eval_hit_case: the IH of a recursive field is the field (`apply_value(m, acc, x->args[fam->param_count + i])`) | examples/circle.lang `INTERNAL: stackSumFive: the evaluator found a Nat operation on a value that is not a Nat`. Only the s2 row stackSumFive kills it:  no other elim row has a recursive field. |
+| 2. eval.c eval_hit_case: the path rule drops `@ r` (`&& o != OP_ELIM`) | examples/circle.lang `TYPE_REFL: elimLoop: refl cannot prove the path`;  eval int negNegZeq. |
+| 3. kan.c kan_elim_hcomp: the line is `<i> P u0` (`var(m, 2u)` for `fill`) | `make check` stops at the unused variable `fill` (-Werror);  the guest gate alone: eval circle elimHcomp (the line is `P base`). |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  27; examples 30, parse refusals 17, check refusals 110 (s1: 104), evals
+  178 (s1: 172), json 25 builds, build refusals 8 (s1: 7), circuits 4,
+  same-ir 2, circuit refusals 11, satcheck refusals 6; node regressions
+  6, printer 2). `make check-clang` exit 0. `forge build --root contracts
+  --sizes` exit 0. `make e2e` exit 0 (33 passed). `git diff --exit-code
+  -- test/circuit contracts/src/verifiers` exit 0: no IR change.
+  contracts/test/fixtures restored from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Build record: s2-a had 2 agent deaths (fable/xhigh: Fable 429;  the
+  opus/xhigh fallback: the reasoning_extraction classifier). s2-b, s2-c
+  and s2-d are hand builds in the main loop.
+- Open items:
+  - (a) PRE-EXISTING printer quirk (not s2): the chain loop of eval.c
+    print_value ends with `print_other(p, v, atom)`, which skips is_pcon.
+    So a path constructor that is the last argument of a chain op prints
+    as `loop i`, not `loop @ i` (seen in ELIM_CASE messages: `PathP (<i>
+    Path Circle (loop @ i) (loop i)) ..`). s2 does not fix it (no golden
+    changes). A USER ruling for a later slice.
+  - (b) ELIM_CASES messages print the Pi binders as `_x0`, not the field
+    names.
+  - (c) A closed instance cannot hold a stuck elim, so the OP_ELIM case of
+    json.c op_json has no closed witness (as OP_FOLD_HIT). A closed
+    scrutinee is a constructor;  an hcomp at a plain family reduces before
+    elim reads it (`hcomp Stack i0 (fun i => [ i0 -> push 1 bottom ])
+    bottom` is `bottom`);  the elim of an empty-face hcomp at a HIT is a
+    gcomp at `i0`, which is a transp;  an axiom gives REFUSE_AXIOM (R2).
+    test/emit/elim-instance.lang holds the nearest form:  a stuck elim
+    under a function in a pair. Its JSON_VALUE comes from the function.
+  - (d) USER ruling: elim and fold differ on an empty-face hcomp at a
+    HIT. `fold Circle base (<i> loop @ i) (hcomp Circle i0 (fun i => [ i0
+    -> base ]) base)` stays stuck (kan_fold_hcomp keeps the empty tube),
+    but `elim (fun y => Circle) base (<i> loop @ i)` of the same value
+    gives `base`:  kan_elim_hcomp uses gcomp, and ghcomp at `phi = i0`
+    gives u0 by the face i1 rule (M3 s5). No rule reads a type, and D8 is
+    about hcomp. But in the CCHM model the comp at an empty face is an
+    hcomp with the empty system, which is a different element at a HIT.
+    Options: (i) keep;  (ii) on the empty face, use `hcomp (P h) i0 (fun
+    i => [ i0 -> .. ]) (transp line i0 (elim P cases u0))`, as the M4
+    fold keeps the empty tube.

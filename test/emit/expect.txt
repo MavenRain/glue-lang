@@ -5,3 +5,4 @@ transp-hcomp.lang JSON_VALUE
 glue-instance.lang JSON_VALUE
 hcomp-instance.lang JSON_VALUE
 path-content.lang JSON_VALUE
+elim-instance.lang JSON_VALUE

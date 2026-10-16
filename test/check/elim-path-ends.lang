@@ -1,0 +1,3 @@
+-- M5 s2 (D3, section 7): the case of zeq must have the ends elim P cases t of the boundary.
+def negate : Int -> Int := fun z => fold Int (fun n => neg n) (fun n => pos n) (<i> zeq @ ~i) z
+def a : (x : Int) -> Path Int (negate (negate x)) x := fun x => elim (fun y => Path Int (negate (negate y)) y) (fun n => refl) (fun n => refl) (<i> <j> zeq @ ~i) x

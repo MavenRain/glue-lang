@@ -55,6 +55,8 @@ typedef enum {
   OP_FOLD_HIT, /* M4 s3: fold B case... x at a HIT. inst: the family. args:
                   the result type, one case for each constructor, then the
                   scrutinee */
+  OP_ELIM, /* M5 s2 (D3): elim P case... x. inst: the family. args: the
+              motive P, one case for each constructor, then the scrutinee */
   OP_UNFOLD,
   OP_FILTER,
   OP_WITNESS,
@@ -294,9 +296,11 @@ const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 const Value *pcon_boundary(Machine *m, const CtorInfo *ci, const Env *env);
 /* Fold a boundary body to type a path case. Recursive FIELDS already
    denote their images in RES, including below constructor applications. */
-const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *x);
+/* M5 s2: with IHS (one entry for each field), elim: a recursive field
+   variable eliminates to its IH (IHS[i]), and RES is the motive. */
+const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *const *ihs, const Value *x);
 /* M4 s4 (kan.c): the image <j> fold RES CASES (P @ j) of a field that is a path in the family. */
-const Value *kan_fold_path_field(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p);
+const Value *kan_fold_path_field(Machine *m, Op o, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *p, const Value *a, const Value *b);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
 const Core *quote_value(Machine *m, uint32_t level, const Value *v);

@@ -1,0 +1,2 @@
+-- M5 s2 (D3): the motive must be a family of types over the scrutinee type.
+def a : (x : Circle) -> Nat := fun x => elim Nat 0 refl x

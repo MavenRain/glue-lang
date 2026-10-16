@@ -28,3 +28,11 @@ def deg0 : Circle -> Nat := fun c => fold Nat 0 refl c
 def degBase : Nat := deg0 base
 def toPath : Circle -> Path Nat 0 0 := fun c => fold (Path Nat 0 0) refl refl c
 def toPathBase : Path Nat 0 0 := toPath base
+-- M5 s2: the dependent eliminator (elim P cases x): the point rule, the path rule, the hcomp rule (D3, D4).
+def elimBase : (P : Circle -> Type 0) -> (b : P base) -> (l : PathP (<i> P (loop @ i)) b b) -> Path (P base) (elim P b l base) b := fun P => fun b => fun l => refl
+def elimLoop : (P : Circle -> Type 0) -> (b : P base) -> (l : PathP (<i> P (loop @ i)) b b) -> Path (PathP (<i> P (loop @ i)) b b) (<i> elim P b l (loop @ i)) l := fun P => fun b => fun l => refl
+def elimHcomp : (P : Circle -> Type 0) -> (b : P base) -> (l : PathP (<i> P (loop @ i)) b b) -> (k : I) -> P (hcomp Circle k (fun i => [ k -> loop @ i ]) base) := fun P => fun b => fun l => fun k => elim P b l (hcomp Circle k (fun i => [ k -> loop @ i ]) base)
+def elimStuck : Circle -> Nat := fun c => elim (fun y => Nat) 0 refl c
+-- elim at a plain family: the IH of the recursive field rest is the sum of rest.
+def stackSum : Stack -> Nat := fun s => elim (fun y => Nat) 0 (fun t => fun r => fun ih => natAdd t ih) s
+def stackSumFive : Path Nat (stackSum (push 2 (push 3 bottom))) 5 := refl

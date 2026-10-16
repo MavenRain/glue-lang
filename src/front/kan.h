@@ -27,6 +27,8 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
 /* M4 s3 (D11): fold RES CASES H for an hcomp value H at the HIT FAMILY:
    hcomp RES phi (fun i => [ phi -> fold RES CASES (u i) ]) (fold RES CASES u0). */
 const Value *kan_fold_hcomp(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *h);
+/* M5 s2 (D4): elim P cases (hcomp D phi u u0) at a HIT. */
+const Value *kan_elim_hcomp(Machine *m, uint32_t family, const Value *mot, const Value *const *cases, uint32_t ncases, const Value *h);
 /* M3 s5 (OP_KAN_GLUE): part SEL of the Glue line L at R:  0 = A, 1 + k =
    the pack of branch k. At an end where the Glue face is i1 the part is
    read at a fresh level and then put on that end. */
