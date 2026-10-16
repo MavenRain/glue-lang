@@ -1,0 +1,4 @@
+-- M4 s5: isSet Field is not a core fact. An hfill square needs the square
+-- as its base, so this hcomp gives HCOMP_BASE (examples/quotSq.glue uses
+-- GQuot, the quotient without squashc, for this reason).
+def squareCase : isSet Field := fun x => fun y => fun p => fun q => <i> <j> hcomp Field (i \/ ~i \/ j \/ ~j) (fun k => [ i -> q @ j, ~i -> p @ j, j -> y, ~j -> x ]) (p @ j)

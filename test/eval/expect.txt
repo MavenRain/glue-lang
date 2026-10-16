@@ -154,3 +154,8 @@ circle deg0 => fun c => fold Nat 0 (<i> 0) c
 circle toPathBase => <i> 0
 trunc truncRecInc => fun pB => 0
 quot quotRecOne => fun sN => 1
+otp fieldMessage => 7
+otp fieldEncrypt => <i> 7
+otp interpField => fun x => fold Field 7 7 (<i> 7) x
+otp specMessage => message
+otp lawAt => fun j => encrypt @ j

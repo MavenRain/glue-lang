@@ -24,3 +24,9 @@ family Susp (A : Type 0) := north | south | merid (apex : A) <i> [ ~i -> north A
 -- M4 s3: the propositional truncation (D10).
 family Trunc (A : Type 0) := inc (held : A) | squash (lo : Trunc A) (hi : Trunc A) <i> [ ~i -> lo, i -> hi ]
 family Quot (A : Type 0) (R : A -> A -> Type 0) := cls (cla : A) | eqc (eqa : A) (eqb : A) (eqr : R eqa eqb) <i> [ ~i -> cls A R eqa, i -> cls A R eqb ] | squashc (sqx : Quot A R) (sqy : Quot A R) (sqp : Path (Quot A R) sqx sqy) (sqq : Path (Quot A R) sqx sqy) <i j> [ ~i -> sqp @ j, i -> sqq @ j, ~j -> sqx, j -> sqy ]
+-- M4 s5: the Direction 4 specification (design/DESIGN.md): two points and
+-- the path constructor encrypt, the law "encryption produces a cipher".
+family OTPSpec := message | cipher | encrypt <i> [ ~i -> message, i -> cipher ]
+-- M4 s5: the graph quotient, Quot without the set truncation squashc. A
+-- fold out of it needs no isSet case (examples/quotSq.glue, M4-PLAN section 6).
+family GQuot (A : Type 0) (R : A -> A -> Type 0) := gcls (gcla : A) | geqc (geqa : A) (geqb : A) (geqr : R geqa geqb) <i> [ ~i -> gcls A R geqa, i -> gcls A R geqb ]

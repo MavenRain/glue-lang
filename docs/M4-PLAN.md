@@ -230,15 +230,15 @@ Laws that hold by computation (each is a `refl` in an example):
 | `fold B f e s (cls a) = f a` at the quotient | the point rule; the design's `rec Bset f resp [ C ] = f C` | s4 |
 | `<i> fold B f e s (eqc a b r @ i) = e a b r` | the path rule; `rec Bset f resp (eq/ e i) = resp e i` | s4 |
 | `interp (encrypt @ i) = enc @ i` as a `refl` at `Path (Path Impl m c) (<i> interp (encrypt @ i)) enc` | the path rule (DESIGN line 141) | s5 |
-| `transport (ua specImpl) message = interp message` for `Impl` in Field or Nat | D8 of M3 and the point rule (DESIGN lines 154-169) | s5 |
+| `transport (ua specImpl) message = interp message` for `Impl` in Field or Nat. s5 result: the row holds for the identity iso at `Impl = OTPSpec` (examples/otp.lang transportMessage, a `refl`). For `Impl` in Field or Nat it is open: the iso needs the retraction `(x : OTPSpec) -> Path OTPSpec (g (f x)) x` for a variable `x`, and the non-dependent fold cannot give it (D6). A dependent eliminator (`elim`) can close it | D8 of M3 and the point rule (DESIGN lines 154-169) | s5 |
 
 ## 5. Effect on examples
 
 | Item | M4 |
 |---|---|
-| domain/domain.lang | New families: `family Circle := base \| loop <i> [ ~i -> base, i -> base ]` and `family Susp (A : Type 0) := north \| south \| merid (apex : A) <i> [ ~i -> north A, i -> south A ]` (s1; a constructor takes the family parameters explicitly, so the boundary names `north A` and `south A`; a field name is a core name, so the field is `apex`); `family Trunc (A : Type 0) := inc (a : A) \| squash (x : Trunc A) (y : Trunc A) <i> [ ~i -> x, i -> y ]` (s3); `family Quot (A : Type 0) (R : A -> A -> Type 0) := cls (a : A) \| eqc (a : A) (b : A) (r : R a b) <i> [ ~i -> cls a, i -> cls b ] \| squashc (x : Quot A R) (y : Quot A R) (p : Path (Quot A R) x y) (q : Path (Quot A R) x y) <i j> [ ~i -> p @ j, i -> q @ j, ~j -> x, j -> y ]` (s4); `family OTPSpec := message \| cipher \| encrypt <i> [ ~i -> message, i -> cipher ]` (s5). The s1 prompt checks that the sample domain's existing rows (Color, Item, Stack, Lot) and their eval rows do not change. |
+| domain/domain.lang | New families: `family Circle := base \| loop <i> [ ~i -> base, i -> base ]` and `family Susp (A : Type 0) := north \| south \| merid (apex : A) <i> [ ~i -> north A, i -> south A ]` (s1; a constructor takes the family parameters explicitly, so the boundary names `north A` and `south A`; a field name is a core name, so the field is `apex`); `family Trunc (A : Type 0) := inc (a : A) \| squash (x : Trunc A) (y : Trunc A) <i> [ ~i -> x, i -> y ]` (s3); `family Quot (A : Type 0) (R : A -> A -> Type 0) := cls (a : A) \| eqc (a : A) (b : A) (r : R a b) <i> [ ~i -> cls a, i -> cls b ] \| squashc (x : Quot A R) (y : Quot A R) (p : Path (Quot A R) x y) (q : Path (Quot A R) x y) <i j> [ ~i -> p @ j, i -> q @ j, ~j -> x, j -> y ]` (s4); `family OTPSpec := message \| cipher \| encrypt <i> [ ~i -> message, i -> cipher ]` (s5); `family GQuot (A : Type 0) (R : A -> A -> Type 0) := gcls (gcla : A) \| geqc (geqa : A) (geqb : A) (geqr : R geqa geqb) <i> [ ~i -> gcls A R geqa, i -> gcls A R geqb ]` (s5: the graph quotient, `Quot` without `squashc`, for examples/quotSq.glue; section 6). The s1 prompt checks that the sample domain's existing rows (Color, Item, Stack, Lot) and their eval rows do not change. |
 | test/emit/stuck-transp.lang | `transp (<_> Color) i0 red` reduces to `red` in s2 (D4). The old refusal scenario is retained as a positive native HIT regression: its fold computes to `1`. The new witness is test/emit/transp-hcomp.lang, the `transp` of an `hcomp` value in an instance, with JSON_VALUE "an hcomp value"; test/emit/hcomp-instance.lang gives the same code for an `hcomp` value, and test/emit/path-content.lang gives JSON_VALUE "a path with content" (D9). |
-| New examples | examples/circle.lang (s1, s2, s3), examples/trunc.lang (s3), examples/quot.lang (s4), examples/otp.lang (s5), examples/quotSq.glue (s5, section 6). Each with its test/json golden, eval rows and check rows. |
+| New examples | examples/circle.lang (s1, s2, s3), examples/trunc.lang (s3), examples/quot.lang (s4), examples/otp.lang (s5), examples/quotSq.glue (s5, section 6). Each .lang example with its test/json golden, eval rows and check rows; the .glue example has rows in test/circuit only. |
 | test/json goldens with `null` | Each existing `null` is a constant path; the rule of D9 keeps it. s2 confirmed this with the gate: no golden changed. |
 | SPEC.md | 2.6 (new, M4): the HIT forms, typing, evaluation, conversion, JSON, the codes. 9: O5 closed with D9, O8 narrowed (the families), O12 (new) for what stays stuck. s6 writes it. |
 
@@ -253,15 +253,38 @@ representatives`). A stuck HIT term in a constraint gives CIRCUIT_LOWER.
 
 Guest test (s5): examples/quotSq.glue states the `square` relation through
 the quotient. With `SqRel := fun a => fun b => Path Field (a * a) (b * b)`
-and `sq := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) (squareCase) q`
-over `Quot Field SqRel`, the circuit constraint is `sq (cls x) == y`, so
-its IR must be the IR of `square`. The row goes into
-test/circuit/same-ir.txt (`quotSq square square`). `make e2e` does not
-read this table, so contracts/ does not change. The `squarec` case is a
-square in Field; `isSet Field` is not a core fact, so the case is written
-with `hcomp` (an `hfill` square) or, if that fails in s5, the quotient
-example in the .glue file omits `squashc` (a quotient without the set
-truncation is still a HIT; the .lang example keeps `squashc`).
+and `sq := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) q`
+over `GQuot Field SqRel`, the circuit constraint is
+`sq (gcls Field SqRel x) == y`, so its IR must be the IR of `square`. The
+rows: test/circuit/same-ir.txt `quotSq square square`,
+test/circuit/expect.txt `quotSq square y=9 x=3` and
+test/circuit/refuse.txt `1 WITNESS_FAIL witness quotSq square y=10 x=3`.
+`make e2e` reads test/circuit/expect.txt, so it also proves this row and
+regenerates the `square` verifier and proof fixture. It does not read
+same-ir.txt or refuse.txt. The four rows produce three distinct verifiers
+and four deployment simulations, with `square` processed twice. The
+verifier sources remain byte-identical; the randomized proof fixtures
+must be restored after validation if they are not part of the change.
+
+The circuit name is `square`, not `quotSq`. The IR JSON holds the name,
+and the gate keys the goldens by the name (test/gate.sh line 153). Thus
+the rows use the `square` goldens, and no quotSq.circuit.json or
+quotSq.witness.json file exists.
+
+The fallback applies. The plan used `Quot Field SqRel`, where the
+`squashc` case is a term of `isSet Field`. `isSet Field` is not a core
+fact. The `hcomp` square (an `hfill`) fails:
+`hcomp Field (i \/ ~i \/ j \/ ~j) (fun k => [ i -> q @ j, ~i -> p @ j, j -> y, ~j -> x ]) (p @ j)`
+gives HCOMP_BASE, because an `hfill` square needs the square as its base
+(test/check/quot-square-hcomp.lang). So s5 adds `GQuot` to the domain
+(section 5): the graph quotient, `Quot` without `squashc`. A quotient
+without the set truncation is still a HIT. `sq` has no `squashc` case.
+examples/quot.lang keeps `squashc` (quotRec takes `sB : isSet B`).
+
+CIRCUIT_LOWER (s5): none of the probed circuits gives it. Field binders
+can still occur in HIT terms, such as `gcls Field SqRel x`, so this does
+not establish that every HIT term in a constraint is closed or reduces.
+O4 stays open; no general normalization claim follows from these probes.
 
 ## 7. New check codes
 

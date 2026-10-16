@@ -1,3 +1,4 @@
 square square y=9 x=3
 range range next=256 b=255
 poly poly a=3 y=19 x=2
+quotSq square y=9 x=3

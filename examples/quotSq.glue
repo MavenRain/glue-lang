@@ -1,0 +1,12 @@
+-- M4 s5: the square circuit through a quotient (M4-PLAN section 6). sq is
+-- the fold out of the graph quotient GQuot Field SqRel. On a representative
+-- gcls x the point rule gives x * x, so the IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt) and the
+-- circuit name is square. The fold out of Quot needs an isSet Field case,
+-- and isSet Field is not a core fact: an hcomp square gives HCOMP_BASE
+-- (its base must be the square), so this file uses GQuot (no squashc).
+-- examples/quot.lang keeps squashc with an isSet argument (quotRec).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) q
+
+circuit square public (y : Field) private (x : Field) := sq (gcls Field SqRel x) == y

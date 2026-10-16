@@ -97,3 +97,4 @@ hit-vars-trunc.lang TYPE_REFL
 hit-boundary-square.lang HIT_BOUNDARY
 hit-case-square.lang HIT_CASE
 reserved-isSet.lang REFUSE_NAME
+quot-square-hcomp.lang HCOMP_BASE

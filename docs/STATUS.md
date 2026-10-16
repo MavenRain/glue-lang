@@ -1577,3 +1577,109 @@ failed).
   - quotRecOne abstracts over `isSet Nat`: Nat has no isSet proof.
   - hit-case-square.lang is the only row that tests the inner ends of a
     square (the mutant 2 proof).
+
+### s5: Direction 4 smoke and the quotient circuit (2026-10-16)
+
+- Surface form: no new syntax. No src/ change. No evaluator rule was
+  refuted, so kan.c and eval.c did not change.
+- Domain (domain/domain.lang, lines 29 and 32): `family OTPSpec :=
+  message | cipher | encrypt <i> [ ~i -> message, i -> cipher ]`, the
+  Direction 4 specification (design/DESIGN.md lines 118-196). `family
+  GQuot (A : Type 0) (R : A -> A -> Type 0) := gcls (gcla : A) | geqc
+  (geqa : A) (geqb : A) (geqr : R geqa geqb) <i> [ ~i -> gcls A R geqa, i
+  -> gcls A R geqb ]`, the graph quotient (Quot without squashc). Each
+  family has a comment. The existing rows did not change.
+- examples/otp.lang (new): the defs fill0 to isoToEquiv are a copy of
+  examples/iso.lang (a .lang file has no import). `interp : (Impl : Type
+  0) -> (m c : Impl) -> (enc : Path Impl m c) -> OTPSpec -> Impl` is
+  `fold Impl m c enc x`. The design postulates Impl, m, c and enc, so
+  they are arguments. The `refl` rows interpMessage, interpCipher,
+  interpEncrypt (`Path (Path Impl m c) (<i> interp ... (encrypt @ i))
+  enc`) and interpHcomp (the s3 commute rule) hold for each Impl. The
+  Field instance is interpField = `interp Field 7 7 refl`: a path between
+  two distinct numerals does not exist, so m = c = 7 and enc = refl.
+  fieldMessage and fieldEncrypt use it.
+- specImpl is a function of the iso data (Impl, f, g, s, t) to
+  `isoToEquiv OTPSpec Impl f g s t`. A closed Equiv holds a function, so
+  it has no JSON form (JSON_VALUE). specPath is `ua (specImpl ...)`.
+  transportMessage, transportCipher and lawImpl (`Path (Path OTPSpec
+  message cipher) (<j> lawAt j) encrypt`, the transport of the law) are
+  `refl` rows at the identity iso (otpId, idSect). The Glue transp
+  reduces here: eval prints `message` for specMessage and `fun j =>
+  encrypt @ j` for lawAt.
+- The specImpl gap: OTPSpec is the walking interval. An iso into a type
+  other than OTPSpec needs the retraction `(x : OTPSpec) -> Path OTPSpec
+  (g (f x)) x` for a variable x. The non-dependent fold cannot give it
+  (D6). An iso into Unit also needs Unit eta, a type-directed rule
+  (prohibited). Thus M4-PLAN section 4 row s5 holds for the identity iso
+  at OTPSpec only, not for Impl in Field or Nat.
+- examples/quotSq.glue (new): SqRel `fun a => fun b => Path Field (a * a)
+  (b * b)`; `sq : GQuot Field SqRel -> Field := fun q => fold Field (fun
+  a => a * a) (fun a => fun b => fun r => r) q`; `circuit square public
+  (y : Field) private (x : Field) := sq (gcls Field SqRel x) == y`. The
+  circuit name is square: the IR JSON holds the name, and the gate keys
+  the goldens by the name (test/gate.sh line 153). Thus the rows use the
+  square goldens, and no quotSq.circuit.json or quotSq.witness.json file
+  exists. `langc circuit` and `langc witness ... y=9 x=3` give files
+  equal to test/circuit/square.circuit.json and square.witness.json.
+- Why GQuot: the squashc case of a fold out of Quot is a term of `isSet
+  Field`. The hfill square `fun x y p q => <i> <j> hcomp Field (i \/ ~i
+  \/ j \/ ~j) (fun k => [ i -> q @ j, ~i -> p @ j, j -> y, ~j -> x ]) (p
+  @ j)` gives `HCOMP_BASE: squareCase: hcomp needs u i0 to be u0 on i,
+  but u i0 is q @ j and u0 is p @ j`: an hfill square needs the square
+  as its base. test/check/quot-square-hcomp.lang (new) records this.
+  examples/quot.lang keeps squashc (quotRec takes `sB : isSet B`).
+- CIRCUIT_LOWER: none of the probed circuits gives it. These constraints
+  all lower to a Field normal form: `fold Field x (<i> x) (hcomp Circle i0 (fun k => [
+  i0 -> loop @ k ]) base)`; `sq (transp (<_> GQuot Field SqRel) i0 (gcls
+  Field SqRel x))`; `sq (transp (<_> GQuot Field SqRel) i0 (hcomp (GQuot
+  Field SqRel) i0 (fun k => [ i0 -> gcls Field SqRel x ]) (gcls Field
+  SqRel x)))`; `sq (hcomp (GQuot Field SqRel) i0 (fun k => [ i0 -> gcls
+  Field SqRel x ]) (gcls Field SqRel x))`; `fold Field x (<i> x) (transp
+  (<_> Circle) i0 (hcomp Circle i0 (fun k => [ i0 -> base ]) base))`. A
+  circuit has only Field binders, but those binders can still occur in
+  HIT terms, such as `gcls Field SqRel x`. These probes do not establish
+  that every HIT term is closed or reduces. O4 stays open.
+- The `transp (<i> Susp (L i)) i0 (merid a @ j)` row under a binder
+  exists since s2 (examples/circle.lang meridT, eval row `circle
+  meridT`). circle.lang did not change.
+- Tests: test/eval/expect.txt +5 (`otp fieldMessage => 7`, `otp
+  fieldEncrypt => <i> 7`, `otp interpField => fun x => fold Field 7 7 (<i>
+  7) x`, `otp specMessage => message`, `otp lawAt => fun j => encrypt @
+  j`). test/json/otp.json (new: the instances fieldMessage 7 and
+  specMessage message). test/circuit/expect.txt `quotSq square y=9 x=3`,
+  same-ir.txt `quotSq square square`, refuse.txt `1 WITNESS_FAIL witness
+  quotSq square y=10 x=3`. test/check/expect.txt `quot-square-hcomp.lang
+  HCOMP_BASE`.
+- Mutants (each with `make -B check`, reverted, diff restored, final
+  `make -B check` GREEN): 3 KILLED (and 1b), 0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| 1. examples/otp.lang interp `fold Impl c m enc x` | examples/otp.lang: `HIT_CASE: interp: the case for encrypt must match its boundary and have the type Path Impl c m` (also eval otp fieldMessage, fieldEncrypt) |
+| 1b. examples/otp.lang interp `fold Impl c m (<i> enc @ ~i) x` (the points swapped, the case well typed) | the interpMessage `refl` row: `TYPE_REFL: interpMessage: refl cannot prove the path: the start normalizes to c, the end normalizes to m` |
+| 2. test/circuit/same-ir.txt `quotSq square range` | `FAIL same-ir quotSq square: the output differs from test/circuit/range.circuit.json` |
+| 3. src/front/kan.c transp_ctor gives `val_ivl_end(m, 0)` for `a->args[k]` (the interval arguments dropped to i0) | `FAIL eval circle meridT: ... got exit 0: fun L => fun a => <j> transp (<i> Susp (L i)) i0 (merid (L i0) a j)` |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  27; examples 28, parse refusals 17, check refusals 100, evals 162, json
+  23 builds, build refusals 7, circuits 4, same-ir 2, circuit refusals
+  11, satcheck refusals 6; node regressions 6, printer 2). `make
+  check-clang` exit 0. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed, the 4 deploy simulations ran). `git diff
+  --exit-code -- contracts/src/verifiers` exit 0. The test/circuit diff
+  is only the 3 table rows above; no *.circuit.json changed.
+  `make e2e` reads test/circuit/expect.txt, including the new quotSq row:
+  it proves four rows and regenerates three distinct verifiers, with
+  square processed twice. The verifier sources are byte-identical;
+  the randomized proof fixtures change. contracts/test/fixtures restored
+  from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Open items:
+  - (a) specImpl into an Impl other than OTPSpec needs the retraction,
+    thus a dependent eliminator (`elim`).
+  - (b) O4 stays open: no probed circuit gives CIRCUIT_LOWER from a HIT
+    term.
+  - (c) No quotSq.circuit.json or quotSq.witness.json goldens: the gate
+    keys the goldens by the circuit name.
+  - (d) An empty system `[ ]` in a term gives PARSE_EXPECT.
