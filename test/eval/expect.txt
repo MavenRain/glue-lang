@@ -143,3 +143,9 @@ circle loopPath => <i> loop @ i
 circle loopInv => <i> loop @ ~i
 circle m => <i> merid Nat 0 @ i
 circle pt => base
+circle hcompLoop => fun k => hcomp Circle k (fun i => [ k -> loop @ i ]) base
+circle transpHcomp => fun L => fun f => fun k => hcomp (Susp (L i1)) k (fun i => [ k -> transp (<_x0> Susp (L _x0)) i0 (f i) ]) (transp (<i> Susp (L i)) i0 (f i0))
+circle meridT => fun L => fun a => <j> merid (L i1) (transp (<i> L i) i0 a) @ j
+circle lotT => fun n => fun p => makeLot (n i1) p
+circle lotHcomp => fun q => fun k => makeLot 3 (hcomp Nat k (fun i => [ k -> q @ i ]) 1)
+circle colorHcompStuck => fun p => fun k => hcomp Color k (fun i => [ k -> p @ i ]) red

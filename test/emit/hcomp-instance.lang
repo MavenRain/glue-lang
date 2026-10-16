@@ -1,0 +1,2 @@
+-- M4 s2 (D3, D9): an hcomp value at a HIT is canonical and has no JSON form.
+def h : Circle := hcomp Circle i0 (fun i => [ i0 -> base ]) base

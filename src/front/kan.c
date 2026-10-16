@@ -278,9 +278,20 @@ static int data_type(const Value *t) {
   return val_is(t, OP_SUM) || val_is(t, OP_OPTION) || val_is(t, OP_LIST);
 }
 
-/* M3 s5: a head that a Kan rule of kan_transp reads. */
+/* M4 s2: a family head without path constructors (the data rule of
+   kan_hcomp applies) and a HIT head (hcomp is canonical, D3). */
+static int plain_family(const Machine *m, const Value *t) {
+  return val_is(t, OP_FAMILY) && t->inst < m->family_count && m->families[t->inst].path_ctors == 0;
+}
+
+static int hit_type(const Machine *m, const Value *t) {
+  return val_is(t, OP_FAMILY) && t->inst < m->family_count && m->families[t->inst].path_ctors > 0;
+}
+
+/* M3 s5: a head that a Kan rule of kan_transp reads. M4 s2: a family. */
 static int type_former(const Value *t) {
-  return closed_type(t) || t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) || val_is(t, OP_GLUE);
+  return closed_type(t) || t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) || val_is(t, OP_GLUE)
+    || val_is(t, OP_FAMILY);
 }
 
 /* M3 s5: the head of LINE, its body at a probe level. Only the head former
@@ -773,6 +784,175 @@ static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *u, con
   return glue_elem(m, OP_GLUE, out, count);
 }
 
+/* M4 s2: transp L phi distributes over a system (the tube of an hcomp
+   value, transp_hcomp): one branch per conjunction, with the body put on
+   that face, as OP_KAN_FIELD (eval.c reduce_field). A free level at
+   KAN_PROBE or above gives a stuck value. An empty system is unchanged. */
+static const Value *transp_sys(Machine *m, const Value *line, const Value *phi, const Value *a) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Value *args[3];
+  const Value **out;
+  uint32_t bound = 0;
+  uint32_t count = 0;
+  uint32_t n = 0;
+  uint32_t j;
+  uint32_t k;
+  if (!value_bound(m, line, &bound) || !value_bound(m, phi, &bound) || !value_bound(m, a, &bound))
+    return NULL;
+  args[0] = line;
+  args[1] = phi;
+  args[2] = a;
+  if (bound >= KAN_PROBE)
+    return val_op(m, VAL_STUCK, OP_TRANSP, 0, 0, args, 3u);
+  for (j = 0; j + 1u < a->argc; j += 2u)
+    count += a->args[j]->ivl->count;
+  if (count == 0)
+    return a;
+  out = kan_vals(m, 2u * count);
+  if (out == NULL)
+    return NULL;
+  for (j = 0; j + 1u < a->argc; j += 2u)
+    for (k = 0; k < a->args[j]->ivl->count; k++) {
+      const Ivl *face = face_conj(&h, a->args[j]->ivl, k);
+      const Value *lc = face == NULL ? NULL : value_on_face(m, bound, line, face, 0);
+      const Value *pc = lc == NULL ? NULL : value_on_face(m, bound, phi, face, 0);
+      const Value *body = pc == NULL ? NULL : value_on_face(m, bound, a->args[j + 1u], face, 0);
+      out[n] = face == NULL ? NULL : val_ivl(m, face);
+      out[n + 1u] = body == NULL ? NULL : kan_transp(m, lc, pc, body);
+      if (out[n] == NULL || out[n + 1u] == NULL)
+        return NULL;
+      n += 2u;
+    }
+  return val_op(m, VAL_OP, OP_SYS, count, 0, out, 2u * count);
+}
+
+/* M4 s2 (D4): transp (<i> T[DOM(L, i, p) / p]) phi x for field K of the
+   constructor C of the family F. The field type T is in the scope of the
+   parameters (core.h FieldInfo), so each parameter p is read from L at i
+   (OP_KAN_DOM with INST = p). A recursive field has no parameters (check.c
+   check_field), so its line is L. Environment [L, phi, x] (x is index 0);
+   under <i>: i 0, x 1, phi 2, L 3. */
+static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *x) {
+  const Core *t = c->fields[k].type;
+  const Core *args[2];
+  uint32_t p;
+  if (c->fields[k].recursive)
+    return kan_transp(m, line, phi, x);
+  for (p = 0; p < f->param_count; p++)
+    t = binder(m, CORE_LAM, "p", t);
+  for (p = 0; p < f->param_count; p++) {
+    args[0] = var(m, 3u);
+    args[1] = var(m, 0);
+    t = app(m, t, opn(m, OP_KAN_DOM, p, args, 2u));
+  }
+  return instance(m, op(m, OP_TRANSP, 3u, binder(m, CORE_PLAM, "i", t), var(m, 1u), var(m, 0)), line, phi, x);
+}
+
+/* A fieldwise path constructor rule must commute with every boundary
+   restriction. Application in a boundary can require transport coherence
+   that the fieldwise rule does not supply. Keep that transport stuck. */
+static int transp_pcon_agrees(Machine *m, const CtorInfo *c, const Value *line, const Value *phi, const Value *a, const Value *v) {
+  IvlHeap h = {m->arena, m->diag, m->def};
+  const Env *env = NULL;
+  uint32_t bound = 0;
+  uint32_t j;
+  uint32_t k;
+  if (!value_bound(m, line, &bound) || !value_bound(m, phi, &bound)
+      || !value_bound(m, a, &bound) || !value_bound(m, v, &bound) || bound >= KAN_PROBE)
+    return 0;
+  for (j = 0; j < a->argc; j++) {
+    env = env_push(m, env, a->args[j]);
+    if (env == NULL)
+      return 0;
+  }
+  for (j = 0; j + 1u < c->boundary->argc; j += 2u) {
+    const Value *fv = eval_core(m, env, c->boundary->args[j]);
+    const Ivl *face = fv == NULL ? NULL : face_norm(&h, fv->ivl);
+    if (face == NULL)
+      return 0;
+    for (k = 0; k < face->count; k++) {
+      const Value *lc = value_on_face(m, bound, line, face, k);
+      const Value *pc = lc == NULL ? NULL : value_on_face(m, bound, phi, face, k);
+      const Value *ac = pc == NULL ? NULL : value_on_face(m, bound, a, face, k);
+      const Value *vc = ac == NULL ? NULL : value_on_face(m, bound, v, face, k);
+      const Value *expected = vc == NULL ? NULL : kan_transp(m, lc, pc, ac);
+      if (expected == NULL || !conv_values(m, bound, expected, vc))
+        return 0;
+    }
+  }
+  return 1;
+}
+
+/* M4-PLAN 3.4 (s2, D4): transp at a family with parameters gives the
+   constructor at the parameters of L i1, with transp on each field along
+   its field type (field_line_transp). An interval argument of a path
+   constructor is unchanged. The result goes through the evaluator, so the
+   boundary rule of a path constructor at an end fires. NULL without a
+   diagnostic when A is not a constructor of the family of L i1. */
+static const Value *transp_ctor(Machine *m, const Value *line, const Value *phi, const Value *a) {
+  const CtorInfo *c;
+  const FamilyInfo *f;
+  const Value *t1;
+  const Value *v;
+  const Value **out;
+  const Core **vars;
+  uint32_t k;
+  if (a->inst >= m->ctor_count)
+    return NULL;
+  c = &m->ctors[a->inst];
+  f = &m->families[c->family];
+  t1 = closure_apply(m, line, val_ivl_end(m, 1));
+  if (t1 == NULL)
+    return NULL;
+  if (!val_is(t1, OP_FAMILY) || t1->inst != c->family || t1->argc != f->param_count || a->argc < f->param_count + c->field_count)
+    return NULL;
+  out = kan_vals(m, a->argc);
+  vars = kan_args(m, a->argc);
+  if (out == NULL || vars == NULL)
+    return NULL;
+  for (k = 0; k < a->argc; k++) {
+    vars[k] = var(m, a->argc - 1u - k);
+    out[k] = k < f->param_count ? t1->args[k]
+      : k < f->param_count + c->field_count ? field_line_transp(m, f, c, k - f->param_count, line, phi, a->args[k])
+      : a->args[k];
+    if (out[k] == NULL)
+      return NULL;
+  }
+  v = run(m, opn(m, a->op, a->inst, vars, a->argc), out, a->argc);
+  if (v != NULL && a->op == OP_PCON && !transp_pcon_agrees(m, c, line, phi, a, v))
+    return NULL;
+  return v;
+}
+
+/* M4-PLAN 3.4 (s2, D3/D4): transp L phi (hcomp A0 psi u u0) at a HIT line
+   = hcomp (L i1) psi (fun j => transp L phi (u j)) (transp L phi u0)
+   (the transp of the tube distributes over its system, transp_sys).
+   Environment [L, phi, A1, psi, u, u0] (u0 is index 0); under fun j: j 0,
+   u 2, phi 5, L 6. */
+static const Value *transp_hcomp(Machine *m, const Value *line, const Value *phi, const Value *a) {
+  const Value *vals[6];
+  const Core *rule;
+  if (a->argc != 4u)
+    return NULL;
+  vals[0] = line;
+  vals[1] = phi;
+  vals[2] = closure_apply(m, line, val_ivl_end(m, 1));
+  vals[3] = a->args[1];
+  vals[4] = a->args[2];
+  vals[5] = a->args[3];
+  rule = hcomp4(m, var(m, 3u), var(m, 2u), tube(m, op(m, OP_TRANSP, 3u, var(m, 6u), var(m, 5u), app(m, var(m, 2u), var(m, 0)))),
+                op(m, OP_TRANSP, 3u, var(m, 5u), var(m, 4u), var(m, 0)));
+  return run(m, rule, vals, 6u);
+}
+
+/* M4 s2: the rules at a family head with parameters. NULL without a
+   diagnostic for another value (stuck). */
+static const Value *transp_family(Machine *m, const Value *line, const Value *phi, const Value *a) {
+  if (val_is(a, OP_CTOR) || val_is(a, OP_PCON))
+    return transp_ctor(m, line, phi, a);
+  return val_is(a, OP_HCOMP) ? transp_hcomp(m, line, phi, a) : NULL;
+}
+
 const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const Value *a) {
   const Value *args[3];
   const Value *head;
@@ -787,12 +967,25 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
   args[2] = a;
   if (m->probe > 0)
     return val_op(m, VAL_STUCK, OP_TRANSP, 0, 0, args, 3u);
+  if (val_is(a, OP_SYS))
+    return transp_sys(m, line, phi, a);
   /* A Pi head at a fresh i is a Pi head at each r. */
   head = probe_head(m, line);
   if (head == NULL)
     return NULL;
   if (closed_type(head))
     return a;
+  /* M4 s2 (D4): a family without parameters is a closed type. */
+  if (val_is(head, OP_FAMILY)) {
+    const Value *v;
+    if (head->inst >= m->family_count)
+      return kan_fail(m, "a family head past the families");
+    if (m->families[head->inst].param_count == 0)
+      return a;
+    v = transp_family(m, line, phi, a);
+    if (v != NULL || m->diag->set)
+      return v;
+  }
   if (head->kind == VAL_PI)
     return instance(m, pi_rule(m), line, phi, a);
   if (head->kind == VAL_SIGMA)
@@ -820,17 +1013,20 @@ static const Value *line_at(Machine *m, const Value *line, const Value *r) {
   t = closure_apply(m, line, r);
   if (t == NULL)
     return NULL;
-  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t))
+  if (t->kind == VAL_PI || t->kind == VAL_SIGMA || val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) || val_is(t, OP_FAMILY))
     return t;
-  return kan_fail(m, "a template line that is not a Pi, Sigma, Prod, PathP, Sum, Option or List");
+  return kan_fail(m, "a template line that is not a Pi, Sigma, Prod, PathP, Sum, Option, List or family");
 }
 
 /* For a PathP line: the inner line A[r]. For a Sum: the left type. For an
-   Option or a List: the element type. */
-const Value *kan_dom(Machine *m, const Value *line, const Value *r) {
+   Option or a List: the element type. M4 s2: for a family: parameter INST
+   (field_line_transp). */
+const Value *kan_dom(Machine *m, const Value *line, const Value *r, uint32_t inst) {
   const Value *t = line_at(m, line, r);
   if (t == NULL)
     return NULL;
+  if (val_is(t, OP_FAMILY))
+    return inst < t->argc ? t->args[inst] : kan_fail(m, "a family parameter index past the parameters");
   return val_is(t, OP_PROD) || val_is(t, OP_PATHP) || data_type(t) ? t->args[0] : t->dom;
 }
 
@@ -839,6 +1035,8 @@ const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value 
   const Value *t = line_at(m, line, r);
   if (t == NULL || x == NULL)
     return NULL;
+  if (val_is(t, OP_FAMILY))
+    return kan_fail(m, "a codomain of a family line");
   if (val_is(t, OP_PATHP)) {
     if (x->kind != VAL_IVL || !(ivl_is_const(x->ivl, 0) || ivl_is_const(x->ivl, 1)))
       return kan_fail(m, "a PathP end that is not i0 or i1");
@@ -965,6 +1163,12 @@ static int hcomp_constant(Machine *m, const Value *u, const Value *u0) {
   return 1;
 }
 
+/* M4 s2: 1 when X has the head of U0; a constructor of a family must be
+   the same constructor (OP_CTOR with the same INST). */
+static int same_head(const Value *x, const Value *u0) {
+  return val_is(x, u0->op) && (u0->op != OP_CTOR || x->inst == u0->inst);
+}
+
 /* 1 when u i (i fresh) is a value with the head of U0 on each conjunction
    of the face of each branch (M3-PLAN 3.4, s3). A free level at KAN_PROBE
    or above gives 0, as in hcomp_constant. */
@@ -980,11 +1184,11 @@ static int hcomp_same_ctor(Machine *m, const Value *u, const Value *u0) {
   if (s == NULL)
     return 0;
   if (!val_is(s, OP_SYS))
-    return val_is(s, u0->op);
+    return same_head(s, u0);
   for (j = 0; j + 1u < s->argc; j += 2u)
     for (k = 0; k < s->args[j]->ivl->count; k++) {
       x = value_on_face(m, bound + 1u, s->args[j + 1u], s->args[j]->ivl, k);
-      if (x == NULL || !val_is(x, u0->op))
+      if (x == NULL || !same_head(x, u0))
         return 0;
     }
   return 1;
@@ -1004,11 +1208,50 @@ static const Core *field_hcomp(Machine *m, uint32_t n, uint32_t t, uint32_t phi,
    Environment [T, phi, u, x] (x is index 0, T its type): C (field_hcomp).
    For cons, [A, List A, phi, u, x, xs] (xs is index 0). NULL without a
    diagnostic when the rule does not apply. */
+/* M4-PLAN 3.4 (s2, D3): the data rule at a family without path
+   constructors: U0 and each branch of u are the constructor C at the
+   parameters P of A. Then C P with hcomp on each field, at the field type
+   at P (core.h FieldInfo; a recursive field has the type A). Environment
+   [T, phi, u, x] per field (x is index 0). NULL without a diagnostic when
+   U0 is not a constructor of A. */
+static const Value *hcomp_ctor(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
+  const CtorInfo *c;
+  const FamilyInfo *f;
+  const Env *penv = NULL;
+  const Value **out;
+  uint32_t k;
+  if (u0->inst >= m->ctor_count)
+    return NULL;
+  c = &m->ctors[u0->inst];
+  f = &m->families[c->family];
+  if (c->family != a->inst || a->argc != f->param_count || u0->argc != f->param_count + c->field_count)
+    return NULL;
+  out = kan_vals(m, u0->argc);
+  if (out == NULL)
+    return NULL;
+  for (k = 0; k < f->param_count; k++) {
+    penv = env_push(m, penv, a->args[k]);
+    out[k] = a->args[k];
+    if (penv == NULL)
+      return NULL;
+  }
+  for (k = 0; k < c->field_count; k++) {
+    const Value *t = c->fields[k].recursive ? a : eval_core(m, penv, c->fields[k].type);
+    const Value *x = u0->args[f->param_count + k];
+    out[f->param_count + k] = t == NULL ? NULL : instance4(m, field_hcomp(m, f->param_count + k, 3u, 2u, 1u, 0), t, phi, u, x);
+    if (out[f->param_count + k] == NULL)
+      return NULL;
+  }
+  return val_op(m, VAL_OP, OP_CTOR, u0->inst, u0->field, out, u0->argc);
+}
+
 static const Value *hcomp_data(Machine *m, const Value *a, const Value *phi, const Value *u, const Value *u0) {
   const Env *env;
   const Core *rule;
-  if (!data_ctor(u0) || !hcomp_same_ctor(m, u, u0))
+  if (!(data_ctor(u0) || val_is(u0, OP_CTOR)) || !hcomp_same_ctor(m, u, u0))
     return NULL;
+  if (val_is(u0, OP_CTOR))
+    return hcomp_ctor(m, a, phi, u, u0);
   if (val_is(u0, OP_NONE) || val_is(u0, OP_NIL))
     return u0;
   if (!val_is(u0, OP_CONS))
@@ -1044,7 +1287,7 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
     return hcomp_pair(m, a, phi, u, u0, OP_PAIR, OP_FIRST, OP_SECOND);
   if (val_is(a, OP_PATHP))
     return instance4(m, hcomp_pathp_rule(m), const_line(m, a), phi, u, u0);
-  if (data_type(a)) {
+  if (data_type(a) || plain_family(m, a)) {
     const Value *v = hcomp_data(m, a, phi, u, u0);
     if (v != NULL || m->diag->set)
       return v;
@@ -1063,5 +1306,8 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
   args[1] = phi;
   args[2] = u;
   args[3] = u0;
+  /* M4 s2 (D3): at a HIT the hcomp is a canonical value. */
+  if (hit_type(m, a))
+    return val_op(m, VAL_OP, OP_HCOMP, 0, 0, args, 4u);
   return val_op(m, VAL_STUCK, OP_HCOMP, 0, 0, args, 4u);
 }

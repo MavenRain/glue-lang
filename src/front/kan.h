@@ -17,8 +17,9 @@
    a fresh variable, else a stuck value. */
 const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const Value *a);
 /* The domain of L @ R (OP_KAN_DOM) and the codomain of L @ R at X
-   (OP_KAN_COD), for a Pi, Sigma or Prod line. */
-const Value *kan_dom(Machine *m, const Value *line, const Value *r);
+   (OP_KAN_COD), for a Pi, Sigma or Prod line. M4 s2: for a family line,
+   OP_KAN_DOM gives parameter INST of L @ R. */
+const Value *kan_dom(Machine *m, const Value *line, const Value *r, uint32_t inst);
 const Value *kan_cod(Machine *m, const Value *line, const Value *r, const Value *x);
 /* hcomp A phi u u0. PHI is in face normal form, U is a function of an
    interval variable. M3-PLAN 3.4 (s2). */

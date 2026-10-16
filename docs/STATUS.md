@@ -1204,3 +1204,131 @@ failed).
 - Validation: the new tests reproduced both defects before the fixes.
   `make check` passes, including all 10 HIT regressions. The new C test
   also passes the Clang warning and switch checks used by the project.
+
+### s2: Kan rules at families and hcomp values (2026-10-15)
+
+- Kan (src/front/kan.c, src/front/kan.h, src/front/eval.c): plain_family
+  and hit_type test an OP_FAMILY head (path_ctors == 0 or > 0);
+  type_former accepts OP_FAMILY, so the probe keeps a family head.
+  transp_sys distributes `transp L phi` over an OP_SYS value, one branch
+  per conjunction, with L, phi and the body put on that face (the
+  reduce_field idiom: value_bound, face_conj, value_on_face); a bound at
+  or past KAN_PROBE gives a stuck transp; an empty system is unchanged;
+  kan_transp calls it right after the probe guard. field_line_transp
+  computes `transp (<i> T[DOM(L, i, p) / p]) phi x` for a field of type T
+  (scope = the family parameters): T is wrapped in param_count CORE_LAM
+  binders and applied to OP_KAN_DOM with INST = p. kan_dom takes the
+  parameter index (kan.h; eval.c `kan_dom(m, a[0], a[1], inst)`);
+  line_at accepts a family head; kan_cod refuses a family line; a
+  recursive field (no parameters) uses L. transp_ctor: a constructor
+  (OP_CTOR or OP_PCON) at a family line with parameters gives the
+  constructor at the parameters of `L i1`, each field transported by
+  field_line_transp, an interval argument unchanged; the result goes
+  through the evaluator (opn + run), so the boundary rule of a path
+  constructor at an end fires. The staged review adds a boundary agreement
+  check before accepting fieldwise transport of a path constructor (below).
+  transp_hcomp: `transp L phi (hcomp A0 psi
+  u u0) = hcomp (L i1) psi (fun j => transp L phi (u j)) (transp L phi
+  u0)`. kan_transp after closed_type: a family head with param_count 0
+  gives the value as is (the D4 closed rule, also at a HIT: transpConst);
+  else transp_family (a ctor or pcon to transp_ctor, an OP_HCOMP value to
+  transp_hcomp, else stuck). hcomp: same_head (an OP_CTOR must match
+  INST) in hcomp_same_ctor; hcomp_ctor is the data rule at a plain family
+  (the constructor at the parameters of A, hcomp on each field at the
+  field type at those parameters, via field_hcomp and instance4);
+  hcomp_data accepts OP_CTOR; kan_hcomp sends `data_type(a) ||
+  plain_family(m, a)` to hcomp_data and, before the stuck fallback,
+  returns a VAL_OP OP_HCOMP at a HIT (D3: canonical).
+- JSON (src/json.c): path_json (OP_PATHP) writes `null` when the body at
+  a fresh interval variable converts to the body at i0 (conv_values at
+  bound + 1), else JSON_VALUE "a path with content" (D9). A free-level
+  scan was wrong: a closure in the body can capture the variable without
+  a use (the node regression `printed types preserve binding under
+  normalization`, case `Option (Path (Nat -> Nat) plus plus)` = `some
+  refl`, failed with it). family_json refuses an OP_HCOMP value ("an
+  hcomp value") before the OP_PCON test.
+- Tests: examples/circle.lang gets 9 defs under `-- M4 s2`: hcompOne,
+  transpConst and northT are refl rows (`<i> base`, `<i> x`, `<i> north
+  (L i1)`); hcompLoop, transpHcomp, meridT, lotT, lotHcomp and
+  colorHcompStuck are eval rows (test/eval/expect.txt, 6 new): hcompLoop
+  `hcomp Circle k (fun i => [ k -> loop @ i ]) base` (canonical);
+  transpHcomp `hcomp (Susp (L i1)) k (fun i => [ k -> transp (<_x0> Susp
+  (L _x0)) i0 (f i) ]) (transp (<i> Susp (L i)) i0 (f i0))`; meridT `<j>
+  merid (L i1) (transp (<i> L i) i0 a) @ j`; lotT `makeLot (n i1) p`;
+  lotHcomp `makeLot 3 (hcomp Nat k (fun i => [ k -> q @ i ]) 1)`;
+  colorHcompStuck stuck. `[ ]` does not parse (PARSE_EXPECT), so the i0
+  witnesses use the constant face `[ i0 -> base ]` and `[ i0 -> north
+  Nat ]`. Check row: test/check/hcomp-i0-circle.lang TYPE_REFL ("the
+  start normalizes to hcomp Circle i0 (fun i => [ i0 -> base ]) base,
+  the end normalizes to base"): there is no `hcomp A i0 u u0 = u0` rule
+  (D8). Emit rows (test/emit/expect.txt): hcomp-instance.lang JSON_VALUE
+  "an hcomp value"; transp-hcomp.lang JSON_VALUE "an hcomp value";
+  path-content.lang (`def p : Sigma (x : Circle) (Path Circle x x) :=
+  pack base loop`) JSON_VALUE "a path with content".
+  test/emit/stuck-transp.lang is replaced by a positive native regression:
+  its Color transport now computes, and its fold returns `1`.
+  transp-hcomp.lang is the new refusal witness of M4-PLAN section 5.
+  test/json/circle.json is unchanged (pt is the only instance); no
+  `null` golden changed.
+- Golden update: test/eval/thu.txt (gluekan thu, a large neutral) was
+  regenerated with `build/langc eval examples/gluekan.lang thu`. transp
+  now distributes over the nested systems in it, so a stuck form such as
+  `transp (<j> A) _x2 (? i0 (unglue x) k X)` became `[ k -> transp (<j>
+  A) _x2 X' ]` with X' put on the face k. The file went from 106675 to
+  41145 bytes.
+- Mutants (each with `make -B check`, source restored after, `git diff`
+  identical before and after): 3 KILLED, 0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| A HIT takes the closed-type hcomp rule (kan.c kan_hcomp, `\|\| hit_type(m, a)`) | check hcomp-i0-circle.lang (exit 0, not TYPE_REFL); build transp-hcomp.lang and hcomp-instance.lang gave exit 0; 3 failures in total |
+| The family closed-type transp rule applies with one parameter (kan.c kan_transp, `param_count < 2u`) | examples circle.lang (PATH_BOUNDARY at meridT: at i0 it normalizes to `north (L i0)`, the type needs `north (L i1)`); the 10 circle eval rows failed behind it; 12 failures in total |
+| The JSON constant-path test always writes `null` (json.c path_json, `x != NULL`) | build path-content.lang (exit 0, not JSON_VALUE); 1 failure in total |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  10; examples 24, parse refusals 17, check refusals 89, evals 152, json
+  20 builds, build refusals 7, circuits 3, same-ir 1, circuit refusals
+  10, satcheck refusals 6; node regressions 6, printer 2). `make
+  check-clang` exit 0. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed; the 3 deploy simulations ran). `git diff
+  --exit-code -- test/circuit contracts/src/verifiers` exit 0.
+  contracts/test/fixtures restored from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Open items:
+  - O8: `hcomp` at Sum, Option and List with different constructors
+    stays stuck, and so does `hcomp` at a plain family whose branches
+    give different constructors (hcomp_same_ctor).
+  - Dependent field types are out of s2: a field type sees the family
+    parameters only. The s3 change to check_field for `Path Self a b`
+    needs the field type at the transported earlier fields.
+  - Fieldwise transport of a parameterized path constructor can fail to
+    commute with its boundaries. Such transport stays stuck; general
+    boundary correction terms remain open. The emit witness is
+    test/emit/transp-hcomp.lang (an `hcomp` value).
+  - `hcomp` at a HIT with a constant tube stays canonical (D8): `hcomp
+    Circle i0 (fun i => [ i0 -> base ]) base` does not reduce to `base`.
+
+#### Staged review fixes (s2)
+
+- HIGH: fieldwise transport of a path constructor did not commute with
+  boundary restriction. The native FunH case has a boundary `funEnd A B
+  (f a)`. Evaluating transport at i1 gives `funEnd ... (transp M i0 (f a))`,
+  but normalizing at a fresh interval and then restricting to i1 inserted
+  a backward transport of the forward transport of `a` inside `f`.
+  These values do not convert. The regression passes before s2 and fails
+  on the original staged s2 rule.
+- Fix: transp_pcon_agrees checks the transported candidate against
+  transport of the source on every conjunction of every boundary face.
+  A mismatch keeps the original transport stuck. Existing Susp reductions
+  are preserved; general boundary correction terms remain open.
+- Tests: test/hit-regressions.c checks both endpoints after normalization,
+  with the mismatch on the second boundary branch. It also retains the
+  removed stuck-transp refusal scenario as a positive test: the Color
+  transport and fold now compute to `1`.
+- Validation: `make check` passes (native HIT 12, all other counts
+  unchanged). The C regression file passes Clang with `-Wall -Wextra
+  -Wswitch-enum -Werror`. Removing the boundary check reproduces the
+  endpoint regression. `make e2e` passes using the existing unchanged
+  halo2 back end: all three proofs, 33 Forge tests and three deploy
+  simulations. Circuit IR and generated verifiers remain byte-identical.
+- No remaining CI weakening or verified correctness finding.

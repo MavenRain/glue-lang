@@ -4,6 +4,7 @@
 
 #include "front/check.h"
 #include "front/front.h"
+#include "front/face.h"
 
 typedef struct {
   const char *label;
@@ -21,6 +22,20 @@ static const char SHAPE[] =
   " | square <i j> [ ~i -> point, i -> edge @ j, ~j -> point, j -> point ]"
   " | cube <i j k> [ ~i -> point, i -> square @ j @ k, ~j -> point,"
   " j -> square @ i @ k, ~k -> point, k -> point ]\n";
+
+static const Case TRANSPORT_CASES[] = {
+  {"transport respects a path constructor application boundary",
+   "family FunH (A B : Type 0) := funStart (startFn : A -> B) (startArg : A)"
+   " | funEnd (endVal : B)"
+   " | funEdge (linkFn : A -> B) (linkArg : A) <i>"
+   " [ ~i -> funStart A B linkFn linkArg, i -> funEnd A B (linkFn linkArg) ]\n",
+   "def test : (L M : I -> Type 0) -> (f : L i0 -> M i0) -> (a : L i0) ->"
+   " Path (FunH (L i1) (M i1))"
+   " (transp (<i> FunH (L i) (M i)) i0 (funStart (L i0) (M i0) f a))"
+   " (transp (<i> FunH (L i) (M i)) i0 (funEnd (L i0) (M i0) (f a)))"
+   " := fun L M f a => <j> transp (<i> FunH (L i) (M i)) i0 (funEdge (L i0) (M i0) f a @ j)\n",
+   NULL, NULL}
+};
 
 static const Case CASES[] = {
   {"HIT fold cannot distinguish connected points", "",
@@ -40,6 +55,8 @@ static const Case CASES[] = {
    "TYPE_MISMATCH", NULL},
   {"plain family fold still computes", "",
    "def test : Nat := fold 1 2 3 red\n", NULL, "1"},
+  {"closed plain family transport computes before folding", "",
+   "def test : Nat := fold 1 2 3 (transp (<_> Color) i0 red)\n", NULL, "1"},
   {"plain family projection still computes", "",
    "def test : Nat := itemCount (makeItem red 7 3)\n", NULL, "3"},
   {"higher constructor faces preserve the remaining intervals", SHAPE,
@@ -61,7 +78,33 @@ static int load(Arena *arena, const char *name, Origin origin, const char *text,
     && parse_source(arena, name, origin, &tokens, decls, diag);
 }
 
-static int run_case(const Case *test) {
+static int path_faces_agree(Machine *m, const Value *p, const char *label) {
+  const char *names[] = {"L", "M", "f", "a", "j"};
+  IvlHeap heap = {m->arena, m->diag, label};
+  const Value *open;
+  uint32_t j;
+  int one;
+  for (j = 0; j < 4u && p != NULL; j++)
+    p = apply_value(m, p, val_var(m, j));
+  open = p == NULL ? NULL : closure_apply(m, p, val_ivl_var(m, 4u));
+  for (one = 0; one < 2; one++) {
+    const Value *direct = p == NULL ? NULL : closure_apply(m, p, val_ivl_end(m, one));
+    const Ivl *face = ivl_lit(&heap, 4u, !one);
+    const Value *restricted = open == NULL || face == NULL ? NULL : value_on_face(m, 5u, open, face, 0);
+    if (direct == NULL || restricted == NULL || !conv_values(m, 5u, direct, restricted)) {
+      char normal[2048];
+      fprintf(stderr, "FAIL %s: normalization changed endpoint i%d\n", label, one);
+      if (direct != NULL && value_print(m, names, 5u, direct, normal, sizeof normal))
+        fprintf(stderr, "direct endpoint: %s\n", normal);
+      if (restricted != NULL && value_print(m, names, 5u, restricted, normal, sizeof normal))
+        fprintf(stderr, "restricted endpoint: %s\n", normal);
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int run_case(const Case *test, int check_faces) {
   Arena arena;
   Diag diag;
   DeclList decls = {0};
@@ -88,15 +131,20 @@ static int run_case(const Case *test) {
     if (diag.set)
       diag_print(&diag, stderr);
   }
+  if (!failed && check_faces)
+    failed = !path_faces_agree(&machine, def_value(&machine, machine.def_count - 1u), test->label);
   arena_release(&arena);
   return failed;
 }
 
 int main(void) {
   size_t i;
+  size_t checked = 0;
   int failed = 0;
-  for (i = 0; i < sizeof CASES / sizeof CASES[0]; i++)
-    failed += run_case(&CASES[i]);
-  printf("native HIT regressions: %lu checked, %d failed\n", (unsigned long)i, failed);
+  for (i = 0; i < sizeof CASES / sizeof CASES[0]; i++, checked++)
+    failed += run_case(&CASES[i], 0);
+  for (i = 0; i < sizeof TRANSPORT_CASES / sizeof TRANSPORT_CASES[0]; i++, checked++)
+    failed += run_case(&TRANSPORT_CASES[i], 1);
+  printf("native HIT regressions: %lu checked, %d failed\n", (unsigned long)checked, failed);
   return failed != 0;
 }

@@ -1,0 +1,3 @@
+-- M4 s2 (D8): no rule gives u0 for the face i0 at a HIT. The hcomp is a
+-- canonical value (D3), not base.
+def wrong : Path Circle (hcomp Circle i0 (fun i => [ i0 -> base ]) base) base := refl

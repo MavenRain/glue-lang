@@ -62,11 +62,14 @@ ruling.
   Field, Unit and Flag only. kan_hcomp never reduces an `hcomp` at a HIT.
 - D4. `transp` at a family with parameters: the constructor rule (a point
   or path constructor gives that constructor with `transp` on its fields
-  and the interval arguments unchanged), the `hcomp` rule (an `hcomp`
+  and the interval arguments unchanged, provided the path constructor
+  result agrees with transport on every boundary face), the `hcomp` rule (an `hcomp`
   value gives an `hcomp` of the transports) and else stuck. `transp` along
   a line whose head is a family with no parameters gives the argument (the
-  closed-type rule of kan_transp, as Nat). This closes the family part of
-  O8 and changes test/emit/stuck-transp.lang (section 5).
+  closed-type rule of kan_transp, as Nat). A path constructor whose
+  fieldwise transport fails this boundary check stays stuck until general
+  boundary correction terms are implemented. This narrows the family part
+  of O8 and changes test/emit/stuck-transp.lang (section 5).
 - D5. A path constructor applied to its fields is a path: the checker
   gives `loop` the type `Path Circle base base`, and `c fields` with k
   binders the type `PathP (<i1> ... PathP (<ik> Self) ...)` whose ends are
@@ -165,7 +168,7 @@ head value, (3) else stuck. `c` is a constructor, `pc` a path constructor,
 | `pc params fields @ r1 .. @ rk` with a boundary face that is `i1` at `r1 .. rk` | the body of that branch (reduce_sys method) | s1 |
 | `pc params fields @ r1 .. @ rk`, no face `i1` | canonical OP_PCON | s1 |
 | `transp (<i> D) phi x`, `D` a family with no parameters | `x` (the closed-type rule of kan_transp) | s2 |
-| `transp (<i> D (P i)) phi (c fields)`, point or path constructor (with its interval arguments) | `c` with `transp` on each field along the field type at `P i`; the interval arguments unchanged | s2 |
+| `transp (<i> D (P i)) phi (c fields)`, point or path constructor (with its interval arguments) | `c` with `transp` on each field along the field type at `P i`; the interval arguments unchanged. A path constructor reduces only when this result agrees with transport on every boundary face; otherwise it stays stuck. | s2 |
 | `transp (<i> D (P i)) phi (hcomp (D (P i0)) psi u u0)` | `hcomp (D (P i1)) psi (fun j => [ psi -> transp (<i> D (P i)) phi (u j) ]) (transp (<i> D (P i)) phi u0)` | s2 |
 | `transp` at a family with a neutral argument | stuck | s2 |
 | `hcomp D i1 u u0` at a HIT | `u i1` (the face rule, as M3) | s2 |
@@ -234,9 +237,9 @@ Laws that hold by computation (each is a `refl` in an example):
 | Item | M4 |
 |---|---|
 | domain/domain.lang | New families: `family Circle := base \| loop <i> [ ~i -> base, i -> base ]` and `family Susp (A : Type 0) := north \| south \| merid (apex : A) <i> [ ~i -> north A, i -> south A ]` (s1; a constructor takes the family parameters explicitly, so the boundary names `north A` and `south A`; a field name is a core name, so the field is `apex`); `family Trunc (A : Type 0) := inc (a : A) \| squash (x : Trunc A) (y : Trunc A) <i> [ ~i -> x, i -> y ]` (s3); `family Quot (A : Type 0) (R : A -> A -> Type 0) := cls (a : A) \| eqc (a : A) (b : A) (r : R a b) <i> [ ~i -> cls a, i -> cls b ] \| squashc (x : Quot A R) (y : Quot A R) (p : Path (Quot A R) x y) (q : Path (Quot A R) x y) <i j> [ ~i -> p @ j, i -> q @ j, ~j -> x, j -> y ]` (s4); `family OTPSpec := message \| cipher \| encrypt <i> [ ~i -> message, i -> cipher ]` (s5). The s1 prompt checks that the sample domain's existing rows (Color, Item, Stack, Lot) and their eval rows do not change. |
-| test/emit/stuck-transp.lang | `transp (<_> Color) i0 red` reduces to `red` in s2 (D4). The row needs a new stuck witness: `transp (<i> Lot (n i)) i0 x` with a neutral `x`, or an `hcomp` value at Circle in an instance (JSON_VALUE). s2 decides and records the exact row. |
+| test/emit/stuck-transp.lang | `transp (<_> Color) i0 red` reduces to `red` in s2 (D4). The old refusal scenario is retained as a positive native HIT regression: its fold computes to `1`. The new witness is test/emit/transp-hcomp.lang, the `transp` of an `hcomp` value in an instance, with JSON_VALUE "an hcomp value"; test/emit/hcomp-instance.lang gives the same code for an `hcomp` value, and test/emit/path-content.lang gives JSON_VALUE "a path with content" (D9). |
 | New examples | examples/circle.lang (s1, s2, s3), examples/trunc.lang (s3), examples/quot.lang (s4), examples/otp.lang (s5), examples/quotSq.glue (s5, section 6). Each with its test/json golden, eval rows and check rows. |
-| test/json goldens with `null` | Each existing `null` is a constant path; the rule of D9 keeps it. s2 confirms with the gate. |
+| test/json goldens with `null` | Each existing `null` is a constant path; the rule of D9 keeps it. s2 confirmed this with the gate: no golden changed. |
 | SPEC.md | 2.6 (new, M4): the HIT forms, typing, evaluation, conversion, JSON, the codes. 9: O5 closed with D9, O8 narrowed (the families), O12 (new) for what stays stuck. s6 writes it. |
 
 ## 6. Circuits

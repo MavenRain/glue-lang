@@ -86,3 +86,4 @@ hit-face-agree.lang FACE_AGREE
 hit-body-nat.lang TYPE_MISMATCH
 hit-bad-ends.lang TYPE_MISMATCH
 hit-program.lang REFUSE_DATA
+hcomp-i0-circle.lang TYPE_REFL

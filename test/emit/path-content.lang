@@ -1,0 +1,3 @@
+-- M4 s2 (D9): a Path component with content (the loop of a HIT) has no JSON
+-- form. A constant Path component writes null (test/json/sigma.json).
+def p : Sigma (x : Circle) (Path Circle x x) := pack base loop

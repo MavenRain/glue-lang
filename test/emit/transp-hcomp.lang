@@ -1,0 +1,5 @@
+-- M4 s2 (D4, D9): transp at a HIT line of an hcomp value is an hcomp value
+-- (hcomp of the transps), so the instance has no JSON form. A closed
+-- instance cannot hold a stuck transp: the family rule (D4) reads every
+-- closed constructor, and a neutral needs a variable.
+def t : Susp Nat := transp (<i> Susp Nat) i0 (hcomp (Susp Nat) i0 (fun i => [ i0 -> north Nat ]) (north Nat))

@@ -147,7 +147,10 @@ static int family_json(Out *o, const Value *type, const Value *v) {
   const Env *env = NULL;
   uint32_t i;
   int ok;
-  /* M4 s1 (D9): a path constructor value has no JSON form. */
+  /* M4 s1 (D9): a path constructor value has no JSON form. M4 s2: nor an
+     hcomp value (canonical at a HIT, D3). */
+  if (val_is(v, OP_HCOMP))
+    return refuse(o, "an hcomp value");
   if (val_is(v, OP_PCON))
     return refuse(o, "a path constructor value");
   if (type->inst >= o->m->family_count || !val_is(v, OP_CTOR) || v->inst >= o->m->ctor_count)
@@ -173,6 +176,27 @@ static int family_json(Out *o, const Value *type, const Value *v) {
   return ok && put_text(o, "}");
 }
 
+/* M4 s2 (D9): a Path component is null when it is constant: its body at a
+   fresh interval variable converts to its body at i0 (a closure in the
+   body may capture the variable without a use, so a free-level scan is not
+   the test). A path with content (a loop of a HIT) has no JSON form. */
+static int path_json(Out *o, const Value *v) {
+  uint32_t bound = 0;
+  const Value *x;
+  const Value *y;
+  if (v->kind != VAL_PLAM)
+    return internal(o, "a Path value that is not a path abstraction");
+  if (!value_bound(o->m, v, &bound))
+    return 0;
+  x = closure_apply(o->m, v, val_ivl_var(o->m, bound));
+  y = x == NULL ? NULL : closure_apply(o->m, v, val_ivl_end(o->m, 0));
+  if (y == NULL)
+    return 0;
+  if (conv_values(o->m, bound + 1u, x, y))
+    return put_text(o, "null");
+  return o->m->diag->set ? 0 : refuse(o, "a path with content");
+}
+
 static int op_json(Out *o, const Value *type, const Value *v) {
   char num[24];
   switch (type->op) {
@@ -190,7 +214,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_UNIT:
     return put_text(o, "{}");
   case OP_PATHP:
-    return put_text(o, "null");
+    return path_json(o, v);
   case OP_INTERVAL:
   case OP_SSET:
   case OP_PARTIAL:

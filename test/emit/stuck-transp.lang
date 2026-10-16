@@ -1,2 +1,0 @@
--- transp stays stuck at a domain family (O8 s3), so the fold over it stays stuck.
-def stuck : Nat := fold 1 2 3 (transp (<_> Color) i0 red)

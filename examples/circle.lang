@@ -9,3 +9,14 @@ def loopInv : Path Circle base base := <i> loop @ ~i
 def m : Path (Susp Nat) (north Nat) (south Nat) := merid Nat 0
 def mStart : Path (Susp Nat) (merid Nat 0 @ i0) (north Nat) := refl
 def mEnd : Path (Susp Nat) (merid Nat 0 @ i1) (south Nat) := refl
+
+-- M4 s2: hcomp at a HIT is a canonical value (D3); transp at a family (D4).
+def hcompOne : Path Circle (hcomp Circle i1 (fun i => [ i1 -> loop @ i ]) base) base := refl
+def hcompLoop : (k : I) -> Circle := fun k => hcomp Circle k (fun i => [ k -> loop @ i ]) base
+def transpConst : (x : Circle) -> Path Circle (transp (<_> Circle) i0 x) x := fun x => refl
+def transpHcomp : (L : I -> Type 0) -> (f : I -> Susp (L i0)) -> (k : I) -> Susp (L i1) := fun L => fun f => fun k => transp (<i> Susp (L i)) i0 (hcomp (Susp (L i0)) k (fun i => [ k -> f i ]) (f i0))
+def meridT : (L : I -> Type 0) -> (a : L i0) -> Path (Susp (L i1)) (north (L i1)) (south (L i1)) := fun L => fun a => <j> transp (<i> Susp (L i)) i0 (merid (L i0) a @ j)
+def northT : (L : I -> Type 0) -> Path (Susp (L i1)) (transp (<i> Susp (L i)) i0 (north (L i0))) (north (L i1)) := fun L => refl
+def lotT : (n : I -> Nat) -> (p : Nat) -> Lot (n i1) := fun n => fun p => transp (<i> Lot (n i)) i0 (makeLot (n i0) p)
+def lotHcomp : (q : Path Nat 1 1) -> (k : I) -> Lot 3 := fun q => fun k => hcomp (Lot 3) k (fun i => [ k -> makeLot 3 (q @ i) ]) (makeLot 3 1)
+def colorHcompStuck : (p : Path Color red green) -> (k : I) -> Color := fun p => fun k => hcomp Color k (fun i => [ k -> p @ i ]) red

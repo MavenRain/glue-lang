@@ -1123,7 +1123,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_TRANSP:
     return kan_transp(m, a[0], face_value(m, a[1]), a[2]);
   case OP_KAN_DOM:
-    return kan_dom(m, a[0], a[1]);
+    return kan_dom(m, a[0], a[1], inst);
   case OP_KAN_COD:
     return kan_cod(m, a[0], a[1], a[2]);
   case OP_HCOMP:
