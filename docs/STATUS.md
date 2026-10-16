@@ -1109,6 +1109,24 @@ failed).
 
 ## M4
 
+Summary of M4. glue-lang has higher inductive types (HITs). A HIT is a
+`family` in domain/domain.lang with one or more path constructors: a
+constructor with interval binders and a boundary system (s1). The Kan
+rules apply at families (s2): `transp` at a family transports each field,
+and `hcomp` at a HIT is a canonical value (D3). The JSON target writes
+`null` for constant paths and refuses paths with content (D9, O5 closed).
+`fold B cases x` is the eliminator at a HIT: it computes on a point
+constructor, on a path constructor and on an
+`hcomp` value (s3). s3 adds the propositional truncation `Trunc`. s4 adds
+dependent field types, Path fields, constructors with two binders, `isSet`
+and the set quotient `Quot` with `cls`, `eqc` and `squashc`. s5 adds the
+Direction 4 smoke (`OTPSpec`, examples/otp.lang) and the quotient circuit
+(examples/quotSq.glue, the same IR as square). There is no dependent
+eliminator (O12 (e)), and `hcomp A i0 u u0 = u0` is not a rule (D8). The
+IR did not change: `make e2e` gives byte-identical verifiers. SPEC.md
+section 2.6 is the reference. No definitional proof irrelevance: no conv
+rule reads a type (`### s6` review rule 1).
+
 ### s1: HIT declarations, path constructors and the M4 plan (2026-10-15)
 
 - Plan: docs/M4-PLAN.md (new) is the M4 plan with the USER rulings
@@ -1683,3 +1701,127 @@ failed).
   - (c) No quotSq.circuit.json or quotSq.witness.json goldens: the gate
     keys the goldens by the circuit name.
   - (d) An empty system `[ ]` in a term gives PARSE_EXPECT.
+
+### s6: close (2026-10-16)
+
+The main loop built s6 by hand (sessions s6-a and s6-b). The two review
+agents stopped on a rate limit, and the two Opus fallbacks stopped on a
+model error. They wrote no file. s6 adds no op, no code and no test row.
+
+- Docs (the s6 change): SPEC.md 2.4 (the JSON sentence: a constant path
+  gives `null`, a path with content gives JSON_VALUE), 2.5 (the "Other
+  formers" sentence points to 2.6), 2.6 (new: the HIT forms, the typing
+  rules, the evaluator rules in order, conversion, the printer, JSON D9,
+  `isProp` and `isSet` with their laws, the names, circuits, the codes
+  HIT_BOUNDARY, HIT_CASE and HIT_CASES, and the codes with new causes), 9
+  (O5 closed by D9; O8 narrowed; O12 new, items (a) to (f)). docs/PLAN.md:
+  M4 DONE 2026-10-16 with the slice commits, and the sentence that the
+  Direction 4 law holds only for the identity iso at OTPSpec.
+  formers/FORMERS.md: no change. No glue-lang note and no matrix cell
+  names the Kan values at families (the `O8` of the F4 cell is the O8 of
+  the template column). The matrix has one row for each of the formers F1
+  to F15, and a HIT is not one of them. docs/STATUS.md: the M4 summary
+  and this section.
+
+#### Mutant roll-up
+
+Each mutant ran with `make -B check`, source restored after: 15 KILLED, 0
+SURVIVED (3 in each of s1 to s5), and the s5 variant 1b KILLED. The slice
+sections give the mutant forms and the failure counts.
+
+| Slice | Mutant | Result | Killing row |
+|---|---|---|---|
+| s1 | Boundary coverage test off (check.c boundary_core) | KILLED | check hit-boundary.lang (REFUSE_DATA, not HIT_BOUNDARY) |
+| s1 | Boundary rule reads the first branch only (eval.c pcon_boundary) | KILLED | examples/circle.lang (loopPath: INTERNAL) |
+| s1 | Path constructor type takes the i1 body at both ends (check.c pcon_end) | KILLED | examples/circle.lang (`m`: TYPE_MISMATCH) |
+| s2 | A HIT takes the closed-type hcomp rule (kan.c kan_hcomp) | KILLED | check hcomp-i0-circle.lang (exit 0, not TYPE_REFL) |
+| s2 | The family closed-type transp rule applies with one parameter (kan.c kan_transp) | KILLED | examples/circle.lang (meridT: PATH_BOUNDARY) |
+| s2 | The JSON constant-path test always writes `null` (json.c path_json) | KILLED | build path-content.lang (exit 0, not JSON_VALUE) |
+| s3 | recode_case returns NULL without re-coding (check.c) | KILLED | native HIT `HIT fold cannot distinguish connected points` (TYPE_REFL, not HIT_CASE) |
+| s3 | fold_hit at OP_PCON drops the papp_value loop (eval.c) | KILLED | native HIT `HIT fold computes on a path constructor interior` (TYPE_REFL) |
+| s3 | kan_fold_hcomp base argument is `var(m, 0)` (kan.c) | KILLED | examples/circle.lang (foldHcomp: TYPE_REFL) |
+| s4 | boundary_core checks the first binder only (check.c) | KILLED | check hit-boundary-square.lang (REFUSE_DATA, not HIT_BOUNDARY) |
+| s4 | check_plam skips the end test of a nested path (check.c) | KILLED | check hit-case-square.lang (exit 0, not HIT_CASE) |
+| s4 | rule_is_set returns core_is_prop (check.c) | KILLED | `make check-clang` (unused core_is_set); tcc gate examples/quot.lang (quotIsSet: TYPE_MISMATCH) |
+| s5 | 1. examples/otp.lang interp `fold Impl c m enc x` | KILLED | examples/otp.lang (interp: HIT_CASE) |
+| s5 | 1b. examples/otp.lang interp with the points swapped (`<i> enc @ ~i`) | KILLED | examples/otp.lang (interpMessage: TYPE_REFL) |
+| s5 | 2. test/circuit/same-ir.txt `quotSq square range` | KILLED | same-ir quotSq square (the output differs from range.circuit.json) |
+| s5 | 3. kan.c transp_ctor gives `val_ivl_end(m, 0)` for the interval arguments | KILLED | eval circle meridT (the transp stays stuck) |
+
+#### Review
+
+Review of the M4 diff (`git diff 9136426..HEAD -- src`, 1646 lines with
+`-U2`). The review agents stopped on API errors (a Fable rate limit, then
+the Opus fallback once), so the review is a hand review in the main
+session (s6-a). Result: no defect found, no code change.
+
+1. No conv rule reads a type. conv_values, conv_path, conv_sys and the
+   other conv functions have no M4 hunk: OP_PCON, OP_FOLD_HIT and an
+   `hcomp` at a HIT compare argument by argument (the M3 path). kan.c
+   kan_hcomp: closed_type is Univ, Nat, Field, Unit and Flag only, and the
+   data rule needs plain_family (path_ctors == 0). At a HIT only the face
+   `i1` rule applies, then the canonical return (D3). There is no rule
+   `hcomp A i0 u u0 = u0` (D8).
+2. Switch cases: `make check-clang` uses `-Wswitch-enum -Werror`. The
+   diff adds no `default:` line (rg count 0).
+3. Globals: each added file-scope line is a prototype. There is no new
+   static local.
+4. NULL on a diagnostic: each added kan_fail, diag_fail, fail_at and
+   refuse call, and each of the 16 added FAIL calls, returns NULL or 0
+   (`nul(FAIL(..))`, or `return FAIL(..)` in an int function). The fold
+   boundary helpers test `bv` and `fv` for NULL. quote_value and core_bind
+   accept NULL.
+5. IR: `git diff 9136426..HEAD --stat -- test/circuit
+   contracts/src/verifiers` gives 3 added rows (expect, refuse and
+   same-ir, each for quotSq) and no verifier change.
+
+Scope: the review covered the checklist of the s6 plan (items 1 to 5). It
+is not a line-by-line audit of each rule. The 16 KILLED mutants and the
+guest rows cover the rules.
+
+#### Gates
+
+Gates in s6-b on HEAD c7090b1 with the s6 doc changes. s6 changes no code
+or test file, and test/gate.sh and the Makefile read no doc file. The
+counts are equal to the s5 counts. `make -B check` exit 0 (native circuit
+regressions 9, native path regressions 42, native face regressions 35,
+native HIT regressions 27, examples 28, parse refusals 17, check refusals
+100, evals 162, json 23 builds, build refusals 7, circuits 4, same-ir 2,
+circuit refusals 11, satcheck refusals 6, each with 0 failed; gate 0
+failures; regressions 6 of 6; printer 2). `make check-clang` exit 0.
+`forge build --root contracts --sizes` exit 0. `make e2e` exit 0 (33 Forge
+tests passed, the 4 deploy simulations ran). IR check: `git diff
+--exit-code -- test/circuit contracts/src/verifiers` exit 0.
+contracts/test/fixtures is restored from HEAD, and `forge test --root
+contracts` passes again (33 passed, 0 failed).
+
+#### Open items
+
+- O4 (M1, SPEC.md 9 O12 (f)): no probed circuit gives CIRCUIT_LOWER from
+  a HIT term (s5). Milestone: none.
+- O8 (M3, SPEC.md 9, narrowed in M4): `hcomp` stays stuck at a Sum,
+  Option, List or plain family when `u0` and the branches do not have the
+  same constructor, and at a stuck type. `transp` stays stuck at a neutral
+  value of a Sum, Option or List. Milestone: the fold and unfold families
+  in M6.
+- O12 (M4, SPEC.md 9): (a) `fold B cases x` with a neutral scrutinee; (b)
+  `transp` at a family with a neutral argument; (c) `transp` of a path
+  constructor whose fieldwise transport does not agree with transport on
+  a boundary face (no general boundary correction terms, s2); (d)
+  `transp` and `hcomp` at a constructor with a dependent field or a Path
+  field stay stuck with no diagnostic (s4); (e) no dependent eliminator
+  (USER ruling 2026-10-15: `fold`, non-dependent, no `elim` in M4); (f)
+  O4. Milestone: (e) is a USER question for the M5 kickoff.
+- The s5 gap: specImpl into an Impl other than OTPSpec needs the
+  retraction `(x : OTPSpec) -> Path OTPSpec (g (f x)) x` for a variable
+  `x`, thus a dependent eliminator (O12 (e)).
+- s4: quotRecOne abstracts over `isSet Nat`, because Nat has no isSet
+  proof. hit-case-square.lang is the only row that tests the inner ends
+  of a square.
+- s5 (c): no quotSq.circuit.json or quotSq.witness.json goldens, because
+  the gate keys the goldens by the circuit name.
+- s5 (d): an empty system `[ ]` in a term gives PARSE_EXPECT.
+- Closed in M4: O5 (D9, s2). The s1 items: the stuck-transp emit row (s2
+  replaced it with test/emit/transp-hcomp.lang) and the `Path Self a b`
+  fields (s4). The s2 item on dependent field types (s4). The s3 item on
+  k = 2 tests (s4).

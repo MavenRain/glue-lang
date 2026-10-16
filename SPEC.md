@@ -214,7 +214,8 @@ def sysEnds : (i : I) -> Partial (~i \/ i) Nat
 ```
 
 **JSON.** A definition of a Path type is a proof, not an instance. A Path
-component of a data value writes `null`: the ends are in the type (O5). An
+component of a data value writes `null` when the path is constant: the ends
+are in the type. A path with content gives JSON_VALUE (section 2.6, O5). An
 instance whose type is `Partial phi A` is refused (O6).
 
 **Refusal codes (M2).**
@@ -286,8 +287,8 @@ else the value is stuck. `A[r]` is the line at `r`.
 | `transp` along a Glue line, `hcomp` in a Glue type | the Cubical Agda rules (`transpGlue`, `hcompGlue`; CCHM 6.2) with `ghcomp` and `gcomp` (D8) |
 | `hcomp (Type n) phi E A` | `Glue A [ phi -> pack (E i1) (lineToEquiv (<i> E (~i))) ]` |
 
-Other formers (Family, the fold and unfold families) give a stuck value
-(O8).
+The fold and unfold families give a stuck value (O8). Section 2.6 gives
+the rules at a family (M4).
 
 **No regularity (D3).** `transp` along a line that does not use `i` is not
 the identity in general. Only the closed-type rule gives the argument. For
@@ -375,6 +376,141 @@ Existing codes with new causes: PATH_TYPE and SORT_FIBRANT (a bad line of
 term that is not an equivalence, or `A` and `B` in two universes),
 PATH_BOUNDARY (`uaBeta`), JSON_VALUE (a stuck Kan value or a Glue
 instance).
+
+### 2.6 Higher inductive types (M4)
+
+M4 adds higher inductive types (HITs). There is no new token. The plan and
+the design calls are in docs/M4-PLAN.md.
+
+A HIT is a `family` with one or more path constructors. A path constructor
+has fields, then one or more interval binders, then a boundary system. A
+constructor with no binder is a point constructor. A family with only point
+constructors is a plain family, and its rules do not change. A HIT
+declaration is in domain/domain.lang only (rule R1): a program that declares
+a family gets REFUSE_DATA.
+
+```
+family Circle := base | loop <i> [ ~i -> base, i -> base ]
+family Trunc (A : Type 0) := inc (held : A) | squash (lo : Trunc A) (hi : Trunc A) <i> [ ~i -> lo, i -> hi ]
+```
+
+The grammar change is in `ctor`: `ctor := NAME group* ('<' NAME+ '>'
+system)?`, where `system` is the system form of section 2.4.
+
+| Form | Meaning |
+|---|---|
+| `c params fields` (a path constructor) | A path over the binders of `c`. `c params fields @ r` applies it. |
+| `<i j>` binders | A higher constructor. `squashc` of Quot has two binders. |
+| `hcomp D phi u u0` at a HIT | A canonical value. |
+| `fold B cases x` at a HIT | The eliminator. `B` is explicit. One case for each constructor in declaration order, then the scrutinee. |
+| `isProp A`, `isSet A` | Derived operations (below). |
+
+**Typing rules.**
+
+| Rule | Premises | Conclusion |
+|---|---|---|
+| path constructor (declaration) | The fields check as the family rule. A field of type Self or `Path Self a b` is recursive. A field type sees the parameters and the earlier fields of the same constructor. The binders are interval variables. The system checks against `Partial psi Self`, where Self is the family at its parameters. Each body can use the parameters, the fields, the binders and the constructors declared before it. Two branches agree where they meet (FACE_AGREE). The join of the faces covers the cube boundary `~i1 \/ i1 \/ ... \/ ~ik \/ ik` (HIT_BOUNDARY) | `c` is a path constructor with k binders |
+| path constructor (use) | `c params fields`, each field checked as the family rule | `c params fields : PathP (<i1> ... PathP (<ik> Self) ...)`. The ends are the boundary bodies at each face. Thus `loop : Path Circle base base` |
+| hcomp at a HIT | as section 2.5 (HCOMP_BASE) | `hcomp D phi u u0 : D` |
+| fold at a HIT | `x : D params`; `B : Type n`; one case for each constructor (HIT_CASES). A point case is a function of the fields; a recursive field gets the result in `B`. A path case with k binders is a function of the fields to a PathP over the binders in `B`; a field of type `Path Self a b` gets a Path in `B` between the results. On each boundary branch `phi -> t`, the case at the binders converts to `fold B cases t` (HIT_CASE) | `fold B cases x : B` |
+
+The checker copies `B` into the core term (OP_FOLD_HIT), because the
+`hcomp` rule of the eliminator needs it. `fold` at a HIT is the `rec` of
+design/DESIGN.md. `rec` is a keyword (`def rec`), thus the eliminator keeps
+the name `fold`. M4 has no dependent eliminator (O12).
+
+**Evaluator rules.** The order is: (1) the face `i1` rules; (2) the rule of
+the head former or of the head value; (3) else the value is stuck. `pc` is
+a path constructor.
+
+| Redex | Result |
+|---|---|
+| `pc params fields @ r1 .. @ rk`, a boundary face is `i1` at `r1 .. rk` | the body of that branch (the boundary rule, as reduce_sys of section 2.4) |
+| `pc params fields @ r1 .. @ rk`, no face is `i1` | a canonical value (OP_PCON) |
+| `transp (<i> D) phi x`, `D` a family with no parameters | `x` |
+| `transp (<i> D (P i)) phi (c fields)` | `c` with `transp` on each field along its field type at `P i`. The interval arguments do not change. A path constructor reduces only when this result agrees with transport on each boundary face; else the value is stuck |
+| `transp (<i> D (P i)) phi (hcomp (D (P i0)) psi u u0)` | `hcomp (D (P i1)) psi (fun j => [ psi -> transp (<i> D (P i)) phi (u j) ]) (transp (<i> D (P i)) phi u0)` |
+| `transp` at a family with a neutral argument | stuck |
+| `hcomp D i1 u u0` at a HIT | `u i1` |
+| `hcomp D phi u u0` at a HIT, `phi` is not `i1` | a canonical value. kan_hcomp never reduces it |
+| `hcomp` at a plain family | the data rule of section 2.5: the same constructor in `u0` and in each branch gives that constructor with `hcomp` on each field; else stuck |
+| `fold B cases (c fields)`, a point constructor | the case of `c` applied to the fields; each recursive field is replaced by `fold B cases field` |
+| `fold B cases (pc fields @ r1 .. @ rk)` | the case of `pc` applied to the fields (a field `p : Path Self a b` gives `<j> fold B cases (p @ j)`), then `@ r1 .. @ rk` |
+| `fold B cases (hcomp D phi u u0)` | `hcomp B phi (fun i => [ phi -> fold B cases (u i) ]) (fold B cases u0)` |
+| `fold B cases x`, `x` neutral | stuck |
+
+There is no rule `hcomp A i0 u u0 = u0` for a general `A` (D8 of M3). Thus
+`hcomp Circle i0 (fun i => [ i0 -> base ]) base` does not reduce to `base`.
+The boundary rule and the `hcomp` rule of the eliminator agree: on a
+boundary face, HIT_CASE makes the path case equal to `fold` of the body.
+
+**Conversion.** Two OP_PCON values convert when they have the same
+constructor and their arguments convert (the fields pairwise, the interval
+arguments by normal form). An `hcomp` value at a HIT and a HIT `fold`
+compare argument by argument. No rule makes two values equal because of
+their type. HIT_CASE reads the boundary of the constructor (a declaration),
+not the type of a value. Two variables `x y : Circle` do not convert.
+
+**Printer.** A path constructor value prints with its arguments (eval row
+`otp lawAt => fun j => encrypt @ j`). An `hcomp` value prints as `hcomp D
+phi u u0` (the form of section 2.5). A HIT fold prints as `fold B cases x`.
+
+**JSON.** A Path component of a data value writes `null` only when the path
+is constant: its body at a fresh interval variable does not use the
+variable. A path with content gives JSON_VALUE ("a path with content"). An
+`hcomp` value or a path constructor value in an instance gives JSON_VALUE. A
+point constructor of a HIT writes the family constructor form. This rule
+closes O5.
+
+**Derived operations.** Each is a checker rule that writes a core term (D2
+of M3).
+
+| Operation | Core term |
+|---|---|
+| `isProp A` | `(x : A) -> (y : A) -> Path A x y` |
+| `isSet A` | `(x : A) -> (y : A) -> (p : Path A x y) -> (q : Path A x y) -> Path (Path A x y) p q` |
+
+The laws are guest definitions: `truncIsProp A : isProp (Trunc A)` is
+`fun x => fun y => squash x y` (examples/trunc.lang), and `quotIsSet A R :
+isSet (Quot A R)` is `fun x => fun y => fun p => fun q => squashc x y p q`
+(examples/quot.lang).
+
+Laws that hold by computation (each is a `refl` in an example):
+`loop @ i0 = base` and `loop @ i1 = base`; `transp (<_> Circle) i0 x = x`
+for a variable `x`; `transp (<i> Trunc (L i)) i0 (inc a) = inc (transp (<i>
+L i) i0 a)`; `hcomp Circle i1 u u0 = u i1`; `fold B b l base = b`; `<i> fold
+B b l (loop @ i) = l`; `fold B f e s (cls a) = f a`; `interp (encrypt @ i) =
+enc @ i` (examples/otp.lang).
+
+**Names.** The new core names are `isProp` and `isSet`. A definition with
+one of these names gives REFUSE_NAME. The smoke families in
+domain/domain.lang are Circle (`base`, `loop`), Susp (`north`, `south`,
+`merid`), Trunc (`inc`, `squash`), Quot (`cls`, `eqc`, `squashc`), OTPSpec
+(`message`, `cipher`, `encrypt`) and GQuot (`gcls`, `geqc`).
+
+**Circuits.** M4 adds no circuit code and does not change the IR. A
+constraint side must normalize to a Field normal form (section 7.1), so a
+stuck HIT term in a constraint gives CIRCUIT_LOWER (O4). examples/quotSq.glue
+folds out of the graph quotient GQuot and gives the IR of `square`
+(test/circuit/same-ir.txt).
+
+**Refusal codes (M4).**
+
+| Code | Exit | The compiler refuses |
+|---|---|---|
+| HIT_BOUNDARY | 1 | A path constructor whose boundary system does not cover the cube boundary of its binders. The message gives the constructor, the face that is not covered and the binder |
+| HIT_CASE | 1 | `fold` at a HIT where a path case has the wrong type or does not convert to `fold B cases t` on a boundary branch `phi -> t`. The message gives the constructor and the expected type |
+| HIT_CASES | 1 | `fold` at a HIT with the wrong number of cases, or a point case whose type does not match the constructor. The message gives the required number of cases, or the constructor and the expected type |
+
+Existing codes with new causes: PARSE_EXPECT (a boundary system with no
+binder; a binder with no system), FACE_AGREE (the boundary branches of a
+path constructor), TYPE_MISMATCH (a boundary body that is not of the family
+type; a field of a HIT), DOMAIN_FAMILY (a non-recursive field that depends
+on a recursive field; a recursive field that is not Self or a Path in
+Self), REFUSE_DATA (a family
+in a program; rule R1), REFUSE_NAME (`isProp`, `isSet`), HCOMP_BASE (an
+`hcomp` at a HIT whose base does not match), JSON_VALUE (a path with
+content, an `hcomp` value or a path constructor value in an instance).
 
 ## 3. Type formers
 
@@ -501,10 +637,11 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   (x * x)` gives `x * x`. With hfT = `hcomp (Type 0) i0 (fun i => [ i0 ->
   Field ]) Field`, `unglue (transp (<_> hfT) i0 (glue [ i0 -> x ] x))` and
   `unglue` of an `hcomp` in hfT give `x`. O4 stays open.
-- O5. The JSON target writes a Path component of a data value as `null`,
-  because the two ends are in the type (section 2.4). M4 adds loops in
-  HITs: a path from a point to itself can then carry content. M4 must look
-  at this rule again.
+- O5. Closed in M4. RULED 2026-10-15 (USER): D9 of docs/M4-PLAN.md. The
+  JSON target writes a Path component of a data value as `null` only when
+  the path is constant (its body at a fresh interval variable does not use
+  the variable). A path with content, such as a loop, gives JSON_VALUE
+  (section 2.6; test/emit/path-content.lang).
 - O6. Decided in M2 (slice s4). An instance whose type is `Partial phi A`
   is refused with SORT_FIBRANT (src/json.c instance_json). The checker
   refuses a type in `SSet` under a type former, so only the type of the
@@ -515,16 +652,30 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   of type `Partial phi A` has type `A`, so the ordinary elimination rules
   for `A` apply there (D4 of docs/M3-PLAN.md, slice s1). `transp` and
   `hcomp` use it (section 2.5).
-- O8. Kan values that stay stuck (docs/M3-PLAN.md 3.4). Family, the fold
-  and unfold families have no Kan rule. `transp` also stays stuck at a
-  domain family (`transp (<_> Color) i0 red`, test/emit/stuck-transp.lang)
-  and at a neutral value of a Sum, Option or List. `hcomp` also stays stuck
-  at a stuck type, and at a Sum, Option or List when `u0` and the branches
-  do not have the same constructor. In an instance, a stuck Kan value or a
-  value of a Glue type gives JSON_VALUE (src/json.c;
-  test/emit/stuck-transp.lang and glue-instance.lang). M4 adds `hcomp`
-  values (docs/PLAN.md, M4 row). The fold and unfold families over the
-  cubical core are M6 (docs/PLAN.md, M6 row).
+- O8. Kan values that stay stuck (docs/M3-PLAN.md 3.4). Narrowed in M4:
+  the families have Kan rules (section 2.6), thus `transp (<_> Color) i0
+  red` gives `red`. RULED 2026-10-15 (USER): `hcomp` is a canonical value
+  at a HIT only. Thus `hcomp` stays stuck at a Sum, Option, List or plain
+  family when `u0` and the branches do not have the same constructor, and
+  at a stuck type. `transp` stays stuck at a neutral value of a Sum, Option
+  or List. The fold and unfold families have no Kan rule; over the cubical
+  core they are M6 (docs/PLAN.md, M6 row). In an instance, a stuck Kan
+  value, a canonical `hcomp` value or a value of a Glue type gives
+  JSON_VALUE (src/json.c; test/emit/transp-hcomp.lang, hcomp-instance.lang
+  and glue-instance.lang). The stuck values at a HIT are O12.
+- O12. New in M4. The values that stay stuck in M4, and the gaps of M4:
+  (a) `fold B cases x` with a neutral scrutinee `x`; (b) `transp` at a
+  family with a neutral argument; (c) `transp` of a path constructor whose
+  fieldwise transport does not agree with transport on a boundary face
+  (there are no general boundary correction terms); (d) `transp` and
+  `hcomp` at a constructor with a dependent field or a Path field (stuck,
+  no diagnostic; docs/STATUS.md M4 s4); (e) no dependent eliminator. RULED
+  2026-10-15 (USER): `fold`, non-dependent, no `elim` in M4. Thus
+  `transport (ua specImpl) message = interp message` holds only for the
+  identity iso at OTPSpec (examples/otp.lang). An iso into Field or Nat
+  needs the retraction `(x : OTPSpec) -> Path OTPSpec (g (f x)) x` for a
+  variable `x`. (f) O4 stays open: no probed circuit gives CIRCUIT_LOWER
+  from a HIT term (docs/STATUS.md M4 s5).
 
 ## 10. Milestones
 
