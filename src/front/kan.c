@@ -829,8 +829,9 @@ static const Value *transp_sys(Machine *m, const Value *line, const Value *phi, 
 /* M4 s2 (D4): transp (<i> T[DOM(L, i, p) / p]) phi x for field K of the
    constructor C of the family F. The field type T is in the scope of the
    parameters (core.h FieldInfo), so each parameter p is read from L at i
-   (OP_KAN_DOM with INST = p). A recursive field has no parameters (check.c
-   check_field), so its line is L. Environment [L, phi, x] (x is index 0);
+   (OP_KAN_DOM with INST = p). A recursive field is the family at its own
+   parameters (check.c check_field), so its line is L. Environment [L, phi,
+   x] (x is index 0);
    under <i>: i 0, x 1, phi 2, L 3. */
 static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *x) {
   const Core *t = c->fields[k].type;
@@ -943,6 +944,53 @@ static const Value *transp_hcomp(Machine *m, const Value *line, const Value *phi
   rule = hcomp4(m, var(m, 3u), var(m, 2u), tube(m, op(m, OP_TRANSP, 3u, var(m, 6u), var(m, 5u), app(m, var(m, 2u), var(m, 0)))),
                 op(m, OP_TRANSP, 3u, var(m, 5u), var(m, 4u), var(m, 0)));
   return run(m, rule, vals, 6u);
+}
+
+/* M4 s3 (D11): fold B cases (hcomp A phi u u0) at a HIT
+   = hcomp B phi (fun i => fold B cases (u i)) (fold B cases u0).
+   Environment [B, case_1 .. case_n, phi, u, u0] (u0 is index 0): u 1,
+   phi 2, case_n 3 .. case_1 n + 2, B n + 3; under fun i each index is one
+   more. The tube value u i is a system of the faces of phi, and the fold
+   maps it branchwise (eval.c fold_hit_sys), as transp_hcomp does with the
+   transport. The result runs through the evaluator, so hcomp at B applies
+   its own rules and the fold under the binder reduces at a constructor. */
+const Value *kan_fold_hcomp(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *h) {
+  const Value **vals = arena_alloc(m->arena, ((size_t)ncases + 4u) * sizeof *vals);
+  const Core **in = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *in);
+  const Core **out = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *out);
+  const Core *rule;
+  const Core *body;
+  int empty;
+  uint32_t i;
+  if (vals == NULL || in == NULL || out == NULL) {
+    diag_fail(m->diag, "OOM", m->def, "the arena limit is reached");
+    return NULL;
+  }
+  if (h->argc != 4u) {
+    diag_fail(m->diag, "INTERNAL", m->def, "the evaluator found an hcomp value without 4 arguments");
+    return NULL;
+  }
+  empty = h->args[1]->kind == VAL_IVL && ivl_is_const(h->args[1]->ivl, 0);
+  vals[0] = res;
+  for (i = 0; i < ncases; i++)
+    vals[i + 1u] = cases[i];
+  vals[ncases + 1u] = h->args[1];
+  vals[ncases + 2u] = h->args[2];
+  vals[ncases + 3u] = h->args[3];
+  out[0] = var(m, ncases + 3u);
+  in[0] = var(m, ncases + 4u);
+  for (i = 0; i < ncases; i++) {
+    out[i + 1u] = var(m, ncases + 2u - i);
+    in[i + 1u] = var(m, ncases + 3u - i);
+  }
+  out[ncases + 1u] = var(m, 0);
+  /* On the empty face the tube has no branch to map. Its false branch
+     can use the folded base, which is a total value of the result type. */
+  in[ncases + 1u] = empty ? var(m, 1u) : app(m, var(m, 2u), var(m, 0));
+  body = opn(m, OP_FOLD_HIT, family, in, ncases + 2u);
+  rule = hcomp4(m, var(m, ncases + 3u), var(m, 2u), tube(m, empty ? sys1(m, zero(m), body) : body),
+                opn(m, OP_FOLD_HIT, family, out, ncases + 2u));
+  return run(m, rule, vals, ncases + 4u);
 }
 
 /* M4 s2: the rules at a family head with parameters. NULL without a

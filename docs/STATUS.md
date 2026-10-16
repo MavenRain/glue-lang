@@ -1332,3 +1332,119 @@ failed).
   halo2 back end: all three proofs, 33 Forge tests and three deploy
   simulations. Circuit IR and generated verifiers remain byte-identical.
 - No remaining CI weakening or verified correctness finding.
+
+### s3: the HIT eliminator and the truncation (2026-10-15)
+
+- Surface form: `fold B cases x` at a HIT (D6). `B` is always explicit.
+  One case follows for each constructor in declaration order, then the
+  scrutinee. The core op is OP_FOLD_HIT (src/front/core.h): inst is the
+  family, the args are the result type, the cases and the scrutinee. The
+  printer name is `fold` and the arity VARIES (src/front/eval.c).
+- Checker (src/front/check.c): rule_fold sends a HIT family to
+  fold_hit_rule. A wrong argument count gives HIT_CASES ("fold at the
+  higher inductive family Sneak needs the result type, then 3 cases, then
+  the scrutinee; found 4 arguments"). hit_case_type builds the type of
+  each case: a point case has the family case type with each recursive
+  field replaced by `B`; a path case with k binders has the type `(f' :
+  ...) -> PathP ...` whose ends are `fold B cases t` for the boundary
+  bodies `t` (hit_case_end folds each body with eval_fold_hit_boundary, so an end
+  reduces when the body is a constructor). HIT_CASE is the typed-ends
+  fact: recode_case re-codes an inner TYPE_MISMATCH, PATH_BOUNDARY or
+  TYPE_REFL of a case into HIT_CASES (a point case) or HIT_CASE (a path
+  case) with the constructor and the expected type; another inner code
+  stays. hit-case-loop.lang is a PATH_BOUNDARY re-coded, hit-case-ends.lang
+  a TYPE_MISMATCH re-coded. `isProp` is a core name next to `isContr`
+  (rule_is_prop, core_is_prop): `isProp A = (x : A) -> (y : A) -> Path A
+  x y`. check_field: s1 pinned a recursive field to a family with no
+  parameters, which refused `Trunc A`. self_applied relaxes it: the field
+  type must be the family applied to its own parameters in order
+  (parameter j is at level j in the field scope, index p - 1 - j; p = 0
+  is the s1 case). Every consumer of FieldInfo.recursive (fold_family,
+  fold_hit, field_line_transp, the hcomp field types, case_type, the
+  boundary scope) treats the field type as the result type or the family
+  line, which stays correct for this uniform occurrence. The
+  DOMAIN_FAMILY message is "the recursive field %s must have the type %s
+  applied to its own parameters".
+- Evaluator (src/front/eval.c): fold_hit on a point constructor applies
+  the case to the fields, a recursive field arrives folded; on a path
+  constructor it applies the case to the fields, then papp_value to each
+  interval argument (the boundary rule of the path constructor fires at
+  an end); on an OP_HCOMP value it calls kan_fold_hcomp; on an OP_SYS
+  value fold_hit_sys folds each branch body and keeps the faces (the
+  shape of sys_apply and transp_sys); on a neutral it gives a VAL_STUCK
+  OP_FOLD_HIT (stuck_fold_hit). eval_fold_hit_boundary exports the fold for the
+  checker.
+- Kan (src/front/kan.c, src/front/kan.h): kan_fold_hcomp is D11: `fold B
+  cases (hcomp D phi u u0) = hcomp B phi (fun i => fold B cases (u i))
+  (fold B cases u0)`, the shape of transp_hcomp. The tube at i is a
+  system value, so the fold under the binder goes through fold_hit_sys.
+  The design wrapped the tube body in a one-branch system; that wrapper
+  is removed, because it printed a nested system `[ k -> [ k -> l @ i ]
+  ]`. The rule prints `fun i => [ k -> l @ i ]`.
+- JSON (src/json.c): op_json lists OP_FOLD_HIT with the other stuck ops
+  (JSON_VALUE).
+- Domain (domain/domain.lang): `family Trunc (A : Type 0) := inc (held :
+  A) | squash (lo : Trunc A) (hi : Trunc A) <i> [ ~i -> lo, i -> hi ]`
+  (D10). A field name is a core name, so held, lo and hi were checked
+  free of every example, test, domain and src binder.
+- Examples: examples/circle.lang gets 7 defs under `-- M4 s3`: foldBase,
+  foldLoop and foldHcomp are refl rows (the point rule, the path rule and
+  the hcomp rule under the binders B b l k); deg0, degBase, toPath and
+  toPathBase give the eval rows `degBase => 0`, `deg0 => fun c => fold
+  Nat 0 (<i> 0) c`, `toPathBase => <i> 0`. examples/trunc.lang is new:
+  truncZero `inc Nat 0` (the JSON instance `{"tag":"inc","held":0}` in
+  test/json/trunc.json), truncIsProp `fun A => fun x => fun y => squash A
+  x y`, truncRec (a fold into B with a witness `pB : isProp B`, path case
+  `fun x => fun y => pB x y`) and truncRecInc (eval row `fun pB => 0`).
+  test/json/circle.json gains the instance degBase. The gate loops over
+  examples/*.lang, so trunc needs no list edit.
+- Check rows (test/check/expect.txt, 7 new): hit-case-loop.lang `fold Nat
+  0 (<i> 1) base` HIT_CASE; hit-case-ends.lang (a variable `p : Path Nat
+  1 1` as the loop case) HIT_CASE; hit-cases-missing.lang `fold Nat 0
+  base` HIT_CASES; hit-cases-point.lang `fold Nat flagYes refl base`
+  HIT_CASES; reserved-isProp.lang REFUSE_NAME; hit-vars-circle.lang and
+  hit-vars-trunc.lang (refl between two variables of a HIT) TYPE_REFL.
+- Native rows (test/hit-regressions.c): the connected-points row now
+  gives HIT_CASE (the Susp fold with the case `fun (a : Nat) => refl`);
+  the interior row is positive (`<i> fold Nat 0 refl (loop @ i)` is
+  refl); `fold 0 0 base` gives HIT_CASES; the Sneak boundary row gives
+  HIT_CASES by argument count (retitled "HIT boundaries refuse the plain
+  family fold shape"); new row "a recursive field is the family at its
+  own parameters" with `family Twist (A : Type 0) := tw (inner : Twist
+  Nat)` DOMAIN_FAMILY. HIT 12 -> 13.
+- Mutants (each with `make -B check`, source restored after, `git diff
+  --stat` identical before and after): 3 KILLED, 0 SURVIVED.
+
+| Mutant | First failing row |
+|---|---|
+| recode_case returns NULL without re-coding (check.c) | native `HIT fold cannot distinguish connected points: expected HIT_CASE, got TYPE_REFL` (make stops at the native suite); the mutant binary also gives hit-case-loop.lang PATH_BOUNDARY |
+| fold_hit at OP_PCON drops the papp_value loop (eval.c) | native `HIT fold computes on a path constructor interior: expected ok, got TYPE_REFL`; the mutant binary also fails examples/circle.lang at foldLoop (the start normalizes to `<i> l`, the end to `l`) |
+| kan_fold_hcomp base argument replaced by `var(m, 0)` (kan.c) | examples circle.lang TYPE_REFL at foldHcomp (the start normalizes to `hcomp B k (fun i => [ k -> l @ i ]) base`, the end to `hcomp B k (fun i => [ k -> l @ i ]) b`) |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  13; examples 25, parse refusals 17, check refusals 96, evals 156, json
+  21 builds, build refusals 7, circuits 3, same-ir 1, circuit refusals
+  10, satcheck refusals 6; node regressions 6, printer 2). `make
+  check-clang` exit 0. `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (the 3 deploy simulations ran). `git diff
+  --exit-code -- test/circuit contracts/src/verifiers` exit 0.
+  contracts/test/fixtures restored from HEAD, then `forge test --root
+  contracts` 33 passed, 0 failed.
+- Review fixes (2026-10-16):
+  - A neutral path case lost its endpoint metadata when fold_hit applied
+    it. hit_case_eta now expands checked path cases through their field
+    and interval binders, using core_papp to retain both checked ends.
+    Native face checks cover Circle and Trunc with neutral path cases.
+  - A constructor around a recursive boundary field folded that field
+    twice and produced INTERNAL. eval_fold_hit_boundary now interprets
+    constructor boundaries using the fields' existing images in B.
+    A Nested fold computes 1, and an incoherent path case gives HIT_CASE.
+  - An empty neutral hcomp tube normalized to a fold of Partial i0 D,
+    which is not a valid scrutinee type. kan_fold_hcomp now gives that
+    empty tube a false branch containing the folded base. The native
+    regression checks equality with hcomp B i0 (fun i => [ i0 -> b ]) b.
+  - Added seven native rows, including higher constructor computation
+    and a parameterized recursive plain family. Native HIT: 20 passed.
+- Open items:
+  - `Path Self a b` fields (check_field) and k = 2 tests: s4.
+  - Dependent `elim`: out of scope.

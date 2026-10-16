@@ -1,0 +1,5 @@
+-- M4 s3: the propositional truncation Trunc A (D10) and its eliminator into a proposition.
+def truncZero : Trunc Nat := inc Nat 0
+def truncIsProp : (A : Type 0) -> isProp (Trunc A) := fun A => fun x => fun y => squash A x y
+def truncRec : (A : Type 0) -> (B : Type 0) -> (pB : isProp B) -> (f : A -> B) -> Trunc A -> B := fun A => fun B => fun pB => fun f => fun t => fold B f (fun x => fun y => pB x y) t
+def truncRecInc : (pB : isProp Nat) -> Nat := fun pB => truncRec Nat Nat pB (fun n => n) (inc Nat 0)

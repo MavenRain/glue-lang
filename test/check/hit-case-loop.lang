@@ -1,0 +1,1 @@
+def bad : Nat := fold Nat 0 (<i> 1) base

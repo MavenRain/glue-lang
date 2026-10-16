@@ -1,0 +1,1 @@
+def bad : (x : Trunc Nat) -> (y : Trunc Nat) -> Path (Trunc Nat) x y := fun x => fun y => refl

@@ -129,7 +129,7 @@ ruling.
 | `c fields` (a path constructor) | A path over the binders (D5); `c fields @ r` applies it | s1 |
 | `<i j>` binders | A higher constructor (two or more binders; `squashc` is the smoke case) | s4 |
 | `hcomp D phi u u0` at a HIT | A canonical value (D3) | s2 |
-| `fold B? cases x` at a HIT | The eliminator (D6). The checker infers `B` from the first point case when it can; the s3 prompt fixes the surface form | s3 |
+| `fold B cases x` at a HIT | The eliminator (D6). `B` is always explicit: `fold B case1 .. casen x`, one case for each constructor in declaration order, the scrutinee last | s3 |
 | `isProp A`, `isSet A` | Derived (section 4) | s3, s4 |
 
 The grammar change is in `ctor`: `ctor := NAME group* ('<' NAME+ '>' system)?`

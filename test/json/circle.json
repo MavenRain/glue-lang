@@ -1,1 +1,1 @@
-{"glue-lang":1,"instances":[{"name":"pt","type":"Circle","value":"base"}]}
+{"glue-lang":1,"instances":[{"name":"pt","type":"Circle","value":"base"},{"name":"degBase","type":"Nat","value":0}]}

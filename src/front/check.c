@@ -87,6 +87,7 @@ typedef enum {
   RULE_J,
   RULE_J_REFL,
   RULE_IS_CONTR,
+  RULE_IS_PROP,
   RULE_FIBER,
   RULE_IS_EQUIV,
   RULE_EQUIV,
@@ -168,6 +169,7 @@ static const Builtin BUILTINS[] = {
   {"J", 3, RULE_J, OP_TRANSP, OP_NAT, 0},
   {"JRefl", 2, RULE_J_REFL, OP_TRANSP, OP_NAT, 0},
   {"isContr", 1, RULE_IS_CONTR, OP_PATHP, OP_NAT, 0},
+  {"isProp", 1, RULE_IS_PROP, OP_PATHP, OP_NAT, 0},
   {"fiber", 2, RULE_FIBER, OP_PATHP, OP_NAT, 0},
   {"isEquiv", 1, RULE_IS_EQUIV, OP_PATHP, OP_NAT, 0},
   {"Equiv", 2, RULE_EQUIV, OP_PATHP, OP_NAT, 0},
@@ -623,6 +625,8 @@ static const Core *rule_transport_refl(Call *k);
 static const Core *rule_j(Call *k);
 static const Core *rule_j_refl(Call *k);
 static const Core *rule_is_contr(Call *k);
+static const Core *rule_is_prop(Call *k);
+static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t field, uint32_t ivl, uint32_t level);
 static const Core *rule_fiber(Call *k);
 static const Core *rule_is_equiv(Call *k);
 static const Core *rule_equiv(Call *k);
@@ -818,10 +822,6 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   const Value *res = k->hint;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
   uint32_t j;
-  /* HIT cases must respect constructor boundaries. The plain family fold
-     cannot check those cases or evaluate a path constructor interior. */
-  if (f->path_ctors > 0u)
-    return nul(FAIL(c, "TYPE_MISMATCH", "fold over the higher inductive family %s needs boundary-respecting cases; HIT fold is not implemented", f->name));
   if (cores == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   if (res == NULL && m->ctors[f->first_ctor].field_count == 0u)
@@ -839,6 +839,140 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   return core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, f->ctor_count + 1u);
 }
 
+/* M4 s3 (D6): the end E of binder J of the type of the path case of CI,
+   as pcon_end builds the end of `ci fields`, with the fields as the
+   variables FVALS (levels L .. L+n-1) and the boundary body folded. A body
+   that is a recursive field variable folds to that variable (its binder
+   has the result type). Another body folds by the evaluator with the
+   cases checked so far; a case not yet checked (a constructor declared
+   later) is a variable above the context, so a body that needs it is
+   refused. Quoted at L + n + k - 1 under the binders after J. */
+static const Core *hit_case_end(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cases, const Value *const *fvals, uint32_t L, uint32_t j, int e) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[ci->family];
+  uint32_t n = ci->field_count;
+  uint32_t kb = ci->binder_count;
+  const Env *env = env_of(c, pvals, f->param_count);
+  const Value *bv;
+  const Value *fv;
+  const Core *core;
+  uint32_t bound = 0;
+  uint32_t i;
+  for (i = 0; i < n; i++)
+    env = env_push(m, env, fvals[i]);
+  for (i = 0; i < kb; i++)
+    env = env_push(m, env, i == j ? val_ivl_end(m, e) : val_ivl_var(m, L + n + (i < j ? i : i - 1u)));
+  bv = env == NULL ? NULL : pcon_boundary(m, ci, env);
+  if (bv == NULL)
+    return m->diag->set ? NULL : nul(FAIL(c, "INTERNAL", "the boundary of %s has no face i1 at the end %d of %s", ci->name, e, ci->binders[j]));
+  fv = eval_fold_hit_boundary(m, ci, res, cases, f->ctor_count, fvals, bv);
+  if (fv == NULL)
+    return NULL;
+  if (!value_bound(m, fv, &bound) || bound > L + n + kb - 1u)
+    return nul(FAIL(c, "INTERNAL", "the boundary of %s at the end %d of %s folds a case of a constructor declared after it; not supported", ci->name, e, ci->binders[j]));
+  core = quote_value(m, L + n + kb - 1u, fv);
+  for (i = kb; i > j + 1u; i--)
+    core = core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, core);
+  return core;
+}
+
+/* M4 s3 (D6): the type of the path case of CI at the result type RES.
+   The fields are Pi binders (a recursive field has the type RES); the
+   codomain is the path type over the k binders whose ends are the folded
+   boundary bodies (hit_case_end). CVALS: the values of the DONE cases
+   checked so far, in declaration order. */
+static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, const Value *res, const Value *const *cvals, uint32_t done) {
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[ci->family];
+  uint32_t n = ci->field_count;
+  uint32_t kb = ci->binder_count;
+  uint32_t L = c->level;
+  const Env *penv = env_of(c, pvals, f->param_count);
+  const Value **fvals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *fvals);
+  const Value **ftypes = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *ftypes);
+  const Value **cases = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cases);
+  const Core *type;
+  uint32_t i;
+  if (fvals == NULL || ftypes == NULL || cases == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < f->ctor_count; i++)
+    cases[i] = i < done ? cvals[i] : val_var(m, L + n + kb + i);
+  for (i = 0; i < n; i++) {
+    fvals[i] = val_var(m, L + i);
+    ftypes[i] = ci->fields[i].recursive ? res : eval_core(m, penv, ci->fields[i].type);
+    if (fvals[i] == NULL || ftypes[i] == NULL)
+      return NULL;
+  }
+  type = quote_value(m, L + n + kb, res);
+  for (i = kb; i > 0; i--) {
+    const Core *e0 = hit_case_end(c, ci, pvals, res, cases, fvals, L, i - 1u, 0);
+    const Core *e1 = hit_case_end(c, ci, pvals, res, cases, fvals, L, i - 1u, 1);
+    type = op3(c, OP_PATHP, 0, 3, core_bind(c, CORE_PLAM, ci->binders[i - 1u], NULL, type), e0, e1);
+  }
+  for (i = n; i > 0; i--)
+    type = core_bind(c, CORE_PI, ci->fields[i - 1u].name, quote_value(m, L + i - 1u, ftypes[i - 1u]), type);
+  return here(c, type);
+}
+
+/* M4 s3 (D-s3-3): the failed check of the case of CI. An inner type,
+   boundary or refl mismatch becomes HIT_CASES (a point case) or HIT_CASE
+   (a path case) with the constructor and the expected type; another inner
+   code stays. */
+static const Core *recode_case(Checker *c, const CtorInfo *ci, const Value *want) {
+  Diag *d = c->m->diag;
+  char inner[sizeof d->msg];
+  int mismatch = d->set && d->code != NULL
+    && (strcmp(d->code, "TYPE_MISMATCH") == 0 || strcmp(d->code, "PATH_BOUNDARY") == 0 || strcmp(d->code, "TYPE_REFL") == 0);
+  if (!mismatch || want == NULL)
+    return NULL;
+  memcpy(inner, d->msg, sizeof inner);
+  d->set = 0;
+  if (ci->binder_count == 0u)
+    return nul(FAIL(c, "HIT_CASES", "the case for %s must have the type %s: %s", ci->name, show(c, want), inner));
+  return nul(FAIL(c, "HIT_CASE", "the case for %s must match its boundary and have the type %s: %s", ci->name, show(c, want), inner));
+}
+
+/* M4 s3 (D6): fold B case... x at a HIT. B is explicit; one case for each
+   constructor in declaration order; a point case has the family case type,
+   a path case the type hit_case_type; the scrutinee is last. */
+static const Core *fold_hit_rule(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[st->inst];
+  const Env *env = env_of(c, st->args, st->argc);
+  uint64_t level = 0;
+  const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
+  const Value **cvals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cvals);
+  const Value *res;
+  uint32_t j;
+  if (cores == NULL || cvals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  if (k->argc != f->ctor_count + 2u)
+    return nul(FAIL(c, "HIT_CASES", "fold at the higher inductive family %s needs the result type, then %u cases, then the scrutinee; found %u arguments", f->name, f->ctor_count, k->argc));
+  cores[0] = check_type(c, k->args[0], &level);
+  res = cores[0] == NULL ? NULL : here(c, cores[0]);
+  if (res == NULL)
+    return NULL;
+  for (j = 0; j < f->ctor_count; j++) {
+    const CtorInfo *ci = &m->ctors[f->first_ctor + j];
+    const Value *want = ci->binder_count == 0u ? case_type(c, ci, env, res) : hit_case_type(c, ci, st->args, res, cvals, j);
+    cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
+    if (cores[1u + j] == NULL)
+      return recode_case(c, ci, want);
+    if (ci->binder_count > 0u)
+      cores[1u + j] = hit_case_eta(c, ci, cores[1u + j], want, 0u, 0u, c->level);
+    cvals[j] = eval_core(m, c->env, cores[1u + j]);
+    if (cvals[j] == NULL)
+      return NULL;
+  }
+  cores[f->ctor_count + 1u] = s;
+  k->used = f->ctor_count + 2u;
+  k->type = res;
+  return core_op(c, OP_FOLD_HIT, st->inst, 0, cores, f->ctor_count + 2u);
+}
+
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
@@ -849,6 +983,8 @@ static const Core *rule_fold(Call *k) {
   const Value *st = NULL;
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].path_ctors > 0u)
+    return fold_hit_rule(k, s, st);
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
     k->hint = k->outer;
     return fold_family(k, s, st);
@@ -1054,6 +1190,29 @@ static const Core *core_papp(Checker *c, uint32_t level, const Core *p, const Va
   if (p == NULL || r == NULL)
     return NULL;
   return papp_ends(c, p, r, quote_value(c->m, level, pt->args[1]), quote_value(c->m, level, pt->args[2]));
+}
+
+/* Keep the checked ends on every path application performed by fold_hit.
+   A neutral case is expanded through its fields and interval binders. */
+static const Core *hit_case_eta(Checker *c, const CtorInfo *ci, const Core *term, const Value *type, uint32_t field, uint32_t ivl, uint32_t level) {
+  const Core *body;
+  const Core *arg;
+  const Value *next;
+  if (term == NULL || type == NULL)
+    return NULL;
+  if (field == ci->field_count && ivl == ci->binder_count)
+    return term;
+  arg = core_index(c, CORE_VAR, 0u);
+  if (field < ci->field_count) {
+    body = core_app(c, core_shift(c, term, 1u, 0u), arg);
+    next = closure_apply(c->m, type, val_var(c->m, level));
+    body = hit_case_eta(c, ci, body, next, field + 1u, ivl, level + 1u);
+    return core_bind(c, CORE_LAM, ci->fields[field].name, quote_value(c->m, level, type->dom), body);
+  }
+  body = core_papp(c, level + 1u, core_shift(c, term, 1u, 0u), type, arg);
+  next = closure_apply(c->m, type->args[0], val_ivl_var(c->m, level));
+  body = hit_case_eta(c, ci, body, next, field, ivl + 1u, level + 1u);
+  return core_bind(c, CORE_PLAM, ci->binders[ivl], NULL, body);
 }
 
 /* The closure of KIND (VAL_LAM, VAL_PI or VAL_PLAM) with the body BODY, a
@@ -1333,6 +1492,8 @@ static const Core *rule(Call *k) {
     return rule_j_refl(k);
   case RULE_IS_CONTR:
     return rule_is_contr(k);
+  case RULE_IS_PROP:
+    return rule_is_prop(k);
   case RULE_FIBER:
     return rule_fiber(k);
   case RULE_IS_EQUIV:
@@ -2445,6 +2606,12 @@ static const Core *core_is_contr(Checker *c, const Core *a) {
   return core_bind(c, CORE_SIGMA, "c", a, core_bind(c, CORE_PI, "y", up(c, a), path));
 }
 
+/* M4 s3 (D10): isProp A = (x : A) -> (y : A) -> Path A x y */
+static const Core *core_is_prop(Checker *c, const Core *a) {
+  const Core *path = path_core(c, core_shift(c, a, 2u, 0), core_index(c, CORE_VAR, 1u), core_index(c, CORE_VAR, 0));
+  return core_bind(c, CORE_PI, "x", a, core_bind(c, CORE_PI, "y", up(c, a), path));
+}
+
 /* fiber f y = Sigma (x : A) (Path B (f x) y), f : A -> B, y : B */
 static const Core *core_fiber(Checker *c, const Core *a, const Core *b, const Core *f, const Core *y) {
   const Core *fx = core_app(c, up(c, f), core_index(c, CORE_VAR, 0));
@@ -2546,6 +2713,14 @@ static const Core *rule_is_contr(Call *k) {
   const Core *a = check_type(k->c, k->args[0], &level);
   k->type = val_univ(k->c->m, level);
   return core_is_contr(k->c, a);
+}
+
+/* M4 s3 (D10): isProp A : Type n, A : Type n. */
+static const Core *rule_is_prop(Call *k) {
+  uint64_t level = 0;
+  const Core *a = check_type(k->c, k->args[0], &level);
+  k->type = val_univ(k->c->m, level);
+  return core_is_prop(k->c, a);
 }
 
 /* f : A -> B of fiber and isEquiv. *A and *B get the core terms of A and
@@ -2854,7 +3029,22 @@ static int name_free(Checker *c, const char *name) {
   return why == NULL ? 1 : FAIL(c, "REFUSE_NAME", "%s is %s (rule R4)", name, why);
 }
 
-/* A recursive field must be the whole field type, in a family with no
+/* M4 s3: a recursive field is the family applied to its own parameters in
+   order (the uniform occurrence; p = 0 is the family itself). Then the fold,
+   transport and hcomp rules can treat the field type as RES or the family
+   line. A parameter j is at the level j in the field scope, so its de Bruijn
+   index is p - 1 - j. */
+static int self_applied(const Core *t, uint32_t fam, uint32_t p) {
+  uint32_t j;
+  if (t->kind != CORE_OP || t->op != OP_FAMILY || t->inst != fam || t->argc != p)
+    return 0;
+  for (j = 0; j < p; j++)
+    if (t->args[j]->kind != CORE_VAR || t->args[j]->index != p - 1u - j)
+      return 0;
+  return 1;
+}
+
+/* A recursive field must be the whole field type: the family at its own
    parameters. */
 static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *out) {
   uint64_t level = 0;
@@ -2868,12 +3058,12 @@ static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *
     return 0;
   if (level > c->m->families[fam].universe)
     c->m->families[fam].universe = level;
-  whole = t->kind == CORE_OP && t->op == OP_FAMILY && t->inst == fam && c->m->families[fam].param_count == 0u;
+  whole = self_applied(t, fam, c->m->families[fam].param_count);
   out->name = field->name;
   out->type = t;
   out->recursive = c->self_uses > 0u;
   if (out->recursive && !whole)
-    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s itself, in a family with no parameters", field->name, c->m->families[fam].name);
+    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s applied to its own parameters", field->name, c->m->families[fam].name);
   return 1;
 }
 

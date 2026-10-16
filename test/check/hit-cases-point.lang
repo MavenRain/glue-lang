@@ -1,0 +1,1 @@
+def bad : Nat := fold Nat flagYes refl base

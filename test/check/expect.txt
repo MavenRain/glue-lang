@@ -87,3 +87,10 @@ hit-body-nat.lang TYPE_MISMATCH
 hit-bad-ends.lang TYPE_MISMATCH
 hit-program.lang REFUSE_DATA
 hcomp-i0-circle.lang TYPE_REFL
+hit-case-loop.lang HIT_CASE
+hit-case-ends.lang HIT_CASE
+hit-cases-missing.lang HIT_CASES
+hit-cases-point.lang HIT_CASES
+reserved-isProp.lang REFUSE_NAME
+hit-vars-circle.lang TYPE_REFL
+hit-vars-trunc.lang TYPE_REFL

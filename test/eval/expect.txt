@@ -149,3 +149,7 @@ circle meridT => fun L => fun a => <j> merid (L i1) (transp (<i> L i) i0 a) @ j
 circle lotT => fun n => fun p => makeLot (n i1) p
 circle lotHcomp => fun q => fun k => makeLot 3 (hcomp Nat k (fun i => [ k -> q @ i ]) 1)
 circle colorHcompStuck => fun p => fun k => hcomp Color k (fun i => [ k -> p @ i ]) red
+circle degBase => 0
+circle deg0 => fun c => fold Nat 0 (<i> 0) c
+circle toPathBase => <i> 0
+trunc truncRecInc => fun pB => 0

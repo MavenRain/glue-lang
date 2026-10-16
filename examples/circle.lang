@@ -20,3 +20,11 @@ def northT : (L : I -> Type 0) -> Path (Susp (L i1)) (transp (<i> Susp (L i)) i0
 def lotT : (n : I -> Nat) -> (p : Nat) -> Lot (n i1) := fun n => fun p => transp (<i> Lot (n i)) i0 (makeLot (n i0) p)
 def lotHcomp : (q : Path Nat 1 1) -> (k : I) -> Lot 3 := fun q => fun k => hcomp (Lot 3) k (fun i => [ k -> makeLot 3 (q @ i) ]) (makeLot 3 1)
 def colorHcompStuck : (p : Path Color red green) -> (k : I) -> Color := fun p => fun k => hcomp Color k (fun i => [ k -> p @ i ]) red
+-- M4 s3: the eliminator (fold B cases x): the point rule, the path rule, the hcomp rule (D6, D11).
+def foldBase : (B : Type 0) -> (b : B) -> (l : Path B b b) -> Path B (fold B b l base) b := fun B => fun b => fun l => refl
+def foldLoop : (B : Type 0) -> (b : B) -> (l : Path B b b) -> Path (Path B b b) (<i> fold B b l (loop @ i)) l := fun B => fun b => fun l => refl
+def foldHcomp : (B : Type 0) -> (b : B) -> (l : Path B b b) -> (k : I) -> Path B (fold B b l (hcomp Circle k (fun i => [ k -> loop @ i ]) base)) (hcomp B k (fun i => [ k -> fold B b l (loop @ i) ]) b) := fun B => fun b => fun l => fun k => refl
+def deg0 : Circle -> Nat := fun c => fold Nat 0 refl c
+def degBase : Nat := deg0 base
+def toPath : Circle -> Path Nat 0 0 := fun c => fold (Path Nat 0 0) refl refl c
+def toPathBase : Path Nat 0 0 := toPath base

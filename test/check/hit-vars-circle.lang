@@ -1,0 +1,1 @@
+def bad : (x : Circle) -> (y : Circle) -> Path Circle x y := fun x => fun y => refl

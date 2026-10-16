@@ -20,7 +20,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
@@ -44,7 +44,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
@@ -712,6 +712,158 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   return acc;
 }
 
+static const Value *papp_value(Machine *m, const Value *p, const Value *r, const Env *env, const Core *const *ends);
+static const Value *fold_hit(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *x);
+
+/* Apply a constructor case to fields whose recursive entries are folded. */
+static const Value *eval_hit_case(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x, const Value *const *fields) {
+  const FamilyInfo *fam;
+  const CtorInfo *ctor;
+  const Value *acc;
+  uint32_t start;
+  uint32_t i;
+  if (x == NULL)
+    return NULL;
+  if (family >= m->family_count || !(val_is(x, OP_CTOR) || val_is(x, OP_PCON)) || x->inst >= m->ctor_count)
+    return internal(m, "a case applied to a value that is not a constructor");
+  fam = &m->families[family];
+  ctor = &m->ctors[x->inst];
+  start = fam->param_count + ctor->field_count;
+  if (ctor->family != family || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases
+      || x->argc != start + (val_is(x, OP_PCON) ? ctor->binder_count : 0u))
+    return internal(m, "a case applied to a constructor of another family");
+  acc = cases[x->inst - fam->first_ctor];
+  for (i = 0; i < ctor->field_count && acc != NULL; i++)
+    acc = apply_value(m, acc, fields[i]);
+  for (i = start; i < x->argc && acc != NULL; i++)
+    acc = papp_value(m, acc, x->args[i], NULL, NULL);
+  return acc;
+}
+
+/* M4 s3: a partial element of the family folds branchwise; the faces do
+   not change (the tube of kan_fold_hcomp at i is a system). */
+static const Value *fold_hit_sys(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *sys) {
+  const Value **out = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *out);
+  uint32_t k;
+  if (out == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u) {
+    out[k] = sys->args[k];
+    out[k + 1u] = fold_hit(m, family, res, cases, ncases, sys->args[k + 1u]);
+    if (out[k + 1u] == NULL)
+      return NULL;
+  }
+  return val_op(m, VAL_OP, OP_SYS, sys->inst, 0, out, sys->argc);
+}
+
+/* M4 s3: fold B case... x at a HIT, stuck on a neutral X. */
+static const Value *stuck_fold_hit(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *x) {
+  const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
+  uint32_t i;
+  if (args == NULL)
+    return oom(m);
+  args[0] = res;
+  for (i = 0; i < ncases; i++)
+    args[i + 1u] = cases[i];
+  args[ncases + 1u] = x;
+  return val_op(m, VAL_STUCK, OP_FOLD_HIT, family, 0, args, ncases + 2u);
+}
+
+/* M4 s3 (D6, D11): fold B case... x at a HIT. A point constructor: its
+   case at its fields (a recursive field arrives folded). A path
+   constructor at its interval arguments: its case at its fields, then at
+   each interval argument. An hcomp value: the Kan rule (kan_fold_hcomp). A
+   system: branchwise (fold_hit_sys). */
+static const Value *fold_hit(Machine *m, uint32_t family, const Value *res, const Value *const *cases, uint32_t ncases, const Value *x) {
+  const FamilyInfo *fam;
+  const CtorInfo *ctor;
+  const Value *acc;
+  const Value **images;
+  uint32_t fields;
+  uint32_t ivls;
+  uint32_t i;
+  if (x == NULL)
+    return NULL;
+  switch (scrut_of(x)) {
+  case SCRUT_TRAP:
+    return x;
+  case SCRUT_NEUTRAL:
+    return stuck_fold_hit(m, family, res, cases, ncases, x);
+  case SCRUT_VALUE:
+    break;
+  }
+  if (family >= m->family_count)
+    return internal(m, "a fold at an unknown family");
+  if (val_is(x, OP_HCOMP))
+    return kan_fold_hcomp(m, family, res, cases, ncases, x);
+  if (val_is(x, OP_SYS))
+    return fold_hit_sys(m, family, res, cases, ncases, x);
+  if (!(val_is(x, OP_CTOR) || val_is(x, OP_PCON)) || x->inst >= m->ctor_count)
+    return internal(m, "a fold of a value that is not in the family");
+  fam = &m->families[family];
+  ctor = &m->ctors[x->inst];
+  fields = fam->param_count + ctor->field_count;
+  ivls = val_is(x, OP_PCON) ? ctor->binder_count : 0u;
+  if (x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != fields + ivls)
+    return internal(m, "a fold of a constructor of another family");
+  if (!enter(m))
+    return NULL;
+  images = arena_alloc(m->arena, ((size_t)ctor->field_count + 1u) * sizeof *images);
+  if (images == NULL) {
+    m->depth--;
+    return oom(m);
+  }
+  for (i = 0; i < ctor->field_count; i++) {
+    const Value *field = x->args[fam->param_count + i];
+    images[i] = ctor->fields[i].recursive ? fold_hit(m, family, res, cases, ncases, field) : field;
+    if (images[i] == NULL) {
+      m->depth--;
+      return NULL;
+    }
+  }
+  acc = eval_hit_case(m, family, cases, ncases, x, images);
+  m->depth--;
+  return acc;
+}
+
+/* Boundary field variables already denote their images in RES. Preserve
+   them when folding a constructor around a recursive field. */
+const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const Value *res, const Value *const *cases, uint32_t ncases, const Value *const *fields, const Value *x) {
+  const CtorInfo *ctor;
+  const Value **images;
+  const Value *out;
+  uint32_t p = m->families[boundary->family].param_count;
+  uint32_t i;
+  if (x == NULL)
+    return NULL;
+  for (i = 0; i < boundary->field_count; i++)
+    if (boundary->fields[i].recursive && x->kind == VAL_VAR && fields[i]->kind == VAL_VAR && x->nat == fields[i]->nat)
+      return fields[i];
+  if (!(val_is(x, OP_CTOR) || val_is(x, OP_PCON)))
+    return fold_hit(m, boundary->family, res, cases, ncases, x);
+  if (x->inst >= m->ctor_count || m->ctors[x->inst].family != boundary->family)
+    return internal(m, "a boundary constructor of another family");
+  if (!enter(m))
+    return NULL;
+  ctor = &m->ctors[x->inst];
+  images = arena_alloc(m->arena, ((size_t)ctor->field_count + 1u) * sizeof *images);
+  if (images == NULL) {
+    m->depth--;
+    return oom(m);
+  }
+  for (i = 0; i < ctor->field_count; i++) {
+    images[i] = ctor->fields[i].recursive
+      ? eval_fold_hit_boundary(m, boundary, res, cases, ncases, fields, x->args[p + i]) : x->args[p + i];
+    if (images[i] == NULL) {
+      m->depth--;
+      return NULL;
+    }
+  }
+  out = eval_hit_case(m, boundary->family, cases, ncases, x, images);
+  m->depth--;
+  return out;
+}
+
 /* 1 when the step result R ends the list. *TAIL is then the end. */
 static int unfold_end(Machine *m, const Value *g, uint64_t left, const Value *seed, const Value *r, const Value **tail) {
   const Value *p = val_is(r, OP_SOME) ? r->args[0] : r;
@@ -935,6 +1087,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + 1u;
+  if (op == OP_FOLD_HIT && f != NULL)
+    return f->ctor_count + 2u;
   if (op == OP_SYS)
     return inst * 2u;
   return UINT32_MAX;
@@ -1164,6 +1318,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
     return fold_family(m, inst, a, n - 1u, a[n - 1u]);
+  case OP_FOLD_HIT:
+    return fold_hit(m, inst, a[0], a + 1, n - 2u, a[n - 1u]);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
