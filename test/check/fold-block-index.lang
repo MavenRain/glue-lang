@@ -1,0 +1,2 @@
+-- M5 s5 (D7): a case of the second family gets the index result rg first; the tbase case 0 does not bind it.
+def length : Ctx -> Nat := fun g => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) 0 (fun rg => fun ra => fun rb => 0) g

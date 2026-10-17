@@ -995,6 +995,111 @@ static const Core *fold_hit_rule(Call *k, const Core *s, const Value *st) {
   return core_op(c, OP_FOLD_HIT, st->inst, 0, cores, f->ctor_count + 2u);
 }
 
+/* M5 s5 (D7): the type of the case of CI in the block fold at MA and MB.
+   PVALS: the parameters of the first family FIRST. A case of the first
+   family: one Pi binder for each field (MA for a recursive field, MB rg
+   for a partner field `t : Ty g`, where rg is the binder of g), then MA.
+   A case of the second family: the index result rg : MA first, then the
+   fields (MB rg for a recursive field), then MB rg. The case does not
+   bind the index, so a field type that uses the index is refused. */
+static const Value *block_case_type(Checker *c, const CtorInfo *ci, const Value *const *pvals, uint32_t first, const Value *ma, const Value *mb) {
+  Machine *m = c->m;
+  uint32_t p = m->families[first].param_count;
+  uint32_t d = ci->family == first ? 0u : 1u;
+  uint32_t n = ci->field_count;
+  uint32_t L = c->level;
+  const Value *rg = d == 0u ? NULL : val_var(m, L);
+  const Value *res = d == 0u ? ma : apply_value(m, mb, rg);
+  const Env *fenv = env_of(c, pvals, p);
+  const Value **fvals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *fvals);
+  const Value **ftypes = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *ftypes);
+  unsigned char *used = arena_alloc(m->arena, (size_t)p + n + 2u);
+  const Core *type;
+  uint32_t i;
+  if (fvals == NULL || ftypes == NULL || used == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  if (res == NULL)
+    return NULL;
+  /* The index slot of the field scope of the second family: no field type
+     reads it (the check below). */
+  fenv = d == 0u ? fenv : env_push(m, fenv, rg);
+  for (i = 0; i < n; i++) {
+    const FieldInfo *fi = &ci->fields[i];
+    memset(used, 0, (size_t)p + n + 2u);
+    if (fi->recursive == 2 || (d == 1u && fi->recursive == 0 && (!core_free_levels(m, fi->type, p + 1u + i, p + 1u, used) || used[p]))) {
+      FAIL(c, "HIT_CASES", "the block fold cannot type the case for %s: the field %s uses the index of %s or is a path, and the case binds the index result only (D7)", ci->name, fi->name, m->families[ci->family].name);
+      return NULL;
+    }
+    fvals[i] = val_var(m, L + d + i);
+    ftypes[i] = fi->recursive == 1 ? res
+      : fi->recursive == 3 ? apply_value(m, mb, fvals[i - 1u - fi->type->args[p]->index])
+      : eval_core(m, fenv, fi->type);
+    if (fvals[i] == NULL || ftypes[i] == NULL)
+      return NULL;
+    fenv = env_push(m, fenv, fvals[i]);
+  }
+  type = quote_value(m, L + d + n, res);
+  for (i = n; i > 0; i--)
+    type = core_bind(c, CORE_PI, ci->fields[i - 1u].name, quote_value(m, L + d + i - 1u, ftypes[i - 1u]), type);
+  if (d == 1u)
+    type = core_bind(c, CORE_PI, "rg", quote_value(m, L, ma), type);
+  return here(c, type);
+}
+
+/* M5 s5 (D7): fold MA MB case... x at a family of a mutual block. MA :
+   Type n and MB : MA -> Type n are explicit; one case for each
+   constructor of the block in declaration order (block_case_type); the
+   scrutinee is last. The result is MA for x in the first family and
+   MB (fold MA MB case... g) for x : Ty g. */
+static const Core *fold_block_rule(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  uint32_t first = st->inst < m->families[st->inst].partner ? st->inst : m->families[st->inst].partner;
+  const FamilyInfo *fa = &m->families[first];
+  const FamilyInfo *fb = &m->families[fa->partner];
+  uint32_t ncases = fa->ctor_count + fb->ctor_count;
+  const Core **cores = arena_alloc(m->arena, ((size_t)ncases + 4u) * sizeof *cores);
+  const Core **at_index = arena_alloc(m->arena, ((size_t)ncases + 4u) * sizeof *at_index);
+  uint64_t level = 0;
+  const Value *ma;
+  const Value *mb;
+  const Value *fg;
+  uint32_t j;
+  if (cores == NULL || at_index == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  if (k->argc != ncases + 3u)
+    return nul(FAIL(c, "HIT_CASES", "fold at %s, a family of the mutual block of %s and %s, needs MA, then MB, then %u cases (one for each constructor of the block), then the scrutinee; found %u arguments", m->families[st->inst].name, fa->name, fb->name, ncases, k->argc));
+  cores[0] = check_type(c, k->args[0], &level);
+  ma = cores[0] == NULL ? NULL : here(c, cores[0]);
+  if (ma == NULL)
+    return NULL;
+  cores[1] = check(c, k->args[1], val_arrow(m, ma, val_univ(m, level)));
+  mb = cores[1] == NULL ? NULL : here(c, cores[1]);
+  if (mb == NULL)
+    return NULL;
+  for (j = 0; j < ncases; j++) {
+    const CtorInfo *ci = &m->ctors[fa->first_ctor + j];
+    const Value *want = block_case_type(c, ci, st->args, first, ma, mb);
+    cores[2u + j] = want == NULL ? NULL : check(c, k->args[2u + j], want);
+    if (cores[2u + j] == NULL)
+      return recode_case(c, ci, want, 0);
+  }
+  cores[ncases + 2u] = s;
+  k->used = ncases + 3u;
+  if (st->inst == first) {
+    k->type = ma;
+    return core_op(c, OP_FOLD_BLOCK, first, 0, cores, ncases + 3u);
+  }
+  for (j = 0; j < ncases + 2u; j++)
+    at_index[j] = cores[j];
+  at_index[ncases + 2u] = quote_value(m, c->level, st->args[fa->param_count]);
+  fg = eval_core(m, c->env, core_op(c, OP_FOLD_BLOCK, first, 0, at_index, ncases + 3u));
+  k->type = fg == NULL ? NULL : apply_value(m, mb, fg);
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_BLOCK, first, 0, cores, ncases + 3u);
+}
+
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
@@ -1006,7 +1111,7 @@ static const Core *rule_fold(Call *k) {
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].partner != fam)
-    return nul(FAIL(c, "HIT_CASES", "fold at %s, a family of a mutual block, needs the block fold (M5 s5, D7); it is not available", c->m->families[fam].name));
+    return fold_block_rule(k, s, st);
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].path_ctors > 0u)
     return fold_hit_rule(k, s, st);
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {

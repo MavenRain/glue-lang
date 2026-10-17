@@ -119,3 +119,5 @@ forward-family.lang REFUSE_REC
 fold-ctx.lang HIT_CASES
 elim-ctx.lang ELIM_CASES
 fold-ty.lang HIT_CASES
+fold-block-count.lang HIT_CASES
+fold-block-index.lang HIT_CASES

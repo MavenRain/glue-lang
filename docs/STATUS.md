@@ -2270,3 +2270,98 @@ summary comes at the close (s7).
   binary, including 33/33 Forge tests and all deployment simulations.
   `forge build --sizes` passes. The generated circuit IR and verifier
   source match the staged tree. No CI or test weakening was found.
+
+### s5: the fold of a mutual block (2026-10-16)
+
+- Start state:  HEAD 5a223ef (USER commit `M5 s4: add mutual family
+  blocks`). Baseline fix:  at 5a223ef the native HIT count is 39, not 32.
+  The USER s4 commit adds 7 rows to test/hit-regressions.c.
+- Decision (D7):  a NEW op OP_FOLD_BLOCK (src/front/core.h, after
+  OP_FOLD_HIT). Reason:  each OP_FOLD_HIT site takes the arity
+  ctor_count + 2 and reads args[0] as the one result type (eval.c
+  dispatch `n - 2u`, varied_arity, kan.c `ncases + 2u`,
+  eval_fold_hit_boundary, kan_fold_path_field). Two motives change the
+  arity test at each site, thus one op with two arities is a hidden mode.
+  A new op keeps each OP_FOLD_HIT site unchanged, and -Wswitch-enum finds
+  each switch that must handle the new op (json.c only).
+- Core form:  inst is the first family of the block. The args are MA, MB,
+  the cases (the first family, then the second family), then the
+  scrutinee. The arity is ctor_count A + ctor_count B + 3.
+- Code:
+  - src/front/eval.c fold_block:  a case of the first family gets the
+    fields. The recursive fields and the partner fields are folded. A
+    case of the second family gets `fold .. index` first (index =
+    x->args[A.param_count]), then the fields.
+  - src/front/check.c fold_block_rule and block_case_type:  MA and MB are
+    explicit. Every MB, including an unannotated lambda, checks against
+    `MA -> Type level(MA)` as required by D7. A wrong
+    case count gives HIT_CASES. A case that does not match its type gives
+    HIT_CASES (recode_case). A field of the second family with recursive
+    0 that uses the index, or a path field, gives HIT_CASES. The result
+    type is MA, or MB applied to the evaluated fold at the index.
+  - src/json.c:  the switch handles OP_FOLD_BLOCK.
+- Tests (guest language):
+  - examples/ctx.lang:  length, lengthC1, lengthC2, lengthExt, tyRefl,
+    tySize, tySizeT1, tySizeC1, lengthVia;  9 rows in test/eval/expect.txt.
+    In each other example MB rg is Nat, the same type as MA. lengthVia
+    has MB = `fun n => Path Nat n n` and its ext case uses `rt @ i0`, thus
+    a case uses a partner field at the type MB rg (mutant m2).
+  - test/check/fold-block-count.lang (the arrow case is missing, 6
+    arguments) and test/check/fold-block-index.lang (the tbase case is
+    `0`):  2 rows in test/check/expect.txt, both HIT_CASES.
+  - test/json/ctx.json:  the new golden adds 3 instances (tySizeT1 0,
+    tySizeC1 2, lengthVia 2). The s4 entries do not change (the first 392
+    bytes are equal).
+  - test/hit-regressions.c:  1 row `a block fold refuses a second family
+    field that uses the index` (the prelude block XCtx and XTy, the field
+    `xp : Path XCtx xi xi`). The fold gives HIT_CASES at block_case_type.
+- Probes (no rows):  a wrong value gives TYPE_REFL. A wrong MB result
+  gives TYPE_MISMATCH. Two folds with different cases do not convert
+  (TYPE_REFL;  no proof irrelevance). MB = Nat gives TYPE_MISMATCH
+  `Nat -> Type 0`. A fold with MA = Type 0 checks. The arrow law over
+  variables (tySize of `arrow g t t`) checks by refl. The binder names
+  `_x0 _x1` in the message for the ext case come from the printer
+  (eval.c print_binder), not from a defect. Index field probes:  3
+  preludes (`xp : Path XCtx xi xi`, `xp : (fun (u : XCtx) => Nat) xi`,
+  `xp : Path XCtx xi xz`). The domain checker accepts each prelude, and
+  the fold gives HIT_CASES with the D7 message for each.
+- Mutants (~/Documents/glue-lang-M5-s5-mutants/run.sh), 4 of 4 KILLED:
+  - m1 eval.c fold_block (a case of the second family gets the index,
+    not its fold):  KILLED (5 gate failures, for example `ctx tyRefl`
+    and `ctx tySizeT1`).
+  - m2 check.c block_case_type (a partner field gets the type MA):
+    KILLED (examples/ctx.lang:  PATH_EXPECTED at lengthVia).
+  - m3 check.c fold_block_rule (the constructors of Ty first):  KILLED
+    (19 gate failures;  HIT_CASES at length).
+  - m4 check.c block_case_type (no index test):  KILLED (the native HIT
+    row above gives ok, not HIT_CASES).
+  - The runner restores eval.c and check.c (cmp). The final
+    `make -B check` exits 0.
+- Gates:  `make -B check` exit 0, `make check-clang` exit 0,
+  `forge build` exit 0, `make e2e` exit 0 (33 passed), IR diff exit 0
+  (test/circuit and contracts/src/verifiers do not change), `forge test`
+  33 passed after the restore of contracts/test/fixtures. Counts against
+  the s4 baseline (5a223ef):  native circuit 9, path 42, face 35, HIT 40
+  (39 + 1);  examples 31, parse refusals 18, check refusals 123 (121 + 2),
+  evals 202 (193 + 9), json 26 builds, build refusals 8, circuits 4,
+  same-ir 2, circuit refusals 11, satcheck refusals 6;  node regressions
+  6, printer 2.
+- s4 (a) does not change.
+- Open items:
+  - The index field refusal now has a native row (closed in s5).
+  - The path field branch of block_case_type is defensive:  check_block
+    refuses a path constructor in a block (MUTUAL_BLOCK,
+    test/check/mutual-path.lang), so no program gets to this branch.
+
+- Staged review (2026-10-16):  one MEDIUM finding fixed. The inferred MB
+  branch discarded the universe of its body, accepting mismatched motive
+  universes that the annotated branch refused. All MB forms now check
+  against `MA -> Type level(MA)`, enforcing D7.
+  - Native C regressions:  the two mismatched inferred motives failed the
+    refusal assertions before the fix (44 checked, 2 failed). Both now
+    give TYPE_MISMATCH. Two matching higher-universe folds, with inferred
+    and annotated motives, still normalize to Nat (44 checked, 0 failed).
+  - `make check` passes, including check-clang and all guest regressions.
+    The remaining counts above are unchanged. `make e2e` passes with the
+    unchanged, current halo2 binary:  33 Forge tests and 4 deployment
+    simulations. Generated circuit IR and verifier source are unchanged.

@@ -190,3 +190,12 @@ ctx tyArrowTransp => fun P => arrow (ext cempty (tbase cempty)) (tbase (ext cemp
 ctx tyTranspRefl => <i> arrow cempty (tbase cempty) (tbase cempty)
 ctx ctxTransp => fun g => fun t => fun r => ext g t
 ctx ctxTranspRefl => <i> ext (ext cempty (tbase cempty)) (arrow (ext cempty (tbase cempty)) (tbase (ext cempty (tbase cempty))) (tbase (ext cempty (tbase cempty))))
+ctx length => fun g => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => 0) (fun rg => fun ra => fun rb => 0) g
+ctx lengthC1 => <i> 1
+ctx lengthC2 => <i> 2
+ctx lengthExt => fun g => fun t => <i> natAdd (fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => 0) (fun rg => fun ra => fun rb => 0) g) 1
+ctx tyRefl => <i> 1
+ctx tySize => fun g => fun t => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => rg) (fun rg => fun ra => fun rb => natAdd ra rb) t
+ctx tySizeT1 => 0
+ctx tySizeC1 => 2
+ctx lengthVia => 2

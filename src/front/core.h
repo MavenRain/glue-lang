@@ -55,6 +55,10 @@ typedef enum {
   OP_FOLD_HIT, /* M4 s3: fold B case... x at a HIT. inst: the family. args:
                   the result type, one case for each constructor, then the
                   scrutinee */
+  OP_FOLD_BLOCK, /* M5 s5 (D7): fold MA MB case... x at a mutual block. inst:
+                    the first family of the block. args: MA, MB, one case
+                    for each constructor of the block (the first family,
+                    then the second), then the scrutinee */
   OP_ELIM, /* M5 s2 (D3): elim P case... x. inst: the family. args: the
               motive P, one case for each constructor, then the scrutinee */
   OP_UNFOLD,
@@ -178,7 +182,7 @@ typedef struct {
   const Core *type; /* in the context of the family parameters, then the earlier fields of the constructor (M4 s4) */
   int recursive;    /* 1: the field type is the family itself. 2 (M4 s4): a Path in the family; ends[0], ends[1] are its ends in the context of type.
                        3 (M5 s4, D6 (3)): a partner field: the second family of the block at an earlier recursive field. It is also dependent, so
-                       transp and hcomp take the fill of a dependent field (kan.c); the checker refuses fold and elim at a block (s4) */
+                       transp and hcomp take the fill of a dependent field (kan.c); the block fold (s5, D7) folds it in the second family; elim at a block is refused (O13) */
   int dependent;    /* M4 s4: the type uses an earlier field */
   const Core *ends[2];
 } FieldInfo;

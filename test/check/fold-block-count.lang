@@ -1,0 +1,2 @@
+-- M5 s5 (D7): the block of Ctx and Ty has 4 constructors; the arrow case is missing (6 arguments, the block fold needs 7).
+def length : Ctx -> Nat := fun g => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => 0) g

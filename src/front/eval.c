@@ -20,7 +20,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_ELIM] = "elim", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
@@ -44,7 +44,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_ELIM] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
@@ -666,7 +666,7 @@ static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
   return acc;
 }
 
-static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x) {
+static const Value *stuck_fold(Machine *m, Op op, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x) {
   const Value **args = arena_alloc(m->arena, ((size_t)ncases + 1u) * sizeof *args);
   uint32_t i;
   if (args == NULL)
@@ -674,7 +674,7 @@ static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *
   for (i = 0; i < ncases; i++)
     args[i] = cases[i];
   args[ncases] = x;
-  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + 1u);
+  return val_op(m, VAL_STUCK, op, family, 0, args, ncases + 1u);
 }
 
 /* fold case... x over a domain family: the case of the constructor of X,
@@ -691,7 +691,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   case SCRUT_TRAP:
     return x;
   case SCRUT_NEUTRAL:
-    return stuck_fold(m, family, cases, ncases, x);
+    return stuck_fold(m, OP_FOLD_FAMILY, family, cases, ncases, x);
   case SCRUT_VALUE:
     break;
   }
@@ -707,6 +707,49 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[fam->param_count + i];
     acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, family, cases, ncases, field) : field);
+  }
+  m->depth--;
+  return acc;
+}
+
+/* M5 s5 (D7): fold MA MB case... x at the mutual block whose first family
+   is FAMILY. A: MA, MB, then one case for each constructor of the block
+   (the first family, then the second). A case of the first family gets
+   the fields; a recursive field and a partner field arrive folded. A case
+   of the second family gets the fold of the index first, then the fields
+   (a recursive field arrives folded). */
+static const Value *fold_block(Machine *m, uint32_t family, const Value *const *a, uint32_t ncases, const Value *x) {
+  const FamilyInfo *fam;
+  const FamilyInfo *own;
+  const CtorInfo *ctor;
+  const Value *acc;
+  const Value *field;
+  uint32_t i;
+  if (x == NULL)
+    return NULL;
+  switch (scrut_of(x)) {
+  case SCRUT_TRAP:
+    return x;
+  case SCRUT_NEUTRAL:
+    return stuck_fold(m, OP_FOLD_BLOCK, family, a, ncases + 2u, x);
+  case SCRUT_VALUE:
+    break;
+  }
+  fam = &m->families[family];
+  if (x->inst >= m->ctor_count || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases)
+    return internal(m, "a block fold of a constructor of another block");
+  ctor = &m->ctors[x->inst];
+  own = &m->families[ctor->family];
+  if ((ctor->family != family && ctor->family != fam->partner) || x->argc != own->param_count + ctor->field_count)
+    return internal(m, "a block fold of a constructor of another block");
+  if (!enter(m))
+    return NULL;
+  acc = a[2u + x->inst - fam->first_ctor];
+  if (ctor->family != family)
+    acc = apply_value(m, acc, fold_block(m, family, a, ncases, x->args[fam->param_count]));
+  for (i = 0; i < ctor->field_count && acc != NULL; i++) {
+    field = x->args[own->param_count + i];
+    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_block(m, family, a, ncases, field) : field);
   }
   m->depth--;
   return acc;
@@ -1180,6 +1223,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return f->ctor_count + 1u;
   if ((op == OP_FOLD_HIT || op == OP_ELIM) && f != NULL)
     return f->ctor_count + 2u;
+  if (op == OP_FOLD_BLOCK && f != NULL && f->partner < m->family_count)
+    return f->ctor_count + m->families[f->partner].ctor_count + 3u;
   if (op == OP_SYS)
     return inst * 2u;
   return UINT32_MAX;
@@ -1411,6 +1456,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return fold_family(m, inst, a, n - 1u, a[n - 1u]);
   case OP_FOLD_HIT:
     return fold_hit(m, OP_FOLD_HIT, inst, a[0], a + 1, n - 2u, a[n - 1u]);
+  case OP_FOLD_BLOCK:
+    return fold_block(m, inst, a, n - 3u, a[n - 1u]);
   case OP_ELIM:
     return fold_hit(m, OP_ELIM, inst, a[0], a + 1, n - 2u, a[n - 1u]);
   case OP_UNFOLD:

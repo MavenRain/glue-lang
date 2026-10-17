@@ -7,3 +7,15 @@ def tyArrowTransp : (P : Path Ctx cempty c1) -> Ty c1 := fun P => transp (<i> Ty
 def tyTranspRefl : Path (Ty cempty) (transp (<_> Ty cempty) i0 t1) t1 := refl
 def ctxTransp : (g : Ctx) -> (t : Ty g) -> (r : I) -> Ctx := fun g => fun t => fun r => transp (<_> Ctx) r (ext g t)
 def ctxTranspRefl : Path Ctx (transp (<_> Ctx) i0 c2) c2 := refl
+-- M5 s5 (D7): the block fold. MA = Nat for Ctx, MB = fun n => Nat (or a
+-- Path at the index result) for Ty; one case for each constructor of the
+-- block in declaration order (cempty, ext, tbase, arrow).
+def length : Ctx -> Nat := fun g => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => 0) (fun rg => fun ra => fun rb => 0) g
+def lengthC1 : Path Nat (length (ext cempty (tbase cempty))) 1 := refl
+def lengthC2 : Path Nat (length c2) 2 := refl
+def lengthExt : (g : Ctx) -> (t : Ty g) -> Path Nat (length (ext g t)) (natAdd (length g) 1) := fun g => fun t => refl
+def tyRefl : Path Nat 1 1 := fold Nat (fun n => Path Nat n n) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => refl) (fun rg => fun ra => fun rb => ra) (tbase c1)
+def tySize : (g : Ctx) -> Ty g -> Nat := fun g => fun t => fold Nat (fun n => Nat) 0 (fun rg => fun rt => natAdd rg 1) (fun rg => rg) (fun rg => fun ra => fun rb => natAdd ra rb) t
+def tySizeT1 : Nat := tySize cempty t1
+def tySizeC1 : Nat := tySize c1 (arrow c1 (tbase c1) (tbase c1))
+def lengthVia : Nat := fold Nat (fun n => Path Nat n n) 0 (fun rg => fun rt => natAdd (rt @ i0) 1) (fun rg => refl) (fun rg => fun ra => fun rb => ra) c2

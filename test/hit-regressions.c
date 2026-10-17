@@ -107,6 +107,27 @@ static const Case CASES[] = {
    "family ParamTy (A : Type 0) (a : A) (pi : ParamCtx A a) := pvalue (pv : A)\n",
    "def test : ParamCtx Nat 7 := pstep Nat 7 (pzero Nat 7) (pvalue Nat 7 (pzero Nat 7) 5)\n",
    NULL, "pstep Nat 7 (pzero Nat 7) (pvalue Nat 7 (pzero Nat 7) 5)"},
+  {"a block fold refuses a second family field that uses the index",
+   "mutual family XCtx := xz | xs (xg : XCtx) (xt : XTy xg)\n"
+   "family XTy (xi : XCtx) := xb (xp : Path XCtx xi xi)\n",
+   "def test : Nat := fold Nat (fun n => Nat) 0 (fun rg => fun rt => rg) (fun rg => fun xp => 0) xz\n",
+   "HIT_CASES", NULL},
+  {"a block fold refuses an inferred MB above the MA universe", "",
+   "def test : Type 0 := fold Nat (fun n => Type 0) 0 (fun rg rt => 0)"
+   " (fun rg => Nat) (fun rg ra rb => ra) (tbase cempty)\n",
+   "TYPE_MISMATCH", NULL},
+  {"a block fold refuses an inferred MB below the MA universe", "",
+   "def test : Nat := fold (Type 0) (fun n => Nat) Nat (fun rg rt => rg)"
+   " (fun rg => 0) (fun rg ra rb => ra) (tbase cempty)\n",
+   "TYPE_MISMATCH", NULL},
+  {"a block fold retains inferred motives in a matching higher universe", "",
+   "def test : Type 0 := fold (Type 0) (fun n => Type 0) Nat (fun rg rt => rt)"
+   " (fun rg => Nat) (fun rg ra rb => ra) (tbase cempty)\n",
+   NULL, "Nat"},
+  {"a block fold retains annotated motives in a matching higher universe", "",
+   "def test : Type 0 := fold (Type 0) (fun (n : Type 0) => Type 0) Nat (fun rg rt => rt)"
+   " (fun rg => Nat) (fun rg ra rb => ra) (tbase cempty)\n",
+   NULL, "Nat"},
   {"elim infers the universe of an unannotated motive", "",
    "def test : Type 0 := elim (fun y => Type 0) Nat (<i> Nat) base\n",
    NULL, "Nat"},
