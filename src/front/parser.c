@@ -162,6 +162,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_PUBLIC:
     case TOK_KW_PRIVATE:
     case TOK_KW_RANGE8:
+    case TOK_KW_MUTUAL:
     case TOK_BAR:
     case TOK_KW_DEF:
     case TOK_KW_REC:
@@ -379,6 +380,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_PUBLIC:
     case TOK_KW_PRIVATE:
     case TOK_KW_RANGE8:
+    case TOK_KW_MUTUAL:
     case TOK_BAR:
     case TOK_KW_DEF:
     case TOK_KW_REC:
@@ -629,16 +631,28 @@ static int parse_circuit(Parser *p, Decl *d) {
   return 1;
 }
 
+/* M5 s4 (D6): `mutual` family family. parse_source reads the second family;
+   a block of one family gets MUTUAL_BLOCK in the checker. */
+static int parse_mutual(Parser *p, Decl *d) {
+  bump(p);
+  if (!at(p, TOK_KW_FAMILY))
+    return fail_at(p, cur(p), "'family' (a mutual block holds two families)");
+  d->block = 1;
+  return parse_family(p, d);
+}
+
 static int parse_decl(Parser *p, Decl *d) {
   const Token *tok = cur(p);
   p->def = NULL;
   d->origin = p->origin;
   d->line = tok->line;
   d->col = tok->col;
+  d->block = 0;
   switch (tok->kind) {
     case TOK_KW_DEF: return parse_def(p, d);
     case TOK_KW_AXIOM: return parse_axiom(p, d);
     case TOK_KW_FAMILY: return parse_family(p, d);
+    case TOK_KW_MUTUAL: return parse_mutual(p, d);
     case TOK_KW_CIRCUIT: return parse_circuit(p, d);
     case TOK_EOF:
     case TOK_IDENT:
@@ -673,7 +687,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_COMMA:
       break;
   }
-  return fail_at(p, tok, "'def', 'axiom', 'family' or 'circuit'");
+  return fail_at(p, tok, "'def', 'axiom', 'family', 'mutual' or 'circuit'");
 }
 
 int parse_source(Arena *arena, const char *source, Origin origin, const TokenList *toks, DeclList *list, Diag *diag) {
@@ -685,9 +699,17 @@ int parse_source(Arena *arena, const char *source, Origin origin, const TokenLis
   size_t count = list->count;
   size_t cap = list->cap;
   while (!at(&p, TOK_EOF)) {
+    int block = at(&p, TOK_KW_MUTUAL);
     items = grow(&p, items, count, &cap, sizeof *items);
     if (items == NULL || !parse_decl(&p, &items[count])) return 0;
     count++;
+    /* M5 s4: the second family of a mutual block. */
+    if (block && at(&p, TOK_KW_FAMILY)) {
+      items = grow(&p, items, count, &cap, sizeof *items);
+      if (items == NULL || !parse_decl(&p, &items[count])) return 0;
+      items[count].block = 2;
+      count++;
+    }
   }
   list->items = items;
   list->count = count;

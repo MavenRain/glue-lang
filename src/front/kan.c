@@ -887,7 +887,8 @@ static const Value *field_fill(Machine *m, const FamilyInfo *f, const CtorInfo *
    x] (x is index 0);
    under <i>: i 0, x 1, phi 2, L 3. M5 s3 (D5): a field whose type uses an
    earlier field, or is a path in the family, is its fill (field_fill) at
-   i1: the M3 Sigma method. */
+   i1: the M3 Sigma method. M5 s4 (D6): a partner field (recursive 3) uses
+   its earlier recursive field, so it is dependent: its fill. */
 static const Value *field_line_transp(Machine *m, const FamilyInfo *f, const CtorInfo *c, uint32_t k, const Value *line, const Value *phi, const Value *const *fills, const Value *x) {
   const Core *t = c->fields[k].type;
   const Env *scope = NULL;

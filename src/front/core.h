@@ -176,7 +176,9 @@ struct Value {
 typedef struct {
   const char *name;
   const Core *type; /* in the context of the family parameters, then the earlier fields of the constructor (M4 s4) */
-  int recursive;    /* 1: the field type is the family itself. 2 (M4 s4): a Path in the family; ends[0], ends[1] are its ends in the context of type */
+  int recursive;    /* 1: the field type is the family itself. 2 (M4 s4): a Path in the family; ends[0], ends[1] are its ends in the context of type.
+                       3 (M5 s4, D6 (3)): a partner field: the second family of the block at an earlier recursive field. It is also dependent, so
+                       transp and hcomp take the fill of a dependent field (kan.c); the checker refuses fold and elim at a block (s4) */
   int dependent;    /* M4 s4: the type uses an earlier field */
   const Core *ends[2];
 } FieldInfo;
@@ -204,6 +206,7 @@ typedef struct {
   uint32_t ctor_count;
   uint64_t universe;   /* the largest universe of a constructor field */
   uint32_t path_ctors; /* M4 s1: > 0 means a HIT */
+  uint32_t partner;    /* M5 s4 (D6): the other family of a mutual block; the family itself if not in a block */
 } FamilyInfo;
 
 typedef struct {

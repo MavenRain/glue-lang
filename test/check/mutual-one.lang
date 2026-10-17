@@ -1,0 +1,2 @@
+mutual family Ma := maz
+def mx : Nat := 0

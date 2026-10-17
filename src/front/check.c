@@ -41,6 +41,8 @@ typedef struct {
   uint32_t eta_count;
   uint32_t self;      /* the family whose fields are checked, or NO_FAMILY */
   uint32_t self_uses; /* the uses of that family in the current field */
+  uint32_t partner;      /* M5 s4: the second family of a block while the first family's fields are checked, or NO_FAMILY */
+  uint32_t partner_uses; /* the uses of that family in the current field */
 } Checker;
 
 typedef enum {
@@ -1003,6 +1005,8 @@ static const Core *rule_fold(Call *k) {
   const Value *st = NULL;
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].partner != fam)
+    return nul(FAIL(c, "HIT_CASES", "fold at %s, a family of a mutual block, needs the block fold (M5 s5, D7); it is not available", c->m->families[fam].name));
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].path_ctors > 0u)
     return fold_hit_rule(k, s, st);
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
@@ -1341,6 +1345,8 @@ static const Core *rule_elim(Call *k) {
   if (!val_is(st, OP_FAMILY) || st->inst >= m->family_count)
     return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family; found a last argument of type %s", show(c, st)));
   f = &m->families[st->inst];
+  if (f->partner != st->inst)
+    return nul(FAIL(c, "ELIM_CASES", "elim at %s is refused: M5 has no elim at a family of a mutual block (O13)", f->name));
   if (k->argc != f->ctor_count + 2u)
     return nul(FAIL(c, "ELIM_CASES", "elim at the family %s needs the motive, then %u cases, then the scrutinee; found %u arguments", f->name, f->ctor_count, k->argc));
   cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
@@ -1859,6 +1865,7 @@ static int find_known(Checker *c, const char *name, Head *h) {
       h->kind = HEAD_FAMILY;
       h->index = i;
       c->self_uses += i == c->self;
+      c->partner_uses += i == c->partner;
       return 1;
     }
   }
@@ -3263,6 +3270,21 @@ static int self_applied(const Core *t, uint32_t fam, uint32_t p, uint32_t depth)
   return 1;
 }
 
+/* M5 s4 (D6 (3)): a partner field has the type of the second family
+   PARTNER of the block at the P parameters of the first family, then an
+   earlier recursive field g (`Ty g`). */
+static int partner_applied(const Core *t, uint32_t partner, uint32_t p, uint32_t depth, const FieldInfo *prior) {
+  const Core *g;
+  uint32_t j;
+  if (t->kind != CORE_OP || t->op != OP_FAMILY || t->inst != partner || t->argc != p + 1u)
+    return 0;
+  for (j = 0; j < p; j++)
+    if (t->args[j]->kind != CORE_VAR || t->args[j]->index != depth - 1u - j)
+      return 0;
+  g = t->args[p];
+  return g->kind == CORE_VAR && g->index < depth - p && prior[depth - 1u - g->index - p].recursive == 1;
+}
+
 /* A recursive field is the whole field type: the family at its own
    parameters (recursive 1), or (M4 s4, a HIT only) a Path in it whose ends
    are terms over the parameters and the EARLIER fields (recursive 2). The
@@ -3279,9 +3301,11 @@ static int check_field(Checker *c, uint32_t fam, const Field *field, uint32_t ea
   const Value *tv;
   int whole;
   int path;
+  int partner;
   if (!name_free(c, field->name))
     return 0;
   c->self_uses = 0;
+  c->partner_uses = 0;
   t = check_type(c, field->type, &level);
   tv = here(c, t);
   used = arena_alloc(m->arena, (size_t)depth + 1u);
@@ -3294,9 +3318,13 @@ static int check_field(Checker *c, uint32_t fam, const Field *field, uint32_t ea
   whole = self_applied(t, fam, p, depth);
   path = !whole && m->families[fam].path_ctors > 0u && t->kind == CORE_OP && t->op == OP_PATHP && t->argc == 3u
     && t->args[0]->kind == CORE_PLAM && self_applied(t->args[0]->b, fam, p, depth + 1u);
+  partner = c->partner != NO_FAMILY && partner_applied(t, c->partner, p, depth, prior);
+  if (c->partner_uses > 0u && !partner)
+    return FAIL(c, "DOMAIN_FAMILY", "the partner field %s must have the type %s at the parameters of %s, then an earlier recursive field (rule D6 (3))",
+                field->name, m->families[c->partner].name, m->families[fam].name);
   out->name = field->name;
   out->type = t;
-  out->recursive = whole ? 1 : path ? 2 : 0;
+  out->recursive = whole ? 1 : path ? 2 : partner ? 3 : 0;
   out->dependent = 0;
   for (j = p; j < depth; j++) {
     out->dependent = out->dependent || used[j];
@@ -3412,10 +3440,10 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
   return 1;
 }
 
-/* A family is in scope in its own fields, so a field can be recursive. */
-static int check_family(Checker *c, const Decl *d) {
+/* Check the parameters of D (they stay in scope) and register the family
+   FAM, whose constructors start at FIRST_CTOR. */
+static int family_head(Checker *c, const Decl *d, uint32_t fam, uint32_t first_ctor) {
   Machine *m = c->m;
-  uint32_t fam = m->family_count;
   FamilyInfo *f = &m->families[fam];
   const Core **params = arena_alloc(m->arena, (d->param_count + 1u) * sizeof *params);
   size_t i;
@@ -3430,20 +3458,120 @@ static int check_family(Checker *c, const Decl *d) {
   f->name = d->name;
   f->param_types = params;
   f->param_count = (uint32_t)d->param_count;
-  f->first_ctor = m->ctor_count;
+  f->first_ctor = first_ctor;
   f->ctor_count = (uint32_t)d->ctor_count;
   f->path_ctors = 0;
+  f->partner = fam;
   /* Classify the whole family before checking any constructor, so its
      boundaries cannot call the plain family fold while it is in scope. */
   for (i = 0; i < d->ctor_count; i++)
     f->path_ctors += d->ctors[i].binder_count > 0u ? 1u : 0u;
   m->family_count++;
+  return 1;
+}
+
+/* The constructors of the family FAM, with its parameters in scope. */
+static int family_ctors(Checker *c, const Decl *d, uint32_t fam) {
+  size_t i;
   c->self = fam;
   for (i = 0; i < d->ctor_count; i++) {
     if (!check_ctor(c, fam, &d->ctors[i]))
       return 0;
   }
   return 1;
+}
+
+/* A family is in scope in its own fields, so a field can be recursive. */
+static int check_family(Checker *c, const Decl *d) {
+  uint32_t fam = c->m->family_count;
+  return family_head(c, d, fam, c->m->ctor_count) && family_ctors(c, d, fam);
+}
+
+static void pop_params(Checker *c, size_t n) {
+  size_t i;
+  for (i = 0; i < n; i++)
+    pop(c);
+}
+
+/* Push the checked parameters of the family FAM again. */
+static int push_params(Checker *c, const Decl *d, uint32_t fam) {
+  const FamilyInfo *f = &c->m->families[fam];
+  uint32_t i;
+  for (i = 0; i < f->param_count; i++) {
+    if (!push(c, d->params[i].name, here(c, f->param_types[i])))
+      return 0;
+  }
+  return 1;
+}
+
+/* M5 s4 (D6): the mutual block of the families A and B. The checker
+   registers both names before it checks a constructor (rule (2), the one
+   exception to rule R3). The last parameter of B (the index) has the type
+   A at the parameters of B before it (rule (1)). A field of A can be a
+   partner field (rule (3), check_field). Point constructors only (rule (6)). */
+static int check_block(Checker *c, const Decl *a, const Decl *b) {
+  Machine *m = c->m;
+  uint32_t fa = m->family_count;
+  uint32_t fb = fa + 1u;
+  const Decl *both[2];
+  size_t i;
+  size_t j;
+  int ok;
+  if (b == NULL || b->block != 2)
+    return FAIL(c, "MUTUAL_BLOCK", "the mutual block of %s holds one family; a mutual block holds two families", a->name);
+  both[0] = a;
+  both[1] = b;
+  for (i = 0; i < 2u; i++) {
+    for (j = 0; j < both[i]->ctor_count; j++)
+      if (both[i]->ctors[j].binder_count > 0u)
+        return FAIL(c, "MUTUAL_BLOCK", "%s is a path constructor; a mutual block has point constructors only (O13)", both[i]->ctors[j].name);
+  }
+  if (!family_head(c, a, fa, m->ctor_count))
+    return 0;
+  pop_params(c, a->param_count);
+  if (!name_free(c, b->name) || !family_head(c, b, fb, m->ctor_count + (uint32_t)a->ctor_count))
+    return 0;
+  pop_params(c, b->param_count);
+  if (b->param_count != a->param_count + 1u || !self_applied(m->families[fb].param_types[a->param_count], fa, (uint32_t)a->param_count, (uint32_t)a->param_count))
+    return FAIL(c, "MUTUAL_BLOCK", "the last parameter of %s (the index) must have the type %s at the %u parameters of %s before it (rule D6 (1))",
+                b->name, a->name, (unsigned)a->param_count, b->name);
+  m->families[fa].partner = fb;
+  m->families[fb].partner = fa;
+  c->partner = fb;
+  ok = push_params(c, a, fa) && family_ctors(c, a, fa);
+  c->partner = NO_FAMILY;
+  if (!ok)
+    return 0;
+  pop_params(c, a->param_count);
+  if (!push_params(c, b, fb) || !family_ctors(c, b, fb))
+    return 0;
+  /* A partner field contributes B's final universe to A. B's fields were
+     not known when A's fields were checked. Recheck the entire block at
+     the raised universe, including type arguments in parameters and
+     fields that may no longer fit their declared sorts. Retain both
+     universe bounds while registering the heads and constructors again. */
+  for (i = m->families[fa].first_ctor; i < m->families[fb].first_ctor; i++) {
+    const CtorInfo *ctor = &m->ctors[i];
+    for (j = 0; j < ctor->field_count; j++) {
+      if (ctor->fields[j].recursive == 3 && m->families[fa].universe < m->families[fb].universe) {
+        m->families[fa].universe = m->families[fb].universe;
+        pop_params(c, b->param_count);
+        m->family_count = fa;
+        m->ctor_count = m->families[fa].first_ctor;
+        c->self = NO_FAMILY;
+        return check_block(c, a, b);
+      }
+    }
+  }
+  return 1;
+}
+
+/* M5 s4: a mutual block (with the next declaration) or one family. */
+static int check_family_decl(Checker *c, const Decl *d) {
+  size_t next = c->decl_index + 1u;
+  if (d->block == 1)
+    return check_block(c, d, next < c->decls->count ? &c->decls->items[next] : NULL);
+  return check_family(c, d);
 }
 
 static int check_def(Checker *c, const Decl *d) {
@@ -3529,9 +3657,12 @@ static int check_circuit(Checker *c, const Decl *d) {
 static int check_decl(Checker *c, const Decl *d) {
   /* M4 s1: a program family is checked first, so a malformed one gets its
      own code (HIT_BOUNDARY, FACE_AGREE, ...). A well formed one is still
-     refused: rule R1 accepts no program family. */
+     refused: rule R1 accepts no program family. M5 s4: check_block checks
+     the second family of a block with the first. */
+  if (d->block == 2)
+    return 1;
   if (d->kind == DECL_FAMILY && d->origin == ORIGIN_PROGRAM)
-    return check_family(c, d) ? FAIL(c, "REFUSE_DATA", "a program cannot declare a family (rule R1); only domain/domain.lang can") : 0;
+    return check_family_decl(c, d) ? FAIL(c, "REFUSE_DATA", "a program cannot declare %s (rule R1); only domain/domain.lang can", d->block == 1 ? "a mutual block" : "a family") : 0;
   if (d->kind == DECL_AXIOM)
     return FAIL(c, "REFUSE_AXIOM", "an axiom has no proof (rule R2)");
   if (d->is_rec)
@@ -3540,7 +3671,7 @@ static int check_decl(Checker *c, const Decl *d) {
     return 0;
   if (d->kind == DECL_CIRCUIT)
     return check_circuit(c, d);
-  return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
+  return d->kind == DECL_FAMILY ? check_family_decl(c, d) : check_def(c, d);
 }
 
 int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
@@ -3573,6 +3704,7 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
     c.level = 0;
     c.depth = 0;
     c.self = NO_FAMILY;
+    c.partner = NO_FAMILY;
     m->def = decls->items[i].name;
     if (!check_decl(&c, &decls->items[i]))
       return 0;

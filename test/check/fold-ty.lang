@@ -1,0 +1,1 @@
+def tyFold : Ty cempty -> Nat := fun t => fold Nat 0 (fun a => fun ia => fun b => fun ib => 1) t

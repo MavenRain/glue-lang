@@ -2145,3 +2145,128 @@ summary comes at the close (s7).
     necessary, s4 checks this with a Path row.
   - s2 open items (a), (b) and (c) do not change. s2 open item (d) is
     closed (step 0).
+
+### s4: the mutual block of two families (2026-10-16)
+
+- Start state:  HEAD 7f4a8cd, tree 00d57a83 (the staged s3 tree). The s4
+  prompt expected the subject `M5 s3: compute transp and hcomp at
+  dependent and Path fields`. The subject is `M5 s3: add Kan rules for
+  dependent and Path fields`. The tree is correct, so s4 starts on it.
+- Code:
+  - src/front/lexer.h, lexer.c:  the keyword `mutual` (TOK_KW_MUTUAL, the
+    last TokKind).
+  - src/front/ast.h:  Decl `block` (0, or 1 and 2 for the first and the
+    second family of a block).
+  - src/front/parser.c:  parse_mutual. A family must follow `mutual`, else
+    PARSE_EXPECT `expected 'family' (a mutual block holds two families)`.
+    parse_source reads the second family when `family` follows the first
+    family of a block. `mutual` is not an atom.
+  - src/front/core.h:  FamilyInfo `partner` (the other family of the
+    block, or the family itself). FieldInfo `recursive` 3 is a partner
+    field.
+  - src/front/check.c:
+    - check_block (D6):  the checker checks the parameters of A and
+      registers A, then checks the parameters of B and registers B. Then
+      it checks the constructors of A, then the constructors of B. Thus
+      both names are known before a constructor (rule (2), the one
+      exception to rule R3), and the constructor table holds the
+      constructors of A, then the constructors of B. MUTUAL_BLOCK:  the
+      block holds one family;  a constructor is a path constructor (rule
+      (6), O13);  the last parameter of B (the index) does not have the
+      type A at the parameters of B before it (rule (1)).
+    - check_family is now family_head + family_ctors. A family that is
+      not in a block does not change.
+    - partner_applied, check_field:  a field of A with the type `B params
+      g`, where g is an earlier recursive field of the constructor, is a
+      partner field (recursive 3). It is also a dependent field. A
+      different use of B in a field of A gives DOMAIN_FAMILY (rule (3)).
+      A field of B follows the M4 field rule.
+    - check_decl:  a program block gets REFUSE_DATA `a program cannot
+      declare a mutual block (rule R1)` after the block check.
+    - rule_fold:  a block family gives HIT_CASES (the block fold is s5,
+      D7). rule_elim:  a block family gives ELIM_CASES (O13).
+  - src/front/kan.c:  a comment only. The `recursive` sites:  the fold and
+    elim sites of eval.c and check.c do not get a block family, because
+    the checker refuses fold and elim at it. json.c, field_line_transp,
+    transp_ctor and hcomp_ctor read a partner field as a dependent field
+    (its fill). `make check-clang` finds no missing switch case.
+- domain/domain.lang (rule R1), after Web, with a `-- M5 s4 (D6)`
+  comment:  `mutual family Ctx := cempty | ext (eg : Ctx) (et : Ty eg)`
+  and `family Ty (tg : Ctx) := tbase | arrow (ta : Ty tg) (tb : Ty tg)`.
+  The old goldens do not change.
+- examples/ctx.lang (test/eval/expect.txt +8, test/json/ctx.json new):
+  - c1, t1, c2:  constructor values. A constructor of Ty takes the index
+    first (`tbase cempty`, `arrow cempty (tbase cempty) (tbase cempty)`).
+  - tyTransp, tyArrowTransp:  transp along `<i> Ty (P @ i)` with `P :
+    Path Ctx cempty c1` gives `tbase c1` and `arrow c1 (tbase c1) (tbase
+    c1)` (printed in full). The index is a parameter of the line.
+  - tyTranspRefl, ctxTranspRefl:  refl rows.
+  - ctxTransp:  `transp (<_> Ctx) r (ext g t)` gives `ext g t`.
+  - The Ctx finding:  Ctx has no parameters, so each line at Ctx is
+    constant and the constant rule applies first. No row runs the fill of
+    a partner field along a line that is not constant.
+- Guest refusal rows. The test/check files are program files, so each
+  block check runs before REFUSE_DATA:
+  - mutual-one.lang MUTUAL_BLOCK (one family);  mutual-index.lang
+    MUTUAL_BLOCK (the index has the type Nat);  mutual-path.lang
+    MUTUAL_BLOCK (a path constructor).
+  - mutual-partner-index.lang DOMAIN_FAMILY (`(mat : Mb maz)`, the index
+    is not a field);  mutual-partner-type.lang DOMAIN_FAMILY (`(maf : Mb
+    mag -> Nat)`, B in a different type).
+  - mutual-program.lang REFUSE_DATA (a correct block in a program).
+  - forward-family.lang REFUSE_REC (a family names a later family, no
+    block:  rule R3 does not change).
+  - test/parse/mutual-def.lang PARSE_EXPECT (`mutual def`).
+- Probes (each is also a row):  fold at Ctx (fold-ctx.lang) and fold at
+  Ty (fold-ty.lang) give HIT_CASES;  elim at Ctx (elim-ctx.lang) gives
+  ELIM_CASES;  the partner field before its field, `(mat : Mb mag) (mag :
+  Ma)` (mutual-partner-later.lang), gives NAME_UNKNOWN (mag is not in
+  scope yet). No probe gives INTERNAL or a crash.
+- Mutants (~/Documents/glue-lang-M5-s4-mutants/run.sh, from the s3
+  runner;  each with `make -B` and the gate, then reverted;  check.c is
+  equal to the backup;  final `make -B check` GREEN):  3 KILLED, 0
+  SURVIVED. Each mutant compiles;  each make exits 2.
+
+| Mutant | First failing rows |
+|---|---|
+| m1. the index rule (1) off (the test -> `if (0)`) | mutual-index.lang gives REFUSE_DATA, not MUTUAL_BLOCK;  `gate: 1 failures`. |
+| m2. B is not registered while the constructors of A are checked (`m->family_count--` before family_ctors of A, `++` after) | the domain gives REFUSE_REC at `Ty eg`;  all rows fail;  `gate: 405 failures`. |
+| m3. the partner field is `recursive` 0 (`partner ? 3 : 0` -> `partner ? 0 : 0`) | the domain gives DOMAIN_FAMILY (et depends on the recursive field eg);  `gate: 407 failures`. |
+
+- Gates: `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  32;  examples 31 (s3: 30), parse refusals 18 (17), check refusals 121
+  (110), evals 193 (185), json 26 builds (25), build refusals 8,
+  circuits 4, same-ir 2, circuit refusals 11, satcheck refusals 6;  node
+  regressions 6, printer 2). `make check-clang` exit 0. `forge build
+  --root contracts --sizes` exit 0. `make e2e` exit 0 (33 passed). `git
+  diff --exit-code -- test/circuit contracts/src/verifiers` exit 0:  no
+  IR change. contracts/test/fixtures restored from HEAD, then `forge test
+  --root contracts` 33 passed, 0 failed.
+- Build record:  s4-a and s4-b are hand builds in the main loop (no
+  builder or reviewer agents).
+- Open items:
+  - (a) The fill of a partner field along a line that is not constant has
+    no row (the Ctx finding). A block whose first family has a parameter
+    can give this row.
+  - s3 (a) does not change. s3 (b) does not change:  no block row needs
+    that type. s2 (a), (b) and (c) do not change.
+
+#### s4 review follow-up (2026-10-16)
+
+- HIGH, fixed: the first family did not inherit the final universe of a
+  partner field. With `WideTy g` containing a `Type 0` field, `WideCtx`
+  was accepted as `Type 0` and rejected as `Type 1`. check_block now raises
+  the first family's universe and checks both declarations again with the
+  final bounds. This also rejects parameter and field type arguments that
+  no longer fit their required sorts. A phantom index leaves the second
+  family's universe unchanged.
+- test/hit-regressions.c adds seven C regressions. Four fail against the
+  original staged checker and pass with the fix. The other three preserve
+  the phantom-index sort, prove the dependent partner transport equation
+  along a parameter line by refl, and check dependent uniform parameters
+  across both families. The transport equation closes s4 open item (a).
+- Validation: `make check` passes, including check-clang and native HIT
+  39/39. The full e2e pipeline passes using the unchanged cached halo2
+  binary, including 33/33 Forge tests and all deployment simulations.
+  `forge build --sizes` passes. The generated circuit IR and verifier
+  source match the staged tree. No CI or test weakening was found.

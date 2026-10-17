@@ -1,0 +1,1 @@
+def ctxFold : Ctx -> Nat := fun g => fold Nat 0 (fun a => fun ih => fun t => 1) g

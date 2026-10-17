@@ -86,6 +86,7 @@ typedef struct {
   DeclKind kind;
   Origin origin;
   int is_rec;
+  int block; /* M5 s4 (D6): 1 and 2 for the first and the second family of a mutual block, else 0 */
   int line;
   int col;
   const char *name;

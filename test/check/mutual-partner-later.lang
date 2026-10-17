@@ -1,0 +1,2 @@
+mutual family Ma := maz | mas (mat : Mb mag) (mag : Ma)
+family Mb (mg : Ma) := mbz

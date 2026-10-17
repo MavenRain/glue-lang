@@ -1,0 +1,9 @@
+-- M5 s4 (D6): the mutual block Ctx and Ty of domain/domain.lang.
+def c1 : Ctx := ext cempty (tbase cempty)
+def t1 : Ty cempty := arrow cempty (tbase cempty) (tbase cempty)
+def c2 : Ctx := ext c1 (arrow c1 (tbase c1) (tbase c1))
+def tyTransp : (P : Path Ctx cempty c1) -> Ty c1 := fun P => transp (<i> Ty (P @ i)) i0 (tbase cempty)
+def tyArrowTransp : (P : Path Ctx cempty c1) -> Ty c1 := fun P => transp (<i> Ty (P @ i)) i0 t1
+def tyTranspRefl : Path (Ty cempty) (transp (<_> Ty cempty) i0 t1) t1 := refl
+def ctxTransp : (g : Ctx) -> (t : Ty g) -> (r : I) -> Ctx := fun g => fun t => fun r => transp (<_> Ctx) r (ext g t)
+def ctxTranspRefl : Path Ctx (transp (<_> Ctx) i0 c2) c2 := refl

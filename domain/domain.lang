@@ -38,3 +38,7 @@ family Int := pos (pn : Nat) | neg (nn : Nat) | zeq <i> [ ~i -> pos 0, i -> neg 
 -- M5 s3 (D5): a field that uses an earlier field (hcomp, the comp method) and a point constructor with a path field (transp).
 family DPair (A : Type 0) (B : A -> Type 0) := dpair (dfst : A) (dsnd : B dfst)
 family Web (A : Type 0) := wnode (wn : A) | wlink (wlx : Web A) (wly : Web A) (wlp : Path (Web A) wlx wly) | wloop (wa : A) <i> [ ~i -> wnode A wa, i -> wnode A wa ]
+-- M5 s4 (D6): an inductive-inductive block. Ty is indexed by Ctx, and the
+-- field et of ext has the type Ty at the earlier field eg (a partner field).
+mutual family Ctx := cempty | ext (eg : Ctx) (et : Ty eg)
+family Ty (tg : Ctx) := tbase | arrow (ta : Ty tg) (tb : Ty tg)

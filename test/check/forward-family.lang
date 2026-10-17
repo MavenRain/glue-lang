@@ -1,0 +1,2 @@
+family Fa := faz | fas (fab : Fb)
+family Fb := fbz

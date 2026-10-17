@@ -39,7 +39,8 @@ typedef enum {
   TOK_JOIN,     /* \/ */
   TOK_LBRACKET, /* [ */
   TOK_RBRACKET, /* ] */
-  TOK_COMMA     /* , */
+  TOK_COMMA,    /* , */
+  TOK_KW_MUTUAL /* M5 s4: mutual */
 } TokKind;
 
 typedef struct {

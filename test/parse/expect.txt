@@ -15,3 +15,4 @@ sys-no-body.lang PARSE_EXPECT
 sys-unclosed.lang PARSE_EXPECT
 ctor-no-system.lang PARSE_EXPECT
 ctor-no-binder.lang PARSE_EXPECT
+mutual-def.lang PARSE_EXPECT

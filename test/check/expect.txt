@@ -108,3 +108,14 @@ elim-path-ends.lang ELIM_CASE
 elim-motive-nat.lang TYPE_MISMATCH
 elim-def.lang REFUSE_NAME
 elim-int-vars.lang TYPE_REFL
+mutual-one.lang MUTUAL_BLOCK
+mutual-index.lang MUTUAL_BLOCK
+mutual-path.lang MUTUAL_BLOCK
+mutual-partner-index.lang DOMAIN_FAMILY
+mutual-partner-type.lang DOMAIN_FAMILY
+mutual-program.lang REFUSE_DATA
+mutual-partner-later.lang NAME_UNKNOWN
+forward-family.lang REFUSE_REC
+fold-ctx.lang HIT_CASES
+elim-ctx.lang ELIM_CASES
+fold-ty.lang HIT_CASES

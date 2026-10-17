@@ -29,6 +29,7 @@ static const struct {
   {"public", TOK_KW_PUBLIC},
   {"private", TOK_KW_PRIVATE},
   {"range8", TOK_KW_RANGE8},
+  {"mutual", TOK_KW_MUTUAL},
 };
 
 const char *tok_kind_name(TokKind kind) {
@@ -68,6 +69,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_LBRACKET: return "'['";
     case TOK_RBRACKET: return "']'";
     case TOK_COMMA: return "','";
+    case TOK_KW_MUTUAL: return "'mutual'";
   }
   return "a token";
 }

@@ -70,6 +70,43 @@ static const Case FACE_CASES[] = {
 };
 
 static const Case CASES[] = {
+  {"mutual partner fields inherit the partner universe",
+   "mutual family WideCtx := wz | ws (wg : WideCtx) (wt : WideTy wg)\n"
+   "family WideTy (wi : WideCtx) := wide (wu : Type 0)\n",
+   "def test : Type 0 := WideCtx\n", "TYPE_MISMATCH", NULL},
+  {"mutual partner universe retains the valid higher sort",
+   "mutual family WideCtx := wz | ws (wg : WideCtx) (wt : WideTy wg)\n"
+   "family WideTy (wi : WideCtx) := wide (wu : Type 0)\n",
+   "def test : Type 1 := WideCtx\n", NULL, NULL},
+  {"mutual universe propagation rechecks field type arguments",
+   "family SmallBox (smallType : Type 0) := smallBox (smallVal : smallType)\n"
+   "mutual family WideCtx := wz | ws (wg : WideCtx) (wt : WideTy wg)\n"
+   "family WideTy (wi : WideCtx) := wide (wu : Type 0) | narrow (wideBox : SmallBox WideCtx)\n",
+   "", "TYPE_MISMATCH", NULL},
+  {"mutual universe propagation rechecks parameter type arguments",
+   "mutual family WideCtx (wn : Nat) := wz | ws (wg : WideCtx wn) (wt : WideTy wn wg)\n"
+   "family WideTy (wn : (fun (ignored : Type 0) => Nat) (WideCtx 0))"
+   " (wi : WideCtx wn) := wide (wu : Type 0)\n",
+   "", "TYPE_MISMATCH", NULL},
+  {"a phantom mutual index does not raise the second family universe",
+   "mutual family WideCtx := wide (wu : Type 0)\n"
+   "family SmallTy (wi : WideCtx) := small\n",
+   "def test : Type 0 := SmallTy (wide Nat)\n", NULL, NULL},
+  {"parameterized mutual partner transport computes its dependent fill",
+   "mutual family ParamCtx (A : Type 0) := pzero | pstep (pg : ParamCtx A) (pt : ParamTy A pg)\n"
+   "family ParamTy (A : Type 0) (pi : ParamCtx A) := pvalue (pv : A)\n",
+   "def test : (L : I -> Type 0) -> (g : ParamCtx (L i0))"
+   " -> (v : ParamTy (L i0) g) -> Path (ParamCtx (L i1))"
+   " (transp (<i> ParamCtx (L i)) i0 (pstep (L i0) g v))"
+   " (pstep (L i1) (transp (<i> ParamCtx (L i)) i0 g)"
+   " (transp (<j> ParamTy (L j) (transp (<k> ParamCtx (L (j /\\ k))) (~j) g)) i0 v))"
+   " := fun L g v => refl\n", NULL, NULL},
+  {"mutual block restores dependent uniform parameter scopes",
+   "mutual family ParamCtx (A : Type 0) (a : A) := pzero"
+   " | pstep (pg : ParamCtx A a) (pt : ParamTy A a pg)\n"
+   "family ParamTy (A : Type 0) (a : A) (pi : ParamCtx A a) := pvalue (pv : A)\n",
+   "def test : ParamCtx Nat 7 := pstep Nat 7 (pzero Nat 7) (pvalue Nat 7 (pzero Nat 7) 5)\n",
+   NULL, "pstep Nat 7 (pzero Nat 7) (pvalue Nat 7 (pzero Nat 7) 5)"},
   {"elim infers the universe of an unannotated motive", "",
    "def test : Type 0 := elim (fun y => Type 0) Nat (<i> Nat) base\n",
    NULL, "Nat"},

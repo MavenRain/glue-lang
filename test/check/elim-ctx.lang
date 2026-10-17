@@ -1,0 +1,1 @@
+def ctxElim : (g : Ctx) -> Nat := fun g => elim (fun _ => Nat) 0 (fun a => fun ih => fun t => 1) g

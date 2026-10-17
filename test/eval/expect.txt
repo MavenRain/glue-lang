@@ -182,3 +182,11 @@ circle webTransp => fun L => fun x => fun y => fun p => wlink (L i1) (transp (<i
 int negNegZeq => fun k => <j> zeq @ k
 otp flipMessage => <i> cipher
 otp flipLaw => <i> encrypt @ ~i
+ctx c1 => ext cempty (tbase cempty)
+ctx t1 => arrow cempty (tbase cempty) (tbase cempty)
+ctx c2 => ext (ext cempty (tbase cempty)) (arrow (ext cempty (tbase cempty)) (tbase (ext cempty (tbase cempty))) (tbase (ext cempty (tbase cempty))))
+ctx tyTransp => fun P => tbase (ext cempty (tbase cempty))
+ctx tyArrowTransp => fun P => arrow (ext cempty (tbase cempty)) (tbase (ext cempty (tbase cempty))) (tbase (ext cempty (tbase cempty)))
+ctx tyTranspRefl => <i> arrow cempty (tbase cempty) (tbase cempty)
+ctx ctxTransp => fun g => fun t => fun r => ext g t
+ctx ctxTranspRefl => <i> ext (ext cempty (tbase cempty)) (arrow (ext cempty (tbase cempty)) (tbase (ext cempty (tbase cempty))) (tbase (ext cempty (tbase cempty))))
