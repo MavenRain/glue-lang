@@ -1,0 +1,1 @@
+def bad : Option Nat -> Nat := fun o => elim (fun y => Nat) 0 (fun a => fun b => a) o

@@ -1,0 +1,1 @@
+def bad : Field -> Nat := fun x => elim (fun y => Nat) 0 0 x

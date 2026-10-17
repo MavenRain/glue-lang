@@ -2605,3 +2605,116 @@ exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
   (b) (SPEC.md 2.7 uses the natAdd form); s2 (d) (s3 step 0, USER ruling
   (ii)); s4 (a) (the s4 review follow-up); the s5 index field refusal (a
   native row).
+
+## M6
+
+M6 adds the M6 formers and laws of docs/M6-PLAN.md (USER commit ac8625c,
+with the USER rulings of its section 9). The slice table of section 8 gives
+the rows and the mutants of each slice. M6 must not change the IR of a
+current circuit.
+
+### s1: append and elim at the core carriers (2026-10-17)
+
+- Plan: s1 covers D1 to D4 and D15. The USER ruling diff of
+  docs/M6-PLAN.md is in this commit (D16).
+- Probes (step 2, before the code;  scratch build/m6s1-probe/*.lang,
+  `langc check`):  leftIdL, rightIdO/S/L, assocO/S/L and mapO/S/L, each a
+  `refl` proof at a variable m, gave TYPE_REFL (as the kickoff table of
+  section 1).  After D2, leftIdL gives `ok`.  The other 9 probes stay
+  TYPE_REFL at `refl`:  they need the `elim` proofs of D4.
+- D1:  a new op OP_APPEND (core.h after OP_BIND) and the core name
+  `append` (check.c RULE_APPEND, rule_append;  eval.c append_values,
+  reduce_append;  json.c op_json).  A nil end of xs gives the cells of xs
+  over ys.  A neutral end gives xs when ys is nil (the right unit), else
+  the cells over `append END ys`.  A trap end stays.
+- D2:  bind_list goes through append from the last cell.  acc starts at
+  nil, at the trap, or at `bind END f` for a neutral end;  then acc =
+  `append (f x) acc` for each cell.  So `bind (cons a nil) f` is
+  `append (f a) nil`, which is `f a`.  The loop is iterative.
+- D3 tag:  a new op OP_ELIM_CORE (core.h after OP_ELIM;  inst = the
+  Carrier;  args P, c1, c2, x;  arity 4), not a Carrier in the OP_ELIM
+  inst.  Reason:  the OP_ELIM inst indexes m->families (eval.c fold_hit,
+  the hcomp path, kan.c), so a Carrier there needs a guard at each site.
+  The new op is the smaller and safer diff.
+- D3 rules:  eval.c elim_core and elim_list.  Option:  none gives c1,
+  `some a` gives `c2 a`.  Sum:  `inl e` gives `c1 e`, `inr a` gives
+  `c2 a`.  List:  from the last cell, `cons a l` gives `c2 a l acc`;  acc
+  starts at c1 for nil, at the stuck elim for a neutral end and at the
+  trap for a trap end.  check.c:  elim_motive (cut out of rule_elim,
+  shared by the two paths), carrier_case_type (section 3.2), elim_carrier.
+  rule_elim calls carrier_of on the scrutinee type before the family
+  test.  A scrutinee of another type gives TYPE_MISMATCH with a new text:
+  `elim needs a last argument in a domain family, Option, Sum or List;
+  found a last argument of type T`.
+- Deviation:  at a carrier a wrong case type gives ELIM_CASE (plan 3.2 and
+  the section 8 row).  At a family a point case keeps ELIM_CASES (M5
+  recode_case;  the M5 rows do not change).
+- The `_x0` fix (M5 s2 open item (b)):  the ELIM_CASES, ELIM_CASE,
+  HIT_CASES and HIT_CASE messages print the case type with the field names
+  of the constructor (eval.c value_print_case and the Printer field
+  fields_free;  check.c show_case).  test/check/elim-no-ih.lang now prints
+  `(top : Nat) -> (rest : Stack) -> (ih : Nat) -> Nat`.  value_print does
+  not change, so no eval golden changed.
+- The `_x0` print row:  no table of test/gate.sh compares message text.
+  The gate had one message check (bad-refl.lang).  s1 adds a second check
+  of the same form:  the elim-no-ih.lang message must contain the binder
+  names.
+- D4:  examples/monad-laws.lang (new).  leftIdO/S/L by refl.  rightIdO/S/L,
+  assocO/S/L and mapBindO/S/L by `elim` on m;  at List also with `cong`,
+  `sym`, `trans`, appendAssoc and bindAppend (each by `elim` at List).
+  The same file has the defs of the eval rows.
+- D15:  `def append` gives REFUSE_NAME (rule R4) with no new code.
+- Examples (section 5):  monad.lang, laws.lang and algebra.lang check as
+  before.  No printed form changed.
+- JSON:  OP_APPEND and OP_ELIM_CORE are in the not-a-type-former group of
+  op_json.  Each reduces at closed arguments, so a closed instance cannot
+  hold one, and the group has no closed witness (as M5 s2 open item (c)).
+- Rows:  evals +15 (monad-laws:  append at nil, at cons, at a neutral xs
+  with nil, at a neutral pair, at a neutral xs with a cons;  bind at a
+  neutral tail;  elim at Option (some, none, neutral), Sum (inl, inr,
+  neutral) and List (nil, 3 cells, a cons over a neutral tail)).  Check
+  refusals +9:  append-def REFUSE_NAME, append-mix TYPE_MISMATCH,
+  elim-option-count, elim-sum-count and elim-list-count ELIM_CASES,
+  elim-option-case, elim-sum-case and elim-list-case ELIM_CASE,
+  elim-field TYPE_MISMATCH.  Examples +1, json +1
+  (test/json/monad-laws.json), the elim-no-ih message check.
+- Mutants (each with `make -B build/langc` and `make check`, reverted, the
+  hash of eval.c compared, final `make -B check` GREEN):  3 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. eval.c append_values:  no right-unit rule (no `if (val_is(ys, OP_NIL)) return xs;`) | examples/monad-laws.lang `TYPE_REFL: leftIdL: ... the start normalizes to append (f a) nil, the end normalizes to f a`. |
+| 2. eval.c bind_list:  a neutral end gives `bind xs f` for the whole term (cons bind without append) | examples/monad-laws.lang `ELIM_CASE: rightIdL: the case for cons must have the type ...`. |
+| 3. eval.c elim_list:  the IH before l (`apply_value(m, apply_value(m, apply_value(m, a[2], cell->args[0]), acc), cell->args[1])`) | eval monad-laws lenThree `INTERNAL: lenThree: the evaluator found a Nat operation on a value that is not a Nat`. |
+
+- Gates:  `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  44;  examples 34, parse refusals 18, check refusals 132, evals 224, json
+  28 builds, build refusals 8, circuits 4, same-ir 3, circuit refusals 12,
+  satcheck refusals 6;  node regressions 6, printer 2).  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed).  `git diff --exit-code -- test/circuit
+  contracts/src/verifiers` exit 0:  no IR change.  contracts/test/fixtures
+  restored from HEAD, then `forge test --root contracts` 33 passed,
+  0 failed.
+- Build record:  hand build in the main loop over s1-a to s1-d (no
+  subagents;  the s1 builders died on 10-17:  Fable 429, then the opus
+  fallback on the reasoning_extraction classifier).
+
+#### s1 review correction (2026-10-17)
+
+- MEDIUM: elim_list returned a trapped tail before applying its known cons
+  cases. A head case that ignores its tail and IH normalized to 7 at a
+  neutral input, but returned trap after substituting UINT64_MAX into an
+  overflowing tail. The corresponding fold returned 7. Removing the early
+  return lets blocked supply the trapped IH to the cons case, as for fold.
+- Regression: elimTrapHead UINT64_MAX returned trap before the fix and 7
+  after it. elimTrapHeadLaw checks by refl. elimTrapStrict and elimTrapBare
+  still return trap. Added three eval rows; regenerated monad-laws.json is
+  byte-identical.
+- Validation on the corrected staged snapshot: make -B check passed (227
+  evals, 28 JSON builds, all native and printer checks); dependent motives
+  at polymorphic carriers and heterogeneous Sum payloads passed. End-to-end
+  checks reused the unchanged halo2 binary and passed all 33 verifier tests.
+  Generated circuit IR and verifier sources matched the original files.
+  Forge build with sizes passed; all 33 tests passed with original fixtures.

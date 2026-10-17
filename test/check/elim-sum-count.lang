@@ -1,0 +1,1 @@
+def bad : Sum Nat Nat -> Nat := fun s => elim (fun y => Nat) (fun e => e) s

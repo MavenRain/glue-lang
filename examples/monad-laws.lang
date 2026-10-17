@@ -1,0 +1,49 @@
+-- M6 s1: append, elim at the core carriers and the monad laws (M6-PLAN D1 to D4).
+-- append at nil, at cons, at a neutral list with nil (the right unit) and at
+-- two neutral lists.  bind at a neutral tail keeps the cells it can compute.
+def appNil : List Nat := append nil (cons 1 nil)
+def appCons : List Nat := append (cons 1 (cons 2 nil)) (cons 3 nil)
+def appRightNil : List Nat -> List Nat := fun xs => append xs nil
+def appPair : List Nat -> List Nat -> List Nat := fun xs => fun ys => append xs ys
+def appTail : List Nat -> List Nat := fun xs => append (cons 1 xs) (cons 2 nil)
+def bindTail : List Nat -> List Nat := fun xs => bind (cons 1 xs) (fun (x : Nat) => cons x (cons x nil))
+-- elim P cases x at Option, Sum E and List: it reduces at a constructor, else
+-- it is neutral.  The case for cons takes the head, the tail, then the IH.
+def noneN : Option Nat := none
+def someN : Option Nat := some 4
+def elimSome : Nat := elim (fun y => Nat) 0 (fun a => natAdd a 1) someN
+def elimNone : Nat := elim (fun y => Nat) 0 (fun a => natAdd a 1) noneN
+def elimOpt : Option Nat -> Nat := fun o => elim (fun y => Nat) 0 (fun a => natAdd a 1) o
+def inlS : Sum Nat Nat := inl 3
+def inrS : Sum Nat Nat := inr 7
+def elimInl : Nat := elim (fun y => Nat) (fun e => natAdd e 10) (fun a => a) inlS
+def elimInr : Nat := elim (fun y => Nat) (fun e => natAdd e 10) (fun a => a) inrS
+def elimSum : Sum Nat Nat -> Nat := fun s => elim (fun y => Nat) (fun e => natAdd e 10) (fun a => a) s
+def l3 : List Nat := cons 1 (cons 2 (cons 3 nil))
+def len : List Nat -> Nat := fun xs => elim (fun y => Nat) 0 (fun a => fun l => fun ih => natAdd ih 1) xs
+def lenNil : Nat := len nil
+def lenThree : Nat := len l3
+def lenTail : List Nat -> Nat := fun xs => len (cons 5 xs)
+-- A trapped recursive result is passed to the cons case, which may ignore it.
+def elimTrapTail : Nat -> List Nat := fun n => fold (fun (xs : List Nat) => xs) nil (natAdd n 1)
+def elimTrapHead : Nat -> Nat := fun n => elim (fun y => Nat) 0 (fun a => fun l => fun ih => a) (cons 7 (elimTrapTail n))
+def elimTrapHeadLaw : (n : Nat) -> Path Nat (elimTrapHead n) 7 := fun n => refl
+def elimTrapStrict : Nat -> Nat := fun n => elim (fun y => Nat) 0 (fun a => fun l => fun ih => natAdd ih 1) (cons 7 (elimTrapTail n))
+def elimTrapBare : Nat -> Nat := fun n => elim (fun y => Nat) 0 (fun a => fun l => fun ih => a) (elimTrapTail n)
+-- Left identity is refl at each carrier (for List by D2).
+def leftIdO : (a : Nat) -> (f : Nat -> Option Nat) -> Path (Option Nat) (bind (pure a) f) (f a) := fun a => fun f => refl
+def leftIdS : (a : Nat) -> (f : Nat -> Sum Nat Nat) -> Path (Sum Nat Nat) (bind (pure a) f) (f a) := fun a => fun f => refl
+def leftIdL : (a : Nat) -> (f : Nat -> List Nat) -> Path (List Nat) (bind (pure a) f) (f a) := fun a => fun f => refl
+-- Right identity, associativity and the map law at a variable m are proofs
+-- by elim on m.  At a closed m each law is refl.
+def rightIdO : (m : Option Nat) -> Path (Option Nat) (bind m (fun (x : Nat) => pure x)) m := fun m => elim (fun y => Path (Option Nat) (bind y (fun (x : Nat) => pure x)) y) refl (fun a => refl) m
+def rightIdS : (m : Sum Nat Nat) -> Path (Sum Nat Nat) (bind m (fun (x : Nat) => pure x)) m := fun m => elim (fun y => Path (Sum Nat Nat) (bind y (fun (x : Nat) => pure x)) y) (fun e => refl) (fun a => refl) m
+def rightIdL : (m : List Nat) -> Path (List Nat) (bind m (fun (x : Nat) => pure x)) m := fun m => elim (fun y => Path (List Nat) (bind y (fun (x : Nat) => pure x)) y) refl (fun a => fun l => fun ih => cong (fun (t : List Nat) => cons a t) ih) m
+def appendAssoc : (xs : List Nat) -> (ys : List Nat) -> (zs : List Nat) -> Path (List Nat) (append (append xs ys) zs) (append xs (append ys zs)) := fun xs => fun ys => fun zs => elim (fun y => Path (List Nat) (append (append y ys) zs) (append y (append ys zs))) refl (fun a => fun l => fun ih => cong (fun (t : List Nat) => cons a t) ih) xs
+def bindAppend : (xs : List Nat) -> (ys : List Nat) -> (g : Nat -> List Nat) -> Path (List Nat) (bind (append xs ys) g) (append (bind xs g) (bind ys g)) := fun xs => fun ys => fun g => elim (fun y => Path (List Nat) (bind (append y ys) g) (append (bind y g) (bind ys g))) refl (fun a => fun l => fun ih => trans (cong (fun (t : List Nat) => append (g a) t) ih) (sym (appendAssoc (g a) (bind l g) (bind ys g)))) xs
+def assocO : (m : Option Nat) -> (f : Nat -> Option Nat) -> (g : Nat -> Option Nat) -> Path (Option Nat) (bind (bind m f) g) (bind m (fun (x : Nat) => bind (f x) g)) := fun m => fun f => fun g => elim (fun y => Path (Option Nat) (bind (bind y f) g) (bind y (fun (x : Nat) => bind (f x) g))) refl (fun a => refl) m
+def assocS : (m : Sum Nat Nat) -> (f : Nat -> Sum Nat Nat) -> (g : Nat -> Sum Nat Nat) -> Path (Sum Nat Nat) (bind (bind m f) g) (bind m (fun (x : Nat) => bind (f x) g)) := fun m => fun f => fun g => elim (fun y => Path (Sum Nat Nat) (bind (bind y f) g) (bind y (fun (x : Nat) => bind (f x) g))) (fun e => refl) (fun a => refl) m
+def assocL : (m : List Nat) -> (f : Nat -> List Nat) -> (g : Nat -> List Nat) -> Path (List Nat) (bind (bind m f) g) (bind m (fun (x : Nat) => bind (f x) g)) := fun m => fun f => fun g => elim (fun y => Path (List Nat) (bind (bind y f) g) (bind y (fun (x : Nat) => bind (f x) g))) refl (fun a => fun l => fun ih => trans (bindAppend (f a) (bind l f) g) (cong (fun (t : List Nat) => append (bind (f a) g) t) ih)) m
+def mapBindO : (m : Option Nat) -> (f : Nat -> Nat) -> Path (Option Nat) (map f m) (bind m (fun (x : Nat) => pure (f x))) := fun m => fun f => elim (fun y => Path (Option Nat) (map f y) (bind y (fun (x : Nat) => pure (f x)))) refl (fun a => refl) m
+def mapBindS : (m : Sum Nat Nat) -> (f : Nat -> Nat) -> Path (Sum Nat Nat) (map f m) (bind m (fun (x : Nat) => pure (f x))) := fun m => fun f => elim (fun y => Path (Sum Nat Nat) (map f y) (bind y (fun (x : Nat) => pure (f x)))) (fun e => refl) (fun a => refl) m
+def mapBindL : (m : List Nat) -> (f : Nat -> Nat) -> Path (List Nat) (map f m) (bind m (fun (x : Nat) => pure (f x))) := fun m => fun f => elim (fun y => Path (List Nat) (map f y) (bind y (fun (x : Nat) => pure (f x)))) refl (fun a => fun l => fun ih => cong (fun (t : List Nat) => cons (f a) t) ih) m

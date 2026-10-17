@@ -45,6 +45,12 @@ if ! rg -q -F 'the start normalizes to 1201, the end normalizes to 1200' "$tmp/e
   echo "FAIL bad-refl.lang: the message does not show both normal forms"
   fail=$((fail + 1))
 fi
+# An elim case refusal names the binders of the case type (M6 s1, M5 s2 (b)).
+build/langc check test/check/elim-no-ih.lang 2>"$tmp/err" >/dev/null || true
+if ! rg -q -F '(top : Nat) -> (rest : Stack) -> (ih : Nat) -> Nat' "$tmp/err"; then
+  echo "FAIL elim-no-ih.lang: the message does not name the binders of the case type"
+  fail=$((fail + 1))
+fi
 
 # Each line of test/eval/expect.txt is `FILE NAME [ARGS] => OUTPUT`. `langc eval`
 # must exit 0 and print OUTPUT. A trap also prints `langc: EVAL_OVERFLOW: NAME: ...`

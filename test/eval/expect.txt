@@ -26,6 +26,24 @@ universes Endo => (A : Type 0) -> (x : A) -> A
 algebra down => cons 5 (cons 4 (cons 3 nil))
 algebra stop => nil
 monad okBind => inl flagNo
+monad-laws appNil => cons 1 nil
+monad-laws appCons => cons 1 (cons 2 (cons 3 nil))
+monad-laws appRightNil => fun xs => xs
+monad-laws appPair => fun xs => fun ys => append xs ys
+monad-laws appTail => fun xs => cons 1 (append xs (cons 2 nil))
+monad-laws bindTail => fun xs => cons 1 (cons 1 (bind xs (fun x => cons x (cons x nil))))
+monad-laws elimSome => 5
+monad-laws elimNone => 0
+monad-laws elimOpt => fun o => elim (fun y => Nat) 0 (fun a => natAdd a 1) o
+monad-laws elimInl => 13
+monad-laws elimInr => 7
+monad-laws elimSum => fun s => elim (fun y => Nat) (fun e => natAdd e 10) (fun a => a) s
+monad-laws lenNil => 0
+monad-laws lenThree => 3
+monad-laws lenTail => fun xs => natAdd (elim (fun y => Nat) 0 (fun a => fun l => fun ih => natAdd ih 1) xs) 1
+monad-laws elimTrapHead 18446744073709551615 => 7
+monad-laws elimTrapStrict 18446744073709551615 => trap
+monad-laws elimTrapBare 18446744073709551615 => trap
 functions four => 4
 functions applied => 36
 field nine => 9

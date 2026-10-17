@@ -49,6 +49,7 @@ typedef enum {
   OP_PURE,
   OP_MAP,
   OP_BIND,
+  OP_APPEND, /* M6 s1 (D1): append xs ys, the join of the List instance */
   OP_FOLD_NAT,
   OP_FOLD_LIST,
   OP_FOLD_FAMILY,
@@ -61,6 +62,9 @@ typedef enum {
                     then the second), then the scrutinee */
   OP_ELIM, /* M5 s2 (D3): elim P case... x. inst: the family. args: the
               motive P, one case for each constructor, then the scrutinee */
+  OP_ELIM_CORE, /* M6 s1 (D3): elim P c1 c2 x at a core carrier. inst: the
+                   Carrier. args: the motive P, the two cases, then the
+                   scrutinee */
   OP_UNFOLD,
   OP_FILTER,
   OP_WITNESS,
@@ -125,7 +129,8 @@ struct Core {
   uint64_t nat;
   Op op;
   /* OP_FAMILY, OP_FOLD_FAMILY: the family. OP_CTOR, OP_PROJ: the
-     constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
+     constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER,
+     OP_ELIM_CORE: the Carrier. */
   uint32_t inst;
   uint32_t field; /* OP_PROJ: the field number */
   const char *name;
@@ -325,6 +330,7 @@ const Value *value_on_face(Machine *m, uint32_t level, const Value *v, const Ivl
 /* Writes V in the surface syntax. NAMES gives the names of the levels below
    NAME_COUNT. Returns 1 for a complete rendering, 0 on truncation or error. */
 int value_print(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap);
+int value_print_case(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap);
 const char *op_name(const Machine *m, Op op, uint32_t inst, uint32_t field);
 
 #endif

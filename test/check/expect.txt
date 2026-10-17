@@ -121,3 +121,12 @@ elim-ctx.lang ELIM_CASES
 fold-ty.lang HIT_CASES
 fold-block-count.lang HIT_CASES
 fold-block-index.lang HIT_CASES
+append-def.lang REFUSE_NAME
+append-mix.lang TYPE_MISMATCH
+elim-option-count.lang ELIM_CASES
+elim-option-case.lang ELIM_CASE
+elim-sum-count.lang ELIM_CASES
+elim-sum-case.lang ELIM_CASE
+elim-list-count.lang ELIM_CASES
+elim-list-case.lang ELIM_CASE
+elim-field.lang TYPE_MISMATCH

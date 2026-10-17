@@ -1,0 +1,1 @@
+def bad : List Nat := append (cons 1 nil) (cons flagYes nil)

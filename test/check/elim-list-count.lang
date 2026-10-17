@@ -1,0 +1,1 @@
+def bad : List Nat -> Nat := fun xs => elim (fun y => Nat) 0 xs

@@ -19,8 +19,8 @@ static const char *const OP_NAMES[] = {
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
-  [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_UNFOLD] = "unfold",
+  [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_APPEND] = "append", [OP_FOLD_NAT] = "fold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_ELIM_CORE] = "elim", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
@@ -43,8 +43,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
-  [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_MAP] = 2, [OP_BIND] = 2, [OP_APPEND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
@@ -592,25 +592,55 @@ static int buf_append(Machine *m, ValBuf *buf, const Spine *s) {
 
 /* A list bind concatenates the lists F X. A neutral end in any of them
    leaves the whole bind stuck. */
-static const Value *bind_list(Machine *m, const Value *const *a, uint32_t n) {
+/* M6 s1 (D1): append xs ys. The known cells of xs go over ys. A neutral end
+   of xs gives the cells over append END ys, or xs when ys is nil (the right
+   unit). A trap end of xs stays. */
+static const Value *append_values(Machine *m, const Value *xs, const Value *ys) {
   Spine s;
-  Spine t;
   ValBuf out;
+  if (xs == NULL || ys == NULL || !spine_of(m, xs, &s))
+    return NULL;
+  switch (scrut_of(s.tail)) {
+  case SCRUT_TRAP:
+    return xs;
+  case SCRUT_NEUTRAL:
+    if (val_is(ys, OP_NIL))
+      return xs;
+    ys = make(m, VAL_STUCK, OP_APPEND, 0, 2, s.tail, ys, NULL);
+    break;
+  case SCRUT_VALUE:
+    if (!val_is(s.tail, OP_NIL))
+      return internal(m, "a list that does not end in nil");
+    break;
+  }
+  buf_init(&out);
+  if (!buf_append(m, &out, &s))
+    return NULL;
+  return build_list(m, out.items, out.count, ys);
+}
+
+/* M6 s1 (D2): bind nil f = nil, bind (cons x xs) f = append (f x) (bind xs f).
+   A neutral end gives bind END f under the known cells. */
+static const Value *bind_list(Machine *m, const Value *const *a) {
+  Spine s;
+  const Value *acc = NULL;
   uint32_t i;
   if (!spine_of(m, a[0], &s))
     return NULL;
-  if (scrut_of(s.tail) == SCRUT_NEUTRAL)
-    return val_op(m, VAL_STUCK, OP_BIND, CARRIER_LIST, 0, a, n);
-  buf_init(&out);
-  for (i = 0; i < s.count; i++) {
-    if (!spine_of(m, apply_value(m, a[1], s.cells[i]->args[0]), &t) || !buf_append(m, &out, &t))
-      return NULL;
-    if (scrut_of(t.tail) == SCRUT_NEUTRAL)
-      return val_op(m, VAL_STUCK, OP_BIND, CARRIER_LIST, 0, a, n);
-    if (scrut_of(t.tail) == SCRUT_TRAP)
-      return build_list(m, out.items, out.count, t.tail);
+  switch (scrut_of(s.tail)) {
+  case SCRUT_TRAP:
+    acc = s.tail;
+    break;
+  case SCRUT_NEUTRAL:
+    acc = make(m, VAL_STUCK, OP_BIND, CARRIER_LIST, 2, s.tail, a[1], NULL);
+    break;
+  case SCRUT_VALUE:
+    acc = list_tail(m, s.tail, OP_BIND, CARRIER_LIST, a[1]);
+    break;
   }
-  return build_list(m, out.items, out.count, list_tail(m, s.tail, OP_BIND, CARRIER_LIST, a[1]));
+  for (i = s.count; i > 0 && acc != NULL; i--)
+    acc = append_values(m, apply_value(m, a[1], s.cells[i - 1u]->args[0]), acc);
+  return acc;
 }
 
 static const Value *reduce_bind(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
@@ -624,7 +654,48 @@ static const Value *reduce_bind(Machine *m, uint32_t inst, const Value *const *a
   case CARRIER_SUM:
     return val_is(x, OP_INR) ? apply_value(m, a[1], x->args[0]) : x;
   case CARRIER_LIST:
-    return bind_list(m, a, n);
+    return bind_list(m, a);
+  }
+  return internal(m, "an unknown carrier");
+}
+
+/* M6 s1 (D3): elim P cnil ccons l at List. nil gives cnil;  cons a l gives
+   ccons a l (elim P cnil ccons l), from the last cell. A trap end gives the
+   trap;  a neutral end gives the stuck elim at the end. */
+static const Value *elim_list(Machine *m, uint32_t inst, const Value *const *a) {
+  Spine s;
+  const Value *end[4];
+  const Value *acc = NULL;
+  uint32_t i;
+  if (!spine_of(m, a[3], &s))
+    return NULL;
+  end[0] = a[0];
+  end[1] = a[1];
+  end[2] = a[2];
+  end[3] = s.tail;
+  if (!blocked(m, s.tail, OP_ELIM_CORE, inst, 0, end, 4u, &acc))
+    acc = a[1];
+  for (i = s.count; i > 0 && acc != NULL; i--) {
+    const Value *cell = s.cells[i - 1u];
+    acc = apply_value(m, apply_value(m, apply_value(m, a[2], cell->args[0]), cell->args[1]), acc);
+  }
+  return acc;
+}
+
+/* M6 s1 (D3): elim P c1 c2 x at a core carrier (inst: the Carrier). It
+   reduces at a constructor and is neutral at a neutral scrutinee. */
+static const Value *elim_core(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const Value *x = a[3];
+  const Value *out;
+  if (blocked(m, x, OP_ELIM_CORE, inst, 0, a, n, &out))
+    return out;
+  switch ((Carrier)inst) {
+  case CARRIER_OPTION:
+    return val_is(x, OP_SOME) ? apply_value(m, a[2], x->args[0]) : a[1];
+  case CARRIER_SUM:
+    return apply_value(m, val_is(x, OP_INL) ? a[1] : a[2], x->args[0]);
+  case CARRIER_LIST:
+    return elim_list(m, inst, a);
   }
   return internal(m, "an unknown carrier");
 }
@@ -1448,6 +1519,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_map(m, inst, a, n);
   case OP_BIND:
     return reduce_bind(m, inst, a, n);
+  case OP_APPEND:
+    return append_values(m, a[0], a[1]);
   case OP_FOLD_NAT:
     return reduce_fold_nat(m, a, n);
   case OP_FOLD_LIST:
@@ -1460,6 +1533,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return fold_block(m, inst, a, n - 3u, a[n - 1u]);
   case OP_ELIM:
     return fold_hit(m, OP_ELIM, inst, a[0], a + 1, n - 2u, a[n - 1u]);
+  case OP_ELIM_CORE:
+    return elim_core(m, inst, a, n);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
@@ -2201,6 +2276,7 @@ typedef struct {
   const char *extra[PRINT_NAMES_MAX];
   uint32_t extra_count;
   unsigned depth;
+  int fields_free; /* M6 s1: a binder may keep a field name (messages) */
 } Printer;
 
 static void put(Printer *p, const char *s) {
@@ -2263,7 +2339,7 @@ static int name_used(const Printer *p, const char *name) {
     const CtorInfo *c = &p->m->ctors[i];
     if (strcmp(name, c->name) == 0)
       return 1;
-    for (j = 0; j < c->field_count; j++)
+    for (j = 0; !p->fields_free && j < c->field_count; j++)
       if (strcmp(name, c->fields[j].name) == 0)
         return 1;
   }
@@ -2553,7 +2629,7 @@ static void print_value(Printer *p, const Value *v, int atom) {
   p->depth--;
 }
 
-int value_print(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap) {
+static int print_with(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap, int fields_free) {
   Printer p;
   if (cap == 0)
     return 0;
@@ -2566,6 +2642,17 @@ int value_print(Machine *m, const char *const *names, uint32_t name_count, const
   p.cap = cap;
   p.names = names;
   p.name_count = name_count;
+  p.fields_free = fields_free;
   print_value(&p, v, 0);
   return !p.full && !m->diag->set;
+}
+
+int value_print(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap) {
+  return print_with(m, names, name_count, v, buf, cap, 0);
+}
+
+/* M6 s1 (D3): as value_print, but a binder can keep a field name (the case
+   types of the ELIM_CASES and HIT_CASES messages). */
+int value_print_case(Machine *m, const char *const *names, uint32_t name_count, const Value *v, char *buf, size_t cap) {
+  return print_with(m, names, name_count, v, buf, cap, 1);
 }

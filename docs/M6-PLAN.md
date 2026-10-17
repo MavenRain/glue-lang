@@ -1,7 +1,7 @@
 # M6 plan: monad laws, folds, unfolds and the hint monad
 
-Status: QUESTIONS OPEN (2026-10-16).  Section 9 gives questions (a) to (h),
-each with a recommendation.  M5 is the s7 close commit 8abf7e2.  The kickoff
+Status: RULED (2026-10-17).  The USER ruled questions (a) to (h) of section
+9:  each recommendation.  M5 is the s7 close commit 8abf7e2.  The kickoff
 makes no code change.  The plan goes into the s1 commit (D16).
 
 ## 1. Sources
@@ -360,8 +360,8 @@ Additional regression obligations:
 
 ## 9. Questions for the USER
 
-Each question is OPEN (no USER ruling on 2026-10-16).  A ruling goes under
-its question as `RULED 2026-MM-DD (USER)`, and into the D calls.
+The USER ruled each question on 2026-10-17:  each recommendation.  The D
+calls already use the recommendations, so no D call changes.
 
 - (a) The hint monad and the IR:  does a hint need an IR change?
   Recommendation:  no IR change.  Reasons:  (1) IR v1 already has witness
@@ -370,40 +370,48 @@ its question as `RULED 2026-MM-DD (USER)`, and into the D calls.
   each advice cell (circuit.rs 141 to 154).  A hint lowers to an input row
   with zero selectors and no instance copy.  New goldens only;  the hint e2e
   row is the first halo2 test of such a cell.
+  RULED 2026-10-17 (USER):  the recommendation (no IR change).
 - (b) The monad surface:  extend the core instance, or add a monad record?
   Recommendation:  extend the current core instance (core.h 97 to 102) with
   the core `append` and its right-unit rule (D1, D2).  Reasons:  (1) a monad
   record gives the same computation;  (2) a record needs a type-function
   field that the core does not have.
+  RULED 2026-10-17 (USER):  the recommendation (extend the core instance).
 - (c) `unfold`:  which depth form?  Recommendation:  the explicit Nat depth
   (FORMERS F7 and the PLAN lowering table), plus the F7 form into Nat (D9)
   and the `option` step (D8).  Reasons:  (1) the lowering needs a static
   depth bound (PLAN 57 to 70);  (2) the `option` step gives the F7 laws by
   refl at a neutral step result;  (3) the Nat form is the FORMERS F7 Nat
   case.
+  RULED 2026-10-17 (USER):  the recommendation (the explicit Nat depth, D8,
+  D9).
 - (d) O8:  close it as rules or as gaps?  Recommendation:  M6 closes O8 as
   rules, not as gaps (D10, D11), and keeps D3 (of M4) and D8 (of M3).
   Reasons:  (1) M5 D10 closed the M4 stuck values the same way;  (2) the
   rules read the line or the type argument, not the type of a value; (3) s4
   records the remaining neutral cases and checks substitution through data
   that contains HIT fields.
+  RULED 2026-10-17 (USER):  the recommendation (O8 closes as rules).
 - (e) Open items:  which close in M6?  Recommendation:  O12 (c) and O13 stay
   open (M6 needs no boundary correction and no full QIIT form).  O4 can close
   with the `inv` CIRCUIT_LOWER row (s5).  The s7 review note (b) and s3 (b)
   go to s4 (D12).  s4 fixes the `loop i` printer quirk (M5 s2 (a)) and lists
   each changed row.  M5 s2 (b) goes to s1 (D3).  M5 s2 (c), s5 and the s6
   option stay as they are.  A new O14 (F6 uniqueness at a HIT).
+  RULED 2026-10-17 (USER):  the recommendation.
 - (f) Slices:  s1 to s7 of section 10?  Recommendation:  yes.  Reasons:
   (1) `elim` at the carriers (s1, s2) comes before each proof that uses it;
   (2) the Kan rules (s4) are apart from the laws, so each mutant set stays
   small;  (3) the lowering (s5, s6) comes last, so s1 to s4 keep the IR check
   clean.
+  RULED 2026-10-17 (USER):  the recommendation (slices s1 to s7).
 - (g) `elim` at the core carriers Nat, Option, Sum E and List?
   Recommendation:  yes (D3, D6).  Reasons:  (1) without it, the laws at a
   variable and the F6 uniqueness law have no proof term;  (2) the other
   choice, rules that read the shape of a function on a stuck value (such as
   `bind m pure = m`), puts confluence at risk;  (3) it reuses ELIM_CASES,
   ELIM_CASE and the M5 IH rule.
+  RULED 2026-10-17 (USER):  the recommendation (`elim` at the carriers).
 - (h) The hint surface:  a binder or a core type?  Recommendation:  the
   circuit binder `hint h := e` and the ordinary core operation `inv` for
   witness calculation (D14).  Only a residual `inv` in a constraint normal
@@ -412,6 +420,7 @@ its question as `RULED 2026-MM-DD (USER)`, and into the D calls.
   circuit does not constrain;  (2) a binder keeps h a variable in the circuit
   relation; (3) residual `inv` in a constraint gives CIRCUIT_LOWER, the first
   gate row of O4.
+  RULED 2026-10-17 (USER):  the recommendation (the `hint` binder, `inv`).
 
 ## 10. Slices
 

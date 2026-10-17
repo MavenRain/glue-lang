@@ -64,6 +64,7 @@ typedef enum {
   RULE_PURE,
   RULE_MAP,
   RULE_BIND,
+  RULE_APPEND,
   RULE_FILTER,
   RULE_FOLD,
   RULE_ELIM,
@@ -142,6 +143,7 @@ static const Builtin BUILTINS[] = {
   {"pure", 1, RULE_PURE, OP_PURE, OP_NAT, 0},
   {"map", 2, RULE_MAP, OP_MAP, OP_NAT, 0},
   {"bind", 2, RULE_BIND, OP_BIND, OP_NAT, 0},
+  {"append", 2, RULE_APPEND, OP_APPEND, OP_LIST, 0},
   {"filter", 2, RULE_FILTER, OP_FILTER, OP_NAT, 0},
   {"fold", 2, RULE_FOLD, OP_FOLD_NAT, OP_NAT, 0},
   {"elim", 2, RULE_ELIM, OP_ELIM, OP_NAT, 0},
@@ -324,7 +326,19 @@ static const Value *here(Checker *c, const Core *k) {
 }
 
 /* V in the surface syntax, for a diagnostic. */
+static const char *show_as(Checker *c, const Value *v, int fields_free);
+
 static const char *show(Checker *c, const Value *v) {
+  return show_as(c, v, 0);
+}
+
+/* M6 s1 (D3): a case type as text. A Pi binder keeps its field name (a
+   field name is a core name, so show prints it as _x0). */
+static const char *show_case(Checker *c, const Value *v) {
+  return show_as(c, v, 1);
+}
+
+static const char *show_as(Checker *c, const Value *v, int fields_free) {
   const char *names[NAMES_MAX];
   const Scope *s;
   char *buf = arena_alloc(c->m->arena, SHOW_MAX);
@@ -335,7 +349,10 @@ static const char *show(Checker *c, const Value *v) {
   }
   if (buf == NULL || v == NULL)
     return "?";
-  value_print(c->m, names, count, v, buf, SHOW_MAX);
+  if (fields_free)
+    value_print_case(c->m, names, count, v, buf, SHOW_MAX);
+  else
+    value_print(c->m, names, count, v, buf, SHOW_MAX);
   return buf;
 }
 
@@ -780,6 +797,21 @@ static const Core *rule_bind(Call *k) {
   return op3(c, OP_BIND, carrier, 2, x, f, NULL);
 }
 
+/* M6 s1 (D1): append xs ys at List A. */
+static const Core *rule_append(Call *k) {
+  Checker *c = k->c;
+  Carrier carrier = CARRIER_OPTION;
+  const Value *a = NULL;
+  const Value *list = val_is(k->hint, OP_LIST) ? k->hint : NULL;
+  const Core *xs = list != NULL ? check(c, k->args[0], list) : infer(c, k->args[0], &list);
+  if (xs == NULL)
+    return NULL;
+  if (!carrier_of(list, &carrier, &a) || carrier != CARRIER_LIST)
+    return nul(FAIL(c, "TYPE_MISMATCH", "append needs a list, found %s", show(c, list)));
+  k->type = list;
+  return op3(c, OP_APPEND, 0, 2, xs, check(c, k->args[1], list), NULL);
+}
+
 /* filter p m */
 static const Core *rule_filter(Call *k) {
   Checker *c = k->c;
@@ -939,22 +971,30 @@ static const Value *hit_case_type(Checker *c, const CtorInfo *ci, const Value *c
   return here(c, type);
 }
 
+/* M6 s1 (D3): 1 when the diagnostic is a type, boundary or refl mismatch.
+   INNER takes its message and the diagnostic is cleared. */
+static int case_mismatch(Checker *c, char *inner, size_t size) {
+  Diag *d = c->m->diag;
+  int mismatch = d->set && d->code != NULL
+    && (strcmp(d->code, "TYPE_MISMATCH") == 0 || strcmp(d->code, "PATH_BOUNDARY") == 0 || strcmp(d->code, "TYPE_REFL") == 0);
+  if (!mismatch)
+    return 0;
+  memcpy(inner, d->msg, size);
+  d->set = 0;
+  return 1;
+}
+
 /* M4 s3 (D-s3-3): the failed check of the case of CI. An inner type,
    boundary or refl mismatch becomes HIT_CASES (a point case) or HIT_CASE
    (a path case) with the constructor and the expected type; another inner
    code stays. */
 static const Core *recode_case(Checker *c, const CtorInfo *ci, const Value *want, int dep) {
-  Diag *d = c->m->diag;
-  char inner[sizeof d->msg];
-  int mismatch = d->set && d->code != NULL
-    && (strcmp(d->code, "TYPE_MISMATCH") == 0 || strcmp(d->code, "PATH_BOUNDARY") == 0 || strcmp(d->code, "TYPE_REFL") == 0);
-  if (!mismatch || want == NULL)
+  char inner[sizeof c->m->diag->msg];
+  if (want == NULL || !case_mismatch(c, inner, sizeof inner))
     return NULL;
-  memcpy(inner, d->msg, sizeof inner);
-  d->set = 0;
   if (ci->binder_count == 0u)
-    return nul(FAIL(c, dep ? "ELIM_CASES" : "HIT_CASES", "the case for %s must have the type %s: %s", ci->name, show(c, want), inner));
-  return nul(FAIL(c, dep ? "ELIM_CASE" : "HIT_CASE", "the case for %s must match its boundary and have the type %s: %s", ci->name, show(c, want), inner));
+    return nul(FAIL(c, dep ? "ELIM_CASES" : "HIT_CASES", "the case for %s must have the type %s: %s", ci->name, show_case(c, want), inner));
+  return nul(FAIL(c, dep ? "ELIM_CASE" : "HIT_CASE", "the case for %s must match its boundary and have the type %s: %s", ci->name, show_case(c, want), inner));
 }
 
 /* M4 s3 (D6): fold B case... x at a HIT. B is explicit; one case for each
@@ -1430,36 +1470,17 @@ static const Value *elim_case_type(Checker *c, const CtorInfo *ci, const Value *
   return type == NULL ? NULL : here(c, type);
 }
 
-/* M5 s2 (D3): elim P cases x at a domain family (plain or HIT). P is
-   explicit, a family of types over the scrutinee type; one case for each
-   constructor in declaration order (elim_case_type); the scrutinee last. */
-static const Core *rule_elim(Call *k) {
+/* M5 s2 (D3): the motive P : (y : ST) -> Type n of elim at the scrutinee
+   type ST. *MOT is its value. An unannotated motive takes its domain from
+   the scrutinee. */
+static const Core *elim_motive(Call *k, const Value *st, const Value **mot) {
   Checker *c = k->c;
   Machine *m = c->m;
-  const Value *st = NULL;
   const Value *pt = NULL;
   const Value *cod;
-  const Value *mot;
-  const FamilyInfo *f;
-  const Core **cores;
-  const Value **cvals;
-  uint32_t j;
-  const Core *s = infer(c, k->args[k->argc - 1u], &st);
-  if (s == NULL)
-    return NULL;
-  if (!val_is(st, OP_FAMILY) || st->inst >= m->family_count)
-    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family; found a last argument of type %s", show(c, st)));
-  f = &m->families[st->inst];
-  if (f->partner != st->inst)
-    return nul(FAIL(c, "ELIM_CASES", "elim at %s is refused: M5 has no elim at a family of a mutual block (O13)", f->name));
-  if (k->argc != f->ctor_count + 2u)
-    return nul(FAIL(c, "ELIM_CASES", "elim at the family %s needs the motive, then %u cases, then the scrutinee; found %u arguments", f->name, f->ctor_count, k->argc));
-  cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
-  cvals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cvals);
-  if (cores == NULL || cvals == NULL)
-    return nul(FAIL(c, "OOM", "out of memory"));
-  cores[0] = try_infer(c, k->args[0], &pt);
-  if (cores[0] == NULL && k->args[0]->kind == TERM_LAM && k->args[0]->left == NULL) {
+  const Core *core;
+  core = try_infer(c, k->args[0], &pt);
+  if (core == NULL && k->args[0]->kind == TERM_LAM && k->args[0]->left == NULL) {
     const Term *p = k->args[0];
     const Core *body;
     uint64_t level = 0;
@@ -1472,19 +1493,142 @@ static const Core *rule_elim(Call *k) {
     if (body == NULL)
       return NULL;
     pt = val_arrow(m, st, val_univ(m, level));
-    cores[0] = core_bind(c, CORE_LAM, p->name, NULL, body);
+    core = core_bind(c, CORE_LAM, p->name, NULL, body);
   }
-  if (cores[0] == NULL) {
+  if (core == NULL) {
     pt = val_arrow(m, st, val_univ(m, 0));
-    cores[0] = pt == NULL ? NULL : check(c, k->args[0], pt);
-    if (cores[0] == NULL)
+    core = pt == NULL ? NULL : check(c, k->args[0], pt);
+    if (core == NULL)
       return NULL;
   }
   cod = pt == NULL || pt->kind != VAL_PI || !conv_values(m, c->level, pt->dom, st) ? NULL
     : pt->body == NULL ? pt->arg : closure_apply(m, pt, val_var(m, c->level));
   if (cod == NULL || cod->kind != VAL_UNIV)
     return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a motive P : (y : %s) -> Type n; found a motive of type %s", show(c, st), show(c, pt)));
-  mot = here(c, cores[0]);
+  *mot = here(c, core);
+  return *mot == NULL ? NULL : core;
+}
+
+/* M6 s1 (D3): the constructor of case J of elim at a core carrier. */
+static const char *carrier_case_name(Carrier carrier, uint32_t j) {
+  switch (carrier) {
+  case CARRIER_OPTION:
+    return j == 0u ? "none" : "some";
+  case CARRIER_SUM:
+    return j == 0u ? "inl" : "inr";
+  case CARRIER_LIST:
+    return j == 0u ? "nil" : "cons";
+  }
+  return "?";
+}
+
+/* M6 s1 (D3): the type of case J of elim MOT at the carrier ST (section 3.2
+   of docs/M6-PLAN.md). Option:  P none, (a : A) -> P (some a). Sum E A:
+   (e : E) -> P (inl e), (a : A) -> P (inr a). List:  P nil,
+   (a : A) -> (l : List A) -> P l -> P (cons a l). */
+static const Value *carrier_case_type(Checker *c, Carrier carrier, const Value *st, const Value *mot, uint32_t j) {
+  Machine *m = c->m;
+  uint32_t L = c->level;
+  const Value *a = val_var(m, L);
+  const Value *l = val_var(m, L + 1u);
+  const char *names[3];
+  const Value *types[3];
+  const Value *at = NULL;
+  const Core *type;
+  uint32_t nb = 0;
+  uint32_t i;
+  names[0] = "a";
+  names[1] = "l";
+  names[2] = "ih";
+  types[0] = st->args[0];
+  types[1] = st;
+  types[2] = NULL;
+  switch (carrier) {
+  case CARRIER_OPTION:
+    nb = j;
+    at = j == 0u ? val_make(m, OP_NONE, 0, 0, NULL, NULL, NULL) : val_make(m, OP_SOME, 0, 1, a, NULL, NULL);
+    break;
+  case CARRIER_SUM:
+    nb = 1;
+    names[0] = j == 0u ? "e" : "a";
+    types[0] = st->args[j];
+    at = val_make(m, j == 0u ? OP_INL : OP_INR, 0, 1, a, NULL, NULL);
+    break;
+  case CARRIER_LIST:
+    nb = 3u * j;
+    types[2] = apply_value(m, mot, l);
+    at = j == 0u ? val_make(m, OP_NIL, 0, 0, NULL, NULL, NULL) : val_make(m, OP_CONS, 0, 2, a, l, NULL);
+    break;
+  }
+  at = apply_value(m, mot, at);
+  type = at == NULL ? NULL : quote_value(m, L + nb, at);
+  for (i = nb; i > 0 && type != NULL; i--)
+    type = types[i - 1u] == NULL ? NULL : core_bind(c, CORE_PI, names[i - 1u], quote_value(m, L + i - 1u, types[i - 1u]), type);
+  return type == NULL ? NULL : here(c, type);
+}
+
+/* M6 s1 (D3): elim P c1 c2 x at a core carrier. P is explicit;  the two
+   cases in the order of carrier_case_type (the IH of cons after l);  the
+   scrutinee last. A wrong count gives ELIM_CASES, a wrong case ELIM_CASE. */
+static const Core *elim_carrier(Call *k, const Core *s, const Value *st, Carrier carrier) {
+  Checker *c = k->c;
+  const Value *mot = NULL;
+  const Core *cores[4];
+  uint32_t j;
+  if (k->argc != 4u)
+    return nul(FAIL(c, "ELIM_CASES", "elim at %s needs the motive, then 2 cases, then the scrutinee; found %u arguments", show(c, st), k->argc));
+  cores[0] = elim_motive(k, st, &mot);
+  if (cores[0] == NULL)
+    return NULL;
+  for (j = 0; j < 2u; j++) {
+    const Value *want = carrier_case_type(c, carrier, st, mot, j);
+    char inner[sizeof c->m->diag->msg];
+    cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
+    if (cores[1u + j] != NULL)
+      continue;
+    if (want == NULL || !case_mismatch(c, inner, sizeof inner))
+      return NULL;
+    return nul(FAIL(c, "ELIM_CASE", "the case for %s must have the type %s: %s", carrier_case_name(carrier, j), show_case(c, want), inner));
+  }
+  cores[3] = s;
+  k->used = 4u;
+  k->type = apply_value(c->m, mot, here(c, s));
+  return k->type == NULL ? NULL : core_op(c, OP_ELIM_CORE, (uint32_t)carrier, 0, cores, 4u);
+}
+
+/* M5 s2 (D3): elim P cases x at a domain family (plain or HIT). P is
+   explicit, a family of types over the scrutinee type; one case for each
+   constructor in declaration order (elim_case_type); the scrutinee last. */
+static const Core *rule_elim(Call *k) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const Value *st = NULL;
+  const Value *mot = NULL;
+  const Value *elem = NULL;
+  const FamilyInfo *f;
+  Carrier carrier;
+  const Core **cores;
+  const Value **cvals;
+  uint32_t j;
+  const Core *s = infer(c, k->args[k->argc - 1u], &st);
+  if (s == NULL)
+    return NULL;
+  if (carrier_of(st, &carrier, &elem))
+    return elim_carrier(k, s, st, carrier);
+  if (!val_is(st, OP_FAMILY) || st->inst >= m->family_count)
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family, Option, Sum or List; found a last argument of type %s", show(c, st)));
+  f = &m->families[st->inst];
+  if (f->partner != st->inst)
+    return nul(FAIL(c, "ELIM_CASES", "elim at %s is refused: M5 has no elim at a family of a mutual block (O13)", f->name));
+  if (k->argc != f->ctor_count + 2u)
+    return nul(FAIL(c, "ELIM_CASES", "elim at the family %s needs the motive, then %u cases, then the scrutinee; found %u arguments", f->name, f->ctor_count, k->argc));
+  cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 3u) * sizeof *cores);
+  cvals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *cvals);
+  if (cores == NULL || cvals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  cores[0] = elim_motive(k, st, &mot);
+  if (cores[0] == NULL)
+    return NULL;
   for (j = 0; j < f->ctor_count; j++) {
     const CtorInfo *ci = &m->ctors[f->first_ctor + j];
     uint32_t pis = 0;
@@ -1731,6 +1875,8 @@ static const Core *rule(Call *k) {
     return rule_map(k);
   case RULE_BIND:
     return rule_bind(k);
+  case RULE_APPEND:
+    return rule_append(k);
   case RULE_FILTER:
     return rule_filter(k);
   case RULE_FOLD:
