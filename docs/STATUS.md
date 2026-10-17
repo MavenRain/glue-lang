@@ -1830,8 +1830,13 @@ contracts` passes again (33 passed, 0 failed).
 
 M5 adds quotient inductive types (QITs), the dependent eliminator `elim`
 and an inductive-inductive block. docs/M5-PLAN.md is the plan, with the
-USER rulings of its section 9 (2026-10-16: each recommendation). The M5
-summary comes at the close (s7).
+USER rulings of its section 9 (2026-10-16: each recommendation). Summary:
+s1 adds QITs as HITs with constructor equations (Bag, Int). s2 adds `elim`
+with its point, path and hcomp rules. s3 adds the Kan rules at dependent
+and Path fields (O12 (d) closed). s4 adds the `mutual` block of two
+families (Ctx, Ty), and s5 adds its fold (OP_FOLD_BLOCK). s6 adds the
+Direction 2 smoke (transportProp, and examples/intSq.glue in same-ir). M5
+does not change the IR. M5 has six slice commits and the close (s7).
 
 ### s1: constructor equations with recursive ends (2026-10-16)
 
@@ -2449,3 +2454,154 @@ summary comes at the close (s7).
   - Optional:  give isq different pos and neg cases at `pos 1` (a Nat
     fold form of examples/functions.lang or examples/formers.lang), with
     the same IR.
+
+### s7: close (2026-10-16)
+
+The main loop built s7 by hand (sessions s7-a and s7-b). The builder agent
+stopped on a rate limit and wrote no file. s7 adds no op, no code and no
+test row.
+
+- Docs (the s7 change): SPEC.md 2.6 (the `elim` sentence points to 2.7),
+  2.7 (new: the constructor equations; `elim` and its rules, with the USER
+  empty-face ruling (ii); the Kan rules at dependent and Path fields; the
+  mutual block rules (1) to (6) and the universe rule; the block fold and
+  the s5 choice OP_FOLD_BLOCK; neutral values; conversion; the printer and
+  JSON; Direction 2; circuits; the codes ELIM_CASES, ELIM_CASE and
+  MUTUAL_BLOCK, and the codes with new causes), 9 (O4 and O12 (f): the s6
+  probe; O12 (a) and (b) go to the rules; (c) narrowed; (d) and (e)
+  closed; O13 new). docs/PLAN.md: M5 DONE 2026-10-16 with the slice
+  commits, and the sentence that the full quotient inductive-inductive
+  form is SPEC.md 9 O13. formers/FORMERS.md: no change. The matrix has one
+  row for each of the formers F1 to F15. A QIT, `elim` and the `mutual`
+  block are not formers in it, and no glue-lang note names them. F6 and F7
+  (fold and unfold) are the M6 scope. docs/STATUS.md: the M5 summary and
+  this section.
+
+#### Mutant roll-up
+
+Each mutant ran with `make -B` and the gate, source restored after: 22
+KILLED, 0 SURVIVED (the 18 planned, 3 in each of s1 to s6, and 4 extra
+rows: s1 4, s3 m0 and m4, s5 m4). The slice sections give the mutant forms
+and the failure counts.
+
+| Slice | Mutant | Result | Killing row |
+|---|---|---|---|
+| s1 | 1. eval_fold_hit_boundary keeps the inner constructor unfolded (eval.c) | KILLED | examples/bag.lang (bsize: INTERNAL) |
+| s1 | 2. transp_pcon_agrees always true (kan.c) | KILLED | native HIT `transport respects a path constructor application boundary` (no guest row, s1 open item (a)) |
+| s1 | 3. hit_case_end takes the `~i` end twice (check.c) | KILLED | examples/int.lang (negate: HIT_CASE) |
+| s1 | 4 (extra). transp_pcon_agrees always false (kan.c) | KILLED | eval circle meridT, bag transpSwap (stuck) |
+| s2 | 1. the IH of a recursive field is the field (eval.c eval_hit_case) | KILLED | examples/circle.lang (stackSumFive: INTERNAL) |
+| s2 | 2. the path rule drops `@ r` (eval.c eval_hit_case) | KILLED | examples/circle.lang (elimLoop: TYPE_REFL) |
+| s2 | 3. kan_elim_hcomp: the line is `<i> P u0` (kan.c) | KILLED | `make check-clang` (unused `fill`); eval circle elimHcomp |
+| s3 | m0 (extra). kan_elim_hcomp: the empty-face branch off (kan.c) | KILLED | examples/circle.lang (elimEmptyFold: TYPE_REFL) |
+| s3 | m1. field_fill: the face `phi \/ ~i` -> `phi` (kan.c) | KILLED | eval quot quotEqcLine, circle dpairTransp, circle webTransp |
+| s3 | m2. field_fill: the Path field keeps its old ends (kan.c) | KILLED | eval circle webTransp |
+| s3 | m3. field_line_transp: NULL at a dependent field (kan.c) | KILLED | eval quot quotEqcTransp, quotEqcLine, circle dpairTransp, webTransp |
+| s3 | m4 (extra). hcomp_ctor: NULL at a dependent field (kan.c) | KILLED | eval circle dpairHcomp |
+| s4 | m1. the index rule (1) off (check.c) | KILLED | check mutual-index.lang (REFUSE_DATA, not MUTUAL_BLOCK) |
+| s4 | m2. B is not registered while the constructors of A are checked (check.c) | KILLED | domain REFUSE_REC at `Ty eg` (405 gate failures) |
+| s4 | m3. the partner field is `recursive` 0 (check.c) | KILLED | domain DOMAIN_FAMILY (407 gate failures) |
+| s5 | m1. a case of B gets the index, not its fold (eval.c fold_block) | KILLED | eval ctx tyRefl, tySizeT1 (5 gate failures) |
+| s5 | m2. a partner field gets the type MA (check.c block_case_type) | KILLED | examples/ctx.lang (lengthVia: PATH_EXPECTED) |
+| s5 | m3. the constructors of Ty first (check.c fold_block_rule) | KILLED | examples/ctx.lang (length: HIT_CASES; 19 gate failures) |
+| s5 | m4 (extra). no index test (check.c block_case_type) | KILLED | native HIT `a block fold refuses a second family field that uses the index` |
+| s6 | m1. the uaβ row with the inverse map (test data) | KILLED | examples/transportProp.lang (transportPropFwd: TYPE_REFL) |
+| s6 | m2. the same-ir golden set to range (test data) | KILLED | same-ir intSq square |
+| s6 | m3. the point cases of repIntPos swapped (test data) | KILLED | eval transportProp repIntPos (3, not 6) |
+
+#### Review
+
+Review of the M5 diff (`git diff 5e76e43..HEAD -- src`, 1360 lines with
+`-U2`). A read-only review agent ran in s7-a. It wrote its result to a
+file and edited no file. Result: no defect found, no code change.
+
+1. No conv rule reads a type. The conv functions (eval.c conv_fun,
+   conv_binder, same_head, conv_pair, conv_path, conv_sys, conv_glue,
+   conv_loop and conv_values) have no M5 hunk. The eval.c hunks are in
+   varied_arity and reduce_op. OP_ELIM and OP_FOLD_BLOCK have no special
+   conv or quote case: they take the generic VAL_OP and VAL_STUCK arm
+   (same_head on the op, the instance, the field and the arity, then
+   argument by argument). The one added line that names conv is in
+   check.c rule_elim: a typing check of the motive domain against the
+   scrutinee type, not a conv rule. conv_loop reads no type, family or
+   constructor table.
+2. There is no rule `hcomp A i0 u u0 = u0` (D8). kan_hcomp has the face
+   `i1` rule, the closed-type rule (hcomp_constant), then the head rules,
+   and no `i0` rule. hcomp_ctor always builds OP_CTOR with field hcomps or
+   fills. On the empty face, kan_elim_hcomp returns `hcomp (P h) i0 u
+   (transp line i0 base)`, not `u0`. Else it uses the gcomp.
+3. `hcomp` at a HIT stays canonical (D3). hcomp_ctor has one caller,
+   hcomp_data. hcomp_data has one caller, kan_hcomp, under `data_type a`
+   or plain_family (path_ctors == 0). closed_type has no OP_FAMILY.
+   hcomp_fill has one caller, hcomp_ctor, and field_fill has one caller,
+   transp_ctor. check_block refuses a path constructor in a block, thus a
+   block family is plain. eval.c calls kan_elim_hcomp only when
+   path_ctors > 0 (else the `elim` is stuck).
+4. Switches, globals and diagnostics. The diff adds no `default:` line. It
+   adds no static local and no file-scope global: each column-0 line is a
+   function or a prototype, a table entry (the builtin `elim`, a lexer
+   keyword) or a struct field (FamilyInfo.partner, Checker.partner and
+   Checker.partner_uses). Each new diagnostic path returns NULL or 0
+   (`nul(FAIL(..))`, `FAIL(..); return NULL;`, or `return FAIL(..)` in the
+   int functions check_field and check_block).
+5. IR: `git diff 5e76e43..HEAD --stat -- test/circuit
+   contracts/src/verifiers` gives 2 added rows (refuse.txt and
+   same-ir.txt, each for intSq, s6) and no verifier change.
+
+Scope: the review covered the checklist of the s7 plan (items 1 to 5). It
+is not a line-by-line audit of each rule. The 22 KILLED mutants and the
+guest rows cover the rules. The two review notes are open items (below).
+
+#### Gates
+
+Gates in s7-b on HEAD fb93222 with the s7 doc changes (build/s7-gates.sh).
+s7 changes no code or test file. The M4 counts are from the M4 close on
+5e76e43. `make -B check` exit 0 (native circuit regressions 9 (M4: 9),
+native path regressions 42 (M4: 42), native face regressions 35 (M4: 35),
+native HIT regressions 44 (M4: 27), examples 33 (M4: 28), parse refusals
+18 (M4: 17), check refusals 123 (M4: 100), evals 209 (M4: 162), json 27
+builds (M4: 23), build refusals 8 (M4: 7), circuits 4 (M4: 4), same-ir 3
+(M4: 2), circuit refusals 12 (M4: 11), satcheck refusals 6 (M4: 6), each
+with 0 failed; gate 0 failures; node regressions 6 (M4: 6); printer 2
+(M4: 2)). `make check-clang` exit 0. `forge build --root contracts
+--sizes` exit 0. `make e2e` exit 0 (33 Forge tests passed (M4: 33)). IR
+check: `git diff --exit-code -- test/circuit contracts/src/verifiers`
+exit 0. contracts/test/fixtures is restored from HEAD, and `forge test
+--root contracts` passes again (33 passed, 0 failed).
+
+#### Open items
+
+- O4 (M1, SPEC.md 9 O12 (f)): no probe gets a stuck `elim` to the
+  lowering, thus there is no CIRCUIT_LOWER row (s6). Milestone: M7.
+- O8 (M3, SPEC.md 9): no change in M5. Milestone: M6 (the fold and
+  unfold families).
+- O12 (c) (M4, SPEC.md 9): open, narrowed. `transp` of `squashc` of Quot
+  stays stuck, because it needs the boundary correction (s3).
+- O13 (M5, SPEC.md 9): new. The full quotient inductive-inductive form
+  (equations in a `mutual` block, non-uniform indices, `elim` at a block
+  family) is not in M5.
+- s1 (a): mutant 2 (transp_pcon_agrees always true) has no guest row. A
+  native HIT row kills it.
+- s2 (a): PRE-EXISTING printer quirk. A path constructor as the last
+  argument of a chain op prints `loop i`, not `loop @ i`. This needs a
+  USER ruling for a later slice.
+- s2 (b): the ELIM_CASES messages print Pi binders as `_x0`.
+- s2 (c): no closed instance holds a stuck `elim`.
+- s3 (b): the fills at r = i1 keep an `i0 -> ..` branch (no conv rule
+  removes it).
+- s5: the path-field branch of block_case_type is defensive.
+- s6 (optional): isq with different pos and neg cases.
+- s7 review note (a): hcomp_constant is true on an empty system. With a
+  closed-type motive (for example `P = fun _ => Nat`), the empty-face
+  `elim` reduces to `transp line i0 base`, that is `elim P cases u0`.
+  This is the allowed closed-type rule. The M4 kan_fold_hcomp does the
+  same.
+- s7 review note (b): kan_elim_hcomp gives the empty-face hcomp the type
+  `P h`, but its base has the type `P (hfill .. 1)`. This needs `hfill ..
+  1` to convert to `h` (USER ruling (ii) of s2 open item (d)). On the
+  face `i0` the two systems can differ in form (s3 open item (b)). The
+  review built no input that shows a failure. A candidate M6 probe.
+- Closed in M5: O12 (a) and (b) (rules, D10), (d) (s3) and (e) (s2); s1
+  (b) (SPEC.md 2.7 uses the natAdd form); s2 (d) (s3 step 0, USER ruling
+  (ii)); s4 (a) (the s4 review follow-up); the s5 index field refusal (a
+  native row).

@@ -417,7 +417,8 @@ system)?`, where `system` is the system form of section 2.4.
 The checker copies `B` into the core term (OP_FOLD_HIT), because the
 `hcomp` rule of the eliminator needs it. `fold` at a HIT is the `rec` of
 design/DESIGN.md. `rec` is a keyword (`def rec`), thus the eliminator keeps
-the name `fold`. M4 has no dependent eliminator (O12).
+the name `fold`. M4 has no dependent eliminator. M5 adds `elim` (section
+2.7).
 
 **Evaluator rules.** The order is: (1) the face `i1` rules; (2) the rule of
 the head former or of the head value; (3) else the value is stuck. `pc` is
@@ -511,6 +512,177 @@ Self), REFUSE_DATA (a family
 in a program; rule R1), REFUSE_NAME (`isProp`, `isSet`), HCOMP_BASE (an
 `hcomp` at a HIT whose base does not match), JSON_VALUE (a path with
 content, an `hcomp` value or a path constructor value in an instance).
+
+### 2.7 Quotient inductive types (M5)
+
+M5 adds quotient inductive types (QITs), the dependent eliminator `elim`
+and a block of two families (an inductive-inductive definition). The new
+keyword is `mutual`. The new core name is `elim`. The plan, the design
+calls and the USER rulings (2026-10-16) are in docs/M5-PLAN.md.
+
+**Constructor equations.** A QIT is a HIT whose path constructors are
+equations between constructor terms. An equation uses the path constructor
+form of section 2.6: one binder and a boundary system. There is no `eq`
+clause (RULED 2026-10-16 (USER), M5-PLAN question c). An end can hold a
+nested application of a constructor, as the ends of `bswap`. The boundary
+rule, HIT_BOUNDARY and HIT_CASE apply as in section 2.6.
+
+```
+family Bag (A : Type 0) := bnil | bcons (bx : A) (bxs : Bag A) | bswap (sx : A) (sy : A) (sxs : Bag A) <i> [ ~i -> bcons A sx (bcons A sy sxs), i -> bcons A sy (bcons A sx sxs) ]
+family Int := pos (pn : Nat) | neg (nn : Nat) | zeq <i> [ ~i -> pos 0, i -> neg 0 ]
+```
+
+The `fold` case of an equation has the folded nested ends. With `bsize A
+:= fold Nat 0 (fun x => fun n => natAdd n 1) (fun x => fun y => fun n =>
+refl)`, `bsize A (bswap A x y xs @ k)` normalizes to `natAdd (natAdd (bsize
+A xs) 1) 1`. `transp` along `<i> Bag (L i)` moves each field of `bswap`
+(the fieldwise rule). For `bswap` and `zeq` the fieldwise rule agrees with
+the transport of the ends (D2), thus no M5 equation stays stuck under O12
+(c).
+
+**The dependent eliminator.** `elim P cases x` (RULED 2026-10-16 (USER),
+question b). `fold` does not change. `rec` stays a keyword.
+
+| Rule | Premises | Conclusion |
+|---|---|---|
+| elim | `x : D params`; `P : (y : D params) -> Type n`, else TYPE_MISMATCH; one case for each constructor in declaration order (ELIM_CASES). A point case takes each field, immediately followed by an IH for a recursive data field or a Path field (as below; ELIM_CASES). A path case with k binders has the type `PathP (<i1> .. PathP (<ik> P (pc params fields @ i1 .. @ ik)) ..)` and takes the fields and the IHs. On each boundary branch `phi -> t`, its end converts to `elim P cases t` (ELIM_CASE) | `elim P cases x : P x` |
+
+For a recursive data field `f : D params`, the IH has type `P f`. For a
+Path field `p : Path (D params) a b`, the IH has type `PathP (<j> P (p @
+j)) ha hb`. Here `ha` and `hb` eliminate the field ends `a` and `b`,
+replacing earlier recursive fields by their IHs. For example, the
+`wlink` case of `elim (fun _ => Nat)` takes `x, hx, y, hy, p, hp`,
+with `hp : Path Nat hx hy`.
+
+The evaluator rules of `elim`, in the order of section 2.6:
+
+| Redex | Result |
+|---|---|
+| `elim P cases (c params fields)`, c a point constructor | the case of c applied to the original fields and their IHs: `elim P cases f` for a recursive data field `f`, and `<j> elim P cases (p @ j)` for a Path field `p` |
+| `elim P cases (pc params fields @ r1 .. @ rk)` | the path case of pc applied to the fields and the IHs, then `@ r1 .. @ rk` |
+| `elim P cases (hcomp D phi u u0)` at a HIT, phi not `i0` | `comp (<i> P (hfill D phi u u0 i)) phi (fun i => [ phi -> elim P cases (u i) ]) (elim P cases u0)`, with `hfill D phi u u0 i = hcomp D (phi \/ ~i) (fun j => [ phi -> u (i /\ j), ~i -> u0 ]) u0` (kan.c kan_elim_hcomp, through gcomp) |
+| `elim P cases h`, h = `hcomp D i0 u u0` at a HIT | `hcomp (P h) i0 (fun i => [ i0 -> .. ]) (transp line i0 (elim P cases u0))`: the empty tube stays, as in the M4 `fold` rule. RULED 2026-10-16 (USER): option (ii) of docs/STATUS.md M5 s2 open item (d). Thus `elim (fun y => Circle) base (<i> loop @ i) h` and `fold Circle base (<i> loop @ i) h` give the same value |
+| `elim P cases x`, x neutral | a neutral value |
+
+At a plain family `elim` has no `hcomp` rule: the data rule of section 2.5
+gives a constructor or a stuck value first. `elim` is a core name, thus
+`def elim` gives REFUSE_NAME. A family of a `mutual` block has no `elim` in
+M5 (ELIM_CASES; O13). Examples: `negNeg` (examples/int.lang, the `zeq` case
+is the square `<i> <j> zeq @ i`), `ret` and `flipPath` (examples/otp.lang:
+`transport flipPath message = cipher` by refl, with `flipPath = ua
+(isoToEquiv OTPSpec OTPSpec flip flip ret ret)`).
+
+**Kan rules at dependent and Path fields.** `transp` at a constructor with
+a dependent field uses the Sigma method of section 2.5: field k moves along
+its field type at the line, and each earlier field n is replaced by its
+fill `fun i => transp (<j> T[DOM(L, i /\ j) / p, F n (i /\ j) / x n]) (phi
+\/ ~i) x`. A Path field gets a PathP line, thus its ends are the
+transported ends. `hcomp` at a plain family with a dependent field uses the
+comp method of `hcomp` at Sigma. The fill of a dependent field is `fun r =>
+hcomp B[r] (phi \/ ~r) (fun i => [ phi -> S (FIELD N (u (i /\ r))), ~r ->
+S x ]) (transp (<i> B[i /\ r]) i0 x)`, with S = `transp (<j> B[(i \/ j)
+/\ r]) i` and B[s] the field type at the parameters and the earlier fills
+at s. A non-dependent field keeps the M4 rule. Thus `transp (<i> Quot Nat
+(R i)) i0 (eqc Nat (R i0) 1 2 r @ k)` gives `eqc Nat (R i1) 1 2 (transp (<j>
+R j 1 2) i0 r) @ k`. `transp` at a path constructor with a Path field
+(`squashc` of Quot) stays stuck (O12 (c)).
+
+**The mutual block.** `mutual`, then exactly two `family` declarations
+(RULED 2026-10-16 (USER), question d):
+
+```
+mutual family Ctx := cempty | ext (eg : Ctx) (et : Ty eg)
+family Ty (tg : Ctx) := tbase | arrow (ta : Ty tg) (tb : Ty tg)
+```
+
+| Rule | The block of A and B |
+|---|---|
+| (1) index | The last parameter of B (the index) has the type of A at the parameters of B before it, else MUTUAL_BLOCK. |
+| (2) names | The checker checks the parameters of A and registers A, then checks the parameters of B and registers B. Then it checks the constructors of A, then the constructors of B. Both names are known before a constructor: the block is the one exception to rule R3. Outside a block, a family that names a later family gives REFUSE_REC. |
+| (3) partner field | A field of A with the type `B params g`, where g is an earlier recursive field of the same constructor, is a partner field. It is also a dependent field. A different use of B in a field of A gives DOMAIN_FAMILY. |
+| (4) fields of B | A field of B follows the field rule of section 2.6: a recursive field is B at its own parameters (a uniform index). |
+| (5) rule R1 | A block is in domain/domain.lang only. A program that declares a block gets REFUSE_DATA. |
+| (6) points only | A block has point constructors only. A path constructor in a block gives MUTUAL_BLOCK (O13). |
+| universe | A gets the universe of its partner fields: the checker raises the universe of A and checks both declarations again with the final bounds. |
+
+A block with one family gives MUTUAL_BLOCK. `mutual` with no `family`
+gives PARSE_EXPECT. A constructor of B takes the index first: `tbase
+cempty`, `arrow cempty (tbase cempty) (tbase cempty)`. `transp` and `hcomp`
+move a partner field as a dependent field (its fill). Thus `transp` along
+`<i> Ty (P @ i)`, with `P : Path Ctx cempty c1`, gives `tbase c1`.
+
+**The block fold.** `fold MA MB casesA casesB x`. `MA : Type n`. Each form
+of `MB`, with or without a binder type, checks against `MA -> Type
+level(MA)`, else TYPE_MISMATCH. There is one case for each constructor of
+the block in declaration order: the cases of A, then the cases of B (else
+HIT_CASES).
+
+- A case of A takes the fields. A recursive field gets `MA`. A partner
+  field `t : B params g` gets `MB rg`, where `rg` is the result of `g`.
+- A case of B takes the index result `rg : MA` first, then the fields. A
+  recursive field gets `MB rg`. The case gives `MB rg`. A field of B that
+  is not recursive and uses the index gives HIT_CASES.
+- The result type is `MA` for `x` in A, and `MB (fold MA MB cases g)` for
+  `x : B params g`.
+- A case that does not match its type gives HIT_CASES.
+
+The core op is OP_FOLD_BLOCK, not OP_FOLD_HIT (the s5 choice). Its inst is
+A. Its args are MA, MB, the cases of A, the cases of B, then the
+scrutinee: the arity is the constructor count of A, plus the constructor
+count of B, plus 3. Reason: each OP_FOLD_HIT site reads the arity
+`ctor_count + 2` and reads args[0] as the one result type. A new op keeps
+each OP_FOLD_HIT site the same, and -Wswitch-enum finds each switch that
+must handle the new op. The evaluator gives a case of A its fields, with
+the recursive and the partner fields folded. It gives a case of B `fold ..
+index` first, then the fields. A neutral scrutinee gives a neutral value.
+Example: `length` and `tySize` in examples/ctx.lang.
+
+**Neutral values.** `fold B cases x`, `elim P cases x` and a block fold
+with a neutral scrutinee `x` are neutral values, as `fold` at Nat with a
+variable. `transp` at a family with a neutral argument is a neutral value.
+These are rules, not gaps (D10; before M5, O12 (a) and (b)).
+
+**Conversion.** M5 does not change conversion. Two OP_ELIM values or two
+OP_FOLD_BLOCK values convert when their arguments convert, argument by
+argument. No conv rule reads a type: two variables `x y : Int` do not
+convert (test/check/elim-int-vars.lang), and two block folds with different
+cases do not convert. `hcomp` at a HIT stays canonical (section 2.6), and
+there is no rule `hcomp A i0 u u0 = u0` (test/check/hcomp-i0-int.lang).
+
+**Printer and JSON.** The printer writes `elim P cases x`. In an instance,
+a stuck `elim` gives JSON_VALUE (src/json.c). A closed instance cannot hold
+a stuck `elim`: test/emit/elim-instance.lang holds one under a function.
+
+**Direction 2.** `fold` and `elim` on a representative reduce by the point
+rule. examples/transportProp.lang: `P` is a `fold` out of `GQuot Nat
+natSame` into `Type 0` with the `geqc` case `ua (rotE Field)`. `Pline a b
+r` is the def `<i> P (geqc Nat natSame a b r @ i)`, and `transport (Pline a
+b r) p` reduces by uaβ to the forward map `rot Field p`. The line is a def,
+because a term `<i> ..` in an argument needs a declared type (PATH_EXPECTED;
+glue-lang has no type ascription).
+
+**Circuits.** M5 adds no circuit code and does not change the IR (RULED
+2026-10-16 (USER), question a: the lowering is M7). examples/intSq.glue
+folds out of Int and gives the IR of `square` (test/circuit/same-ir.txt).
+No probed circuit gets a stuck `elim` to the lowering (O4).
+
+**Refusal codes (M5).**
+
+| Code | Exit | The compiler refuses |
+|---|---|---|
+| ELIM_CASES | 1 | `elim` with the wrong number of cases, or a point case whose type does not match (a missing IH). Also `elim` at a family of a `mutual` block. The message gives the constructor and the expected type |
+| ELIM_CASE | 1 | `elim` where a path case has the wrong type or does not convert to `elim P cases t` on a boundary branch `phi -> t`. The message gives the constructor and the expected type |
+| MUTUAL_BLOCK | 1 | A `mutual` block with one family, a path constructor in a block, or a second family whose last parameter does not have the type of the first family. The message gives the cause |
+
+Existing codes with new causes: REFUSE_NAME (`elim`), TYPE_MISMATCH (a
+motive `P` that is not a family of types over D; a block motive `MB` that
+does not check against `MA -> Type level(MA)`), DOMAIN_FAMILY (a partner
+field that is not at an earlier recursive field; the second family in a
+different type in a field of the first family), REFUSE_DATA (a block in a
+program), PARSE_EXPECT (`mutual` with no family), HIT_CASES (a block fold
+with the wrong number of cases, a case of the wrong type, or a
+non-recursive field of the second family that uses the index), JSON_VALUE
+(a stuck `elim` in an instance).
 
 ## 3. Type formers
 
@@ -636,7 +808,8 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   term in a constraint. Examples: `hcomp Field i0 (fun k => [ i0 -> x ])
   (x * x)` gives `x * x`. With hfT = `hcomp (Type 0) i0 (fun i => [ i0 ->
   Field ]) Field`, `unglue (transp (<_> hfT) i0 (glue [ i0 -> x ] x))` and
-  `unglue` of an `hcomp` in hfT give `x`. O4 stays open.
+  `unglue` of an `hcomp` in hfT give `x`. M5 (slice s6) found no circuit
+  that gives it (O12 (f)). O4 stays open for M7.
 - O5. Closed in M4. RULED 2026-10-15 (USER): D9 of docs/M4-PLAN.md. The
   JSON target writes a Path component of a data value as `null` only when
   the path is constant (its body at a fresh interval variable does not use
@@ -663,19 +836,35 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   value, a canonical `hcomp` value or a value of a Glue type gives
   JSON_VALUE (src/json.c; test/emit/transp-hcomp.lang, hcomp-instance.lang
   and glue-instance.lang). The stuck values at a HIT are O12.
-- O12. New in M4. The values that stay stuck in M4, and the gaps of M4:
-  (a) `fold B cases x` with a neutral scrutinee `x`; (b) `transp` at a
-  family with a neutral argument; (c) `transp` of a path constructor whose
-  fieldwise transport does not agree with transport on a boundary face
-  (there are no general boundary correction terms); (d) `transp` and
-  `hcomp` at a constructor with a dependent field or a Path field (stuck,
-  no diagnostic; docs/STATUS.md M4 s4); (e) no dependent eliminator. RULED
-  2026-10-15 (USER): `fold`, non-dependent, no `elim` in M4. Thus
-  `transport (ua specImpl) message = interp message` holds only for the
-  identity iso at OTPSpec (examples/otp.lang). An iso into Field or Nat
-  needs the retraction `(x : OTPSpec) -> Path OTPSpec (g (f x)) x` for a
-  variable `x`. (f) O4 stays open: no probed circuit gives CIRCUIT_LOWER
-  from a HIT term (docs/STATUS.md M4 s5).
+- O12. New in M4. The values that stay stuck in M4, and the gaps of M4.
+  Narrowed in M5 (D10 of docs/M5-PLAN.md):
+  - (a) and (b) are rules, not gaps (section 2.7, neutral values): `fold B
+    cases x` with a neutral scrutinee `x`, and `transp` at a family with a
+    neutral argument, are neutral values.
+  - (c) Open, narrowed. `transp` of a path constructor whose fieldwise
+    transport does not agree with transport on a boundary face stays stuck
+    (there are no general boundary correction terms). The M5 equations
+    `bswap` and `zeq` agree (docs/STATUS.md M5 s1, D2), thus they reduce.
+    `transp` of `squashc` of Quot (a path constructor with Path fields)
+    stays stuck (M5 s3).
+  - (d) Closed in M5 (slice s3). RULED 2026-10-16 (USER): the Sigma
+    method. `transp` and `hcomp` at a constructor with a dependent field
+    or a Path field reduce (section 2.7).
+  - (e) Closed in M5 (slice s2). RULED 2026-10-16 (USER): `elim` in M5.
+    With `ret`, `transport (ua (isoToEquiv OTPSpec OTPSpec flip flip ret
+    ret)) message = cipher` holds for the non-identity iso `flip`
+    (examples/otp.lang).
+  - (f) O4 stays open for M7. M5 s6 probed CIRCUIT_LOWER with a stuck
+    `elim` in a constraint: no stuck `elim` gets to the lowering. A binder
+    `z : Int` gives CIRCUIT_BINDER (a circuit has Field binders only). An
+    `elim` at `zeq @ k` with k := i0, at `hcomp Int i0 (fun i => [ i0 ->
+    pos 0 ]) (pos 0)`, and at `hcomp Int k (fun i => [ k -> zeq @ i ])
+    (pos 0)` with k := i0 each reduce, and the IR is equal to `square`.
+- O13. New in M5. The full quotient inductive-inductive form is not in M5
+  (RULED 2026-10-16 (USER), docs/M5-PLAN.md question d): equations (path
+  constructors) in a `mutual` block (MUTUAL_BLOCK); non-uniform indices
+  such as `Ty (ext g a)`; `elim` at a block family (ELIM_CASES). A block
+  holds two families only.
 
 ## 10. Milestones
 
