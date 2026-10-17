@@ -279,6 +279,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FOLD_BLOCK:
   case OP_ELIM:
   case OP_ELIM_CORE:
+  case OP_ELIM_NAT:
   case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:

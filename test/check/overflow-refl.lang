@@ -1,0 +1,1 @@
+def bad : Path Nat (natAdd 18446744073709551615 1) (natAdd 18446744073709551615 1) := refl

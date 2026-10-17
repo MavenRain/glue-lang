@@ -183,7 +183,7 @@ otp lawAt => fun j => encrypt @ j
 bag swapAt => fun k => bswap Nat 1 2 (bnil Nat) @ k
 bag sizeThree => 3
 bag sizeSwapAt => fun k => 3
-bag sizeOpen => fun A => fun x => fun y => fun xs => fun k => natAdd (natAdd (fold Nat 0 (fun _x0 => fun n => natAdd n 1) (fun _x0 => fun _x1 => fun _x2 => <i> natAdd (natAdd _x2 1) 1) xs) 1) 1
+bag sizeOpen => fun A => fun x => fun y => fun xs => fun k => natAdd (fold Nat 0 (fun _x0 => fun n => natAdd n 1) (fun _x0 => fun _x1 => fun _x2 => <i> natAdd _x2 2) xs) 2
 bag transpConsAt => fun L => fun a => fun xs => bcons (L i1) (transp (<i> L i) i0 a) (transp (<i> Bag (L i)) i0 xs)
 bag transpSwap => fun L => fun a => fun b => fun xs => fun r => bswap (L i1) (transp (<i> L i) i0 a) (transp (<i> L i) i0 b) (transp (<i> Bag (L i)) i0 xs) @ r
 int negThree => neg 3
@@ -224,3 +224,13 @@ transportProp repElimG => 5
 transportProp repIntPos => 6
 transportProp repIntNeg => 3
 transportProp repElimInt => 6
+nat-elim zero => 0
+nat-elim three => 3
+nat-elim predecessors => cons 2 (cons 1 (cons 0 nil))
+nat-elim foldIdThree => <i> 3
+nat-elim twoTypes => Option (Option Nat)
+nat-elim maxOffset 0 => 18446744073709551615
+nat-elim maxOffset 1 => trap
+nat-elim overflowOffset 0 => trap
+nat-elim ignoredSeed => 7
+nat-elim trappedInput 18446744073709551615 => trap

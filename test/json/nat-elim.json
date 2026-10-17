@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"zero","type":"Nat","value":0},{"name":"three","type":"Nat","value":3},{"name":"predecessors","type":"List Nat","value":[2,1,0]},{"name":"ignoredSeed","type":"Nat","value":7}]}

@@ -20,7 +20,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_APPEND] = "append", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_ELIM_CORE] = "elim", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_ELIM_CORE] = "elim", [OP_ELIM_NAT] = "elim", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
@@ -44,7 +44,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_APPEND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_ELIM_NAT] = 4, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
@@ -700,17 +700,94 @@ static const Value *elim_core(Machine *m, uint32_t inst, const Value *const *a, 
   return internal(m, "an unknown carrier");
 }
 
-/* fold step z n: step applied n times to z. */
+/* M6 s2 (D5): 1 when V is the successor spine natAdd x k:  x neutral, k a
+   literal (k > 0, by nat_offset). */
+static int nat_spine(const Value *v, const Value **x, uint64_t *k) {
+  if (v->kind != VAL_STUCK || v->op != OP_NAT_ADD || v->args[1]->kind != VAL_NAT)
+    return 0;
+  *x = v->args[0];
+  *k = v->args[1]->nat;
+  return 1;
+}
+
+/* M6 s2 (D5): natAdd x y with a neutral operand. A zero offset is removed, a
+   literal moves to the right, and nested literal offsets combine (with the
+   overflow trap of literal addition). Two neutral operands give STUCK. */
+static const Value *nat_offset(Machine *m, const Value *x, const Value *y, const Value *stuck) {
+  const Value *lit = x->kind == VAL_NAT ? x : y;
+  const Value *base = x->kind == VAL_NAT ? y : x;
+  const Value *args[2];
+  uint64_t j = 0;
+  if (lit->kind != VAL_NAT)
+    return stuck;
+  if (lit->nat == 0)
+    return base;
+  args[0] = base;
+  if (!nat_spine(base, &args[0], &j))
+    j = 0;
+  if (j + lit->nat < j)
+    return overflow(m);
+  args[1] = val_nat(m, j + lit->nat);
+  return args[1] == NULL ? NULL : val_op(m, VAL_STUCK, OP_NAT_ADD, 0, 0, args, 2u);
+}
+
+/* M6 s2 (D6): the index natAdd x i of step i of a spine over X (D5), or the
+   literal i when X is NULL. */
+static const Value *nat_index(Machine *m, const Value *x, uint64_t i) {
+  const Value *k = val_nat(m, i);
+  return x == NULL || k == NULL ? k : nat_offset(m, x, k, NULL);
+}
+
+/* fold step z n: step applied n times to z. At the successor spine natAdd x k
+   (D5), step applied k times to the stuck fold step z x. */
 static const Value *reduce_fold_nat(Machine *m, const Value *const *a, uint32_t n) {
   const Value *acc = a[1];
   const Value *out;
+  uint64_t count = 0;
   uint64_t k;
-  if (blocked(m, a[2], OP_FOLD_NAT, 0, 0, a, n, &out))
+  if (nat_spine(a[2], &out, &count)) {
+    const Value *end[3];
+    end[0] = a[0];
+    end[1] = a[1];
+    end[2] = out;
+    if (!blocked(m, out, OP_FOLD_NAT, 0, 0, end, 3u, &acc))
+      return internal(m, "a successor spine over a value that is not neutral");
+  } else if (blocked(m, a[2], OP_FOLD_NAT, 0, 0, a, n, &out))
     return out;
-  if (a[2]->kind != VAL_NAT)
+  else if (a[2]->kind != VAL_NAT)
     return internal(m, "a fold of a value that is not a Nat");
-  for (k = 0; k < a[2]->nat && acc != NULL; k++)
+  else
+    count = a[2]->nat;
+  for (k = 0; k < count && acc != NULL; k++)
     acc = spend(m, 1) ? apply_value(m, a[0], acc) : NULL;
+  return acc;
+}
+
+/* M6 s2 (D6): elim P z s n at Nat. The literal k gives s (k - 1) (... (s 0 z)).
+   The spine natAdd x k gives s (natAdd x (k - 1)) (... (s x (elim P z s x))).
+   It is neutral at a neutral n and the trap at a trap. */
+static const Value *elim_nat(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *acc = a[1];
+  const Value *x = NULL;
+  const Value *out;
+  uint64_t count = 0;
+  uint64_t i;
+  if (nat_spine(a[3], &x, &count)) {
+    const Value *end[4];
+    end[0] = a[0];
+    end[1] = a[1];
+    end[2] = a[2];
+    end[3] = x;
+    if (!blocked(m, x, OP_ELIM_NAT, 0, 0, end, 4u, &acc))
+      return internal(m, "a successor spine over a value that is not neutral");
+  } else if (blocked(m, a[3], OP_ELIM_NAT, 0, 0, a, n, &out))
+    return out;
+  else if (a[3]->kind != VAL_NAT)
+    return internal(m, "an elim of a value that is not a Nat");
+  else
+    count = a[3]->nat;
+  for (i = 0; i < count && acc != NULL; i++)
+    acc = spend(m, 1) ? apply_value(m, apply_value(m, a[2], nat_index(m, x, i)), acc) : NULL;
   return acc;
 }
 
@@ -1227,7 +1304,7 @@ static const Value *nat_add(Machine *m, const Value *const *a, uint32_t n) {
   uint64_t x = 0;
   uint64_t y = 0;
   if (!nat_args(m, OP_NAT_ADD, a, n, &x, &y, &out))
-    return out;
+    return out != NULL && out->kind == VAL_STUCK ? nat_offset(m, a[0], a[1], out) : out;
   return x + y < x ? overflow(m) : val_nat(m, x + y);
 }
 
@@ -1535,6 +1612,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return fold_hit(m, OP_ELIM, inst, a[0], a + 1, n - 2u, a[n - 1u]);
   case OP_ELIM_CORE:
     return elim_core(m, inst, a, n);
+  case OP_ELIM_NAT:
+    return elim_nat(m, a, n);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
@@ -1988,7 +2067,9 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_VAR:
       return a->nat == b->nat;
     case VAL_TRAP:
-      return 1;
+      /* Overflow is not equality evidence. Equating traps would compose
+         successor laws specialized at UINT64_MAX into a path from 0 to 1. */
+      return 0;
     case VAL_LAM:
     case VAL_PLAM:
       return 0;

@@ -1,0 +1,5 @@
+def f0 : Nat -> Nat := fun n => fold (fun (k : Nat) => 0) 0 (natAdd n 1)
+def f1 : Nat -> Nat := fun n => fold (fun (k : Nat) => 1) 0 (natAdd n 1)
+def p0 : (n : Nat) -> Path Nat (f0 n) 0 := fun n => refl
+def p1 : (n : Nat) -> Path Nat (f1 n) 1 := fun n => refl
+def zeroOne : Path Nat 0 1 := trans (sym (p0 18446744073709551615)) (p1 18446744073709551615)

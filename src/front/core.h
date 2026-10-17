@@ -69,6 +69,7 @@ typedef enum {
   OP_FILTER,
   OP_WITNESS,
   OP_PAYLOAD,
+  OP_ELIM_NAT, /* M6 s2 (D6): elim P z s n at Nat. */
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,

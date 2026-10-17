@@ -1,0 +1,1 @@
+def bad : (n : Nat) -> Path Nat n n := fun n => elim (fun k => Path Nat k k) refl (fun k => fun ih => ih) n

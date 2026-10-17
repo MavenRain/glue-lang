@@ -1596,6 +1596,61 @@ static const Core *elim_carrier(Call *k, const Core *s, const Value *st, Carrier
   return k->type == NULL ? NULL : core_op(c, OP_ELIM_CORE, (uint32_t)carrier, 0, cores, 4u);
 }
 
+/* M6 s2 (D6): the type of case J of elim MOT at Nat (section 3.2 of
+   docs/M6-PLAN.md):  P 0, (n : Nat) -> P n -> P (natAdd n 1). */
+static const Value *nat_case_type(Checker *c, const Value *st, const Value *mot, uint32_t j) {
+  Machine *m = c->m;
+  uint32_t L = c->level;
+  const Value *succ[2];
+  const char *names[2];
+  const Value *types[2];
+  const Value *at;
+  const Core *type;
+  uint32_t nb = 2u * j;
+  uint32_t i;
+  succ[0] = val_var(m, L);
+  succ[1] = val_nat(m, 1);
+  names[0] = "n";
+  names[1] = "ih";
+  types[0] = st;
+  types[1] = apply_value(m, mot, succ[0]);
+  at = j == 0u ? val_nat(m, 0) : succ[1] == NULL ? NULL : val_op(m, VAL_STUCK, OP_NAT_ADD, 0, 0, succ, 2u);
+  at = apply_value(m, mot, at);
+  type = at == NULL ? NULL : quote_value(m, L + nb, at);
+  for (i = nb; i > 0 && type != NULL; i--)
+    type = types[i - 1u] == NULL ? NULL : core_bind(c, CORE_PI, names[i - 1u], quote_value(m, L + i - 1u, types[i - 1u]), type);
+  return type == NULL ? NULL : here(c, type);
+}
+
+/* M6 s2 (D6): elim P z s n at Nat. P is explicit;  the cases for zero and
+   succ in the order of nat_case_type;  the scrutinee last. A wrong count
+   gives ELIM_CASES, a wrong case ELIM_CASE. */
+static const Core *elim_at_nat(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  const Value *mot = NULL;
+  const Core *cores[4];
+  uint32_t j;
+  if (k->argc != 4u)
+    return nul(FAIL(c, "ELIM_CASES", "elim at Nat needs the motive, then 2 cases, then the scrutinee; found %u arguments", k->argc));
+  cores[0] = elim_motive(k, st, &mot);
+  if (cores[0] == NULL)
+    return NULL;
+  for (j = 0; j < 2u; j++) {
+    const Value *want = nat_case_type(c, st, mot, j);
+    char inner[sizeof c->m->diag->msg];
+    cores[1u + j] = want == NULL ? NULL : check(c, k->args[1u + j], want);
+    if (cores[1u + j] != NULL)
+      continue;
+    if (want == NULL || !case_mismatch(c, inner, sizeof inner))
+      return NULL;
+    return nul(FAIL(c, "ELIM_CASE", "the case for %s must have the type %s: %s", j == 0u ? "zero" : "succ", show_case(c, want), inner));
+  }
+  cores[3] = s;
+  k->used = 4u;
+  k->type = apply_value(c->m, mot, here(c, s));
+  return k->type == NULL ? NULL : core_op(c, OP_ELIM_NAT, 0, 0, cores, 4u);
+}
+
 /* M5 s2 (D3): elim P cases x at a domain family (plain or HIT). P is
    explicit, a family of types over the scrutinee type; one case for each
    constructor in declaration order (elim_case_type); the scrutinee last. */
@@ -1613,10 +1668,12 @@ static const Core *rule_elim(Call *k) {
   const Core *s = infer(c, k->args[k->argc - 1u], &st);
   if (s == NULL)
     return NULL;
+  if (val_is(st, OP_NAT))
+    return elim_at_nat(k, s, st);
   if (carrier_of(st, &carrier, &elem))
     return elim_carrier(k, s, st, carrier);
   if (!val_is(st, OP_FAMILY) || st->inst >= m->family_count)
-    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family, Option, Sum or List; found a last argument of type %s", show(c, st)));
+    return nul(FAIL(c, "TYPE_MISMATCH", "elim needs a last argument in a domain family, Option, Sum, List or Nat; found a last argument of type %s", show(c, st)));
   f = &m->families[st->inst];
   if (f->partner != st->inst)
     return nul(FAIL(c, "ELIM_CASES", "elim at %s is refused: M5 has no elim at a family of a mutual block (O13)", f->name));

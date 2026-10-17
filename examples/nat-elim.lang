@@ -1,0 +1,22 @@
+-- Nat elimination checks the predecessor and the induction hypothesis.
+def count : Nat -> Nat := fun n => elim (fun k => Nat) 0 (fun k => fun ih => natAdd ih 1) n
+def indices : Nat -> List Nat := fun n => elim (fun k => List Nat) nil (fun k => fun ih => cons k ih) n
+def zero : Nat := count 0
+def three : Nat := count 3
+def predecessors : List Nat := indices 3
+def countSucc : (n : Nat) -> Path Nat (count (natAdd n 1)) (natAdd (count n) 1) := fun n => refl
+def countOffset : (n : Nat) -> Path Nat (count (natAdd 2 n)) (natAdd (count n) 2) := fun n => refl
+def indicesSucc : (n : Nat) -> Path (List Nat) (indices (natAdd n 1)) (cons n (indices n)) := fun n => refl
+-- The successor case uses the induction hypothesis at a dependent motive.
+def foldId : (n : Nat) -> Path Nat (fold (fun (k : Nat) => natAdd k 1) 0 n) n := fun n => elim (fun k => Path Nat (fold (fun (j : Nat) => natAdd j 1) 0 k) k) refl (fun k => fun ih => cong (fun (j : Nat) => natAdd j 1) ih) n
+def foldIdThree : Path Nat 3 3 := foldId 3
+def types : Nat -> Type 0 := fun n => elim (fun k => Type 0) Nat (fun k => fun ih => Option ih) n
+def twoTypes : Type 0 := types 2
+def addZero : (n : Nat) -> Path Nat (natAdd n 0) n := fun n => refl
+def zeroAdd : (n : Nat) -> Path Nat (natAdd 0 n) n := fun n => refl
+def addLeft : (n : Nat) -> Path Nat (natAdd 2 n) (natAdd n 2) := fun n => refl
+def addOffsets : (n : Nat) -> Path Nat (natAdd (natAdd n 1) 2) (natAdd n 3) := fun n => refl
+def maxOffset : Nat -> Nat := fun n => natAdd n 18446744073709551615
+def overflowOffset : Nat -> Nat := fun n => natAdd (natAdd n 18446744073709551615) 1
+def ignoredSeed : Nat := elim (fun k => Nat) (natAdd 18446744073709551615 1) (fun k => fun ih => 7) 1
+def trappedInput : Nat -> Nat := fun n => elim (fun k => Nat) 0 (fun k => fun ih => 7) (natAdd n 1)
