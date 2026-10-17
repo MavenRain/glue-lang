@@ -234,3 +234,13 @@ nat-elim maxOffset 1 => trap
 nat-elim overflowOffset 0 => trap
 nat-elim ignoredSeed => 7
 nat-elim trappedInput 18446744073709551615 => trap
+fold-laws foldSpine => fun xs => natAdd (fold (fun x => natAdd x 1) 0 (fold (fun x => fun acc => natAdd acc 1) 0 xs)) 3
+fold-laws elimLit => 6
+fold-laws elimSpine => fun xs => natAdd (elim (fun y => Nat) 0 (fun k => fun ih => natAdd ih 2) (fold (fun x => fun acc => natAdd acc 1) 0 xs)) 4
+fold-laws elimNeutral => fun xs => elim (fun y => Nat) 0 (fun k => fun ih => natAdd ih 2) (fold (fun x => fun acc => natAdd acc 1) 0 xs)
+fold-laws idxSpine => fun xs => natAdd (fold (fun x => fun acc => natAdd acc 1) 0 xs) 1
+fold-laws offL => fun xs => natAdd (fold (fun x => fun acc => natAdd acc 1) 0 xs) 3
+fold-laws offZ => fun xs => fold (fun x => fun acc => natAdd acc 1) 0 xs
+fold-laws dbl 5 => 10
+fold-laws idx 4 => 3
+fold-laws idx 0 => 0

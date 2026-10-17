@@ -1,0 +1,26 @@
+-- M6 s2: the fold laws. fold and elim at Nat reduce over a successor spine
+-- natAdd x k with a literal k. fold at List and at a domain family keeps the
+-- cells over a stuck fold. The offset rows and count are in nat-elim.lang.
+def plus1 : Nat -> Nat := fun (x : Nat) => natAdd x 1
+def lenL : List Nat -> Nat := fun xs => fold (fun (x : Nat) (acc : Nat) => natAdd acc 1) 0 xs
+def foldZero : (f : Nat -> Nat) -> (z : Nat) -> Path Nat (fold f z 0) z := fun f => fun z => refl
+def foldSucc : (f : Nat -> Nat) -> (z : Nat) -> (n : Nat) -> Path Nat (fold f z (natAdd n 1)) (f (fold f z n)) := fun f => fun z => fun n => refl
+def foldCons : (f : Nat -> Nat -> Nat) -> (z : Nat) -> (a : Nat) -> (l : List Nat) -> Path Nat (fold f z (cons a l)) (f a (fold f z l)) := fun f => fun z => fun a => fun l => refl
+def foldPush : (cb : Nat) -> (cp : Nat -> Nat -> Nat) -> (t : Nat) -> (r : Stack) -> Path Nat (fold cb cp (push t r)) (cp t (fold cb cp r)) := fun cb => fun cp => fun t => fun r => refl
+-- Evaluation rows (test/eval/expect.txt): a spine, a literal and a neutral argument.
+def foldSpine : List Nat -> Nat := fun xs => fold plus1 0 (natAdd (lenL xs) 3)
+def dbl : Nat -> Nat := fun n => elim (fun y => Nat) 0 (fun k => fun ih => natAdd ih 2) n
+def elimLit : Nat := dbl 3
+def elimSpine : List Nat -> Nat := fun xs => dbl (natAdd (lenL xs) 2)
+def elimNeutral : List Nat -> Nat := fun xs => dbl (lenL xs)
+def idx : Nat -> Nat := fun n => elim (fun y => Nat) 0 (fun k => fun ih => k) n
+def idxSpine : List Nat -> Nat := fun xs => idx (natAdd 2 (lenL xs))
+def offL : List Nat -> Nat := fun xs => natAdd 2 (natAdd (lenL xs) 1)
+def offZ : List Nat -> Nat := fun xs => natAdd (natAdd 0 (lenL xs)) 0
+-- Induction at a spine: the motive is applied to natAdd n 2 and natAdd 2 n.
+def countUp2 : (n : Nat) -> Path Nat (fold plus1 0 (natAdd n 2)) (natAdd n 2) := fun n => elim (fun y => Path Nat (fold plus1 0 y) y) refl (fun k => fun ih => cong (fun (t : Nat) => natAdd t 1) ih) (natAdd n 2)
+def countUp2L : (n : Nat) -> Path Nat (fold plus1 0 (natAdd 2 n)) (natAdd 2 n) := fun n => elim (fun y => Path Nat (fold plus1 0 y) y) refl (fun k => fun ih => cong (fun (t : Nat) => natAdd t 1) ih) (natAdd 2 n)
+-- Uniqueness: a function that satisfies the fold equations is the fold.
+def foldNatUniq : (f : Nat -> Nat) -> (z : Nat) -> (h : Nat -> Nat) -> Path Nat (h 0) z -> ((n : Nat) -> Path Nat (h (natAdd n 1)) (f (h n))) -> Path (Nat -> Nat) h (fun (n : Nat) => fold f z n) := fun f => fun z => fun h => fun h0 => fun hs => funExt (fun n => elim (fun y => Path Nat (h y) (fold f z y)) h0 (fun k => fun ih => trans (hs k) (cong f ih)) n)
+def foldListUniq : (f : Nat -> Nat -> Nat) -> (z : Nat) -> (h : List Nat -> Nat) -> Path Nat (h nil) z -> ((a : Nat) -> (l : List Nat) -> Path Nat (h (cons a l)) (f a (h l))) -> Path (List Nat -> Nat) h (fun (xs : List Nat) => fold f z xs) := fun f => fun z => fun h => fun hn => fun hc => funExt (fun xs => elim (fun y => Path Nat (h y) (fold f z y)) hn (fun a => fun l => fun ih => trans (hc a l) (cong (fun (t : Nat) => f a t) ih)) xs)
+def foldFamUniq : (cb : Nat) -> (cp : Nat -> Nat -> Nat) -> (h : Stack -> Nat) -> Path Nat (h bottom) cb -> ((t : Nat) -> (r : Stack) -> Path Nat (h (push t r)) (cp t (h r))) -> Path (Stack -> Nat) h (fun (s : Stack) => fold cb cp s) := fun cb => fun cp => fun h => fun hb => fun hp => funExt (fun s => elim (fun y => Path Nat (h y) (fold cb cp y)) hb (fun t => fun r => fun ih => trans (hp t r) (cong (fun (u : Nat) => cp t u) ih)) s)

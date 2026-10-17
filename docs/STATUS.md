@@ -2718,3 +2718,103 @@ current circuit.
   checks reused the unchanged halo2 binary and passed all 33 verifier tests.
   Generated circuit IR and verifier sources matched the original files.
   Forge build with sizes passed; all 33 tests passed with original fixtures.
+
+### s2: the Nat successor view and elim at Nat (2026-10-17)
+
+- Commits:  the USER commit df0d1e2 has the code (the s2-a hand build of
+  core.h, json.c, eval.c and check.c, with the review correction below),
+  examples/nat-elim.lang and 7 check refusals.  This follow-up adds
+  examples/fold-laws.lang, 10 eval rows and this record.
+- Probes before D5 (the s1 tree;  scratch build/m6s2-probe/*.lang,
+  `langc check`):  (a) `fold plus1 0 (natAdd n 3)` checks.  (b) `refl` at
+  `natAdd (natAdd n 1) 1 = natAdd n 2`, `natAdd n 0 = n`, `natAdd 0 n = n`
+  and `natAdd 2 n = natAdd n 2` each gave TYPE_REFL (the start normalizes
+  to the unchanged natAdd form).  (c) foldZero by `refl` checks;  foldSucc
+  gave TYPE_REFL (`fold f z (natAdd n 1)` against `f (fold f z n)`).
+  (d) foldCons at a variable l checks:  reduce_fold_list keeps the cells
+  over a stuck fold, so it needs no new rule.  (e) `elim` at Nat gave
+  TYPE_MISMATCH with the s1 text.  After D5 and D6, (a) to (e) check.
+- Tag (a):  a new op OP_ELIM_NAT (core.h before OP_NAT_ADD;  args P, z, s,
+  n;  arity 4;  name `elim`;  json.c case beside OP_ELIM_CORE;  eval.c
+  reduce_op case).  No CARRIER_NAT:  Nat is not a monad carrier.
+- D5 (eval.c):  nat_spine reads a stuck `natAdd x k` with a literal right
+  operand as a spine.  nat_offset normalizes natAdd with a neutral
+  operand:  it removes a zero offset, moves the literal to the right and
+  adds nested literal offsets;  an overflow of j + k gives the trap.
+  nat_add calls nat_offset when the result is stuck.  reduce_fold_nat at a
+  spine `natAdd x k` applies f k times over the stuck `fold f z x`.
+- D6 (eval.c elim_nat):  a literal k gives `s (k-1) (... (s 0 z))`;  a
+  spine `natAdd x k` gives `s (natAdd x (k-1)) (... (s x (elim P z s
+  x)))`;  a neutral n stays stuck;  a trap gives the trap.  check.c:
+  nat_case_type (`z : P 0`, `s : (n : Nat) -> P n -> P (natAdd n 1)`,
+  binders n and ih) and elim_at_nat (ELIM_CASES at a wrong count,
+  ELIM_CASE at a wrong case;  the case names are `zero` and `succ`).
+  rule_elim tests `val_is(st, OP_NAT)` before carrier_of.  The
+  TYPE_MISMATCH text now ends `Option, Sum, List or Nat` (only
+  test/check/elim-field.lang shows it;  no table compares text).
+- Review correction (USER commit):  overflow is not equality evidence, so
+  conversion does not equate two traps.  Without this rule, two successor
+  laws proved by `refl` at a neutral n and applied at UINT64_MAX compose
+  into a closed `Path Nat 0 1` (fold-overflow-proof.lang,
+  elim-nat-overflow-proof.lang:  each gives TYPE_MISMATCH now).
+  overflow-refl.lang (`refl` at `natAdd UINT64_MAX 1`) gives TYPE_REFL.
+- D5 printed-form change:  one golden.  `bag sizeOpen` was `natAdd (natAdd
+  (fold ... (<i> natAdd (natAdd _x2 1) 1) xs) 1) 1`;  it is now `natAdd
+  (fold ... (<i> natAdd _x2 2) xs) 2`.  Reason:  nat_offset adds the
+  nested literal offsets.  This is the D5 canonical form, thus the USER
+  commit updates the row.  No other table changed.
+- D7:  examples/nat-elim.lang (USER commit):  count and indices by `elim`;
+  countSucc, countOffset and indicesSucc by `refl` at a spine;  foldId (the
+  plan countUp) by `elim` with a dependent motive;  types (a `Type 0`
+  motive);  the offset rows addZero, addLeft, zeroAdd and addOffsets (the
+  plan offZeroR, offLeft, offZeroL and offNest);  the overflow rows.
+  examples/fold-laws.lang (this follow-up):  foldZero, foldSucc, foldCons
+  and foldPush (at Stack) by `refl`;  the defs of the eval rows;  countUp2
+  and countUp2L (`elim` at the spines `natAdd n 2` and `natAdd 2 n`);
+  foldNatUniq, foldListUniq and foldFamUniq (at Stack):  a function that
+  satisfies the fold equations is the fold (funExt over `elim`, with
+  trans and cong).  fold-laws.lang does not repeat the offset rows and
+  countUp:  nat-elim.lang has them.
+- Examples (section 5):  monad-laws.lang, monad.lang, laws.lang and
+  algebra.lang check as before.
+- Huge literal (the s2-a open item):  `dbl 18446744073709551615` and
+  `fold plus1 0 18446744073709551615` each stop with `OOM: ...: the arena
+  limit is reached` (the 1 GiB arena of main.c) in 1 to 3 s.  The two
+  give the same result, thus this is the current behavior of a huge
+  literal (the s1 reduce_fold_nat loop), not an s2 change.
+- JSON:  test/json/nat-elim.json (USER commit) and test/json/fold-laws.json
+  (the closed instance elimLit = 6).
+- Rows:  USER commit:  evals +10 (nat-elim), check refusals +7
+  (elim-nat-count ELIM_CASES;  elim-nat-zero, elim-nat-step and
+  elim-nat-index ELIM_CASE;  fold-overflow-proof and
+  elim-nat-overflow-proof TYPE_MISMATCH;  overflow-refl TYPE_REFL),
+  examples +1, json +1.  This follow-up:  evals +10 (fold-laws foldSpine,
+  elimLit, elimSpine, elimNeutral, idxSpine, offL, offZ, `dbl 5`, `idx 4`,
+  `idx 0`), examples +1, json +1.  The plan refusals elim-nat-case and
+  elim-nat-count are the USER rows elim-nat-step and elim-nat-count, so
+  this follow-up adds no refusal file.
+- Mutants (each with `make -B build/langc` and `make check`, reverted, the
+  hash of eval.c compared, final `make -B check` GREEN):  4 KILLED,
+  0 SURVIVED.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. eval.c reduce_fold_nat:  the spine at k, not k - 1 (`end[2] = a[2]`) | examples/fold-laws.lang `TYPE_REFL: foldSucc: ... the start normalizes to f (fold f z (natAdd n 1)), the end normalizes to f (fold f z n)`;  examples/nat-elim.lang `ELIM_CASE: foldId`. |
+| 2. eval.c nat_spine:  the literal on the left only | examples/fold-laws.lang `TYPE_REFL: foldSucc: ... the start normalizes to fold f z (natAdd n 1), the end normalizes to f (fold f z n)`;  examples/nat-elim.lang `TYPE_REFL: countSucc`. |
+| 3. eval.c elim_nat:  the IH dropped (`a[1]` for `acc`) | examples/nat-elim.lang `TYPE_REFL: countSucc: ... the start normalizes to 1, the end normalizes to natAdd (elim ... n) 1`. |
+| 4. eval.c nat_add:  no offset normalization (`return out;`) | examples/nat-elim.lang `TYPE_REFL: countOffset: ... the start normalizes to elim ... (natAdd 2 n)`;  eval bag sizeOpen (the old nested form). |
+
+- Gates:  `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  44;  examples 36, parse refusals 18, check refusals 139, evals 247, json
+  30 builds, build refusals 8, circuits 4, same-ir 3, circuit refusals 12,
+  satcheck refusals 6;  node regressions 6, printer 2).  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed).  `git diff --exit-code -- test/circuit
+  contracts/src/verifiers` exit 0:  no IR change.  contracts/test/fixtures
+  restored from HEAD, then `forge test --root contracts` 33 passed,
+  0 failed.
+- Open items:  (1) elim_at_nat repeats the case loop of elim_carrier (the
+  Carrier switch has no Nat case);  a shared helper is a later cleanup.
+  (2) The huge-literal OOM above is a resource limit, not a wrong value.
+- Build record:  s2-a hand build in the main loop (claude3);  the USER
+  commit df0d1e2;  this follow-up by hand in the main loop (no subagents).
