@@ -1,0 +1,8 @@
+-- M5 s6: the square circuit through the integers (M5-PLAN section 6). On
+-- the representative pos 0 the point rule gives x * x, so the IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt) and the
+-- circuit name is square. A sum of a Bag Field has no case for bswap:
+-- x + (y + s) and y + (x + s) are not refl.
+def isq : Field -> Int -> Field := fun x => fun z => fold Field (fun n => x * x) (fun n => x * x) refl z
+
+circuit square public (y : Field) private (x : Field) := isq x (pos 0) == y

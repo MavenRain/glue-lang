@@ -2365,3 +2365,87 @@ summary comes at the close (s7).
     The remaining counts above are unchanged. `make e2e` passes with the
     unchanged, current halo2 binary:  33 Forge tests and 4 deployment
     simulations. Generated circuit IR and verifier source are unchanged.
+
+### s6: the Direction 2 smoke (2026-10-16)
+
+- Start state:  HEAD 017d6ad (USER commit `M5 s5: add folds for mutual
+  family blocks`). Baseline fix:  at 017d6ad the native HIT count is 44,
+  not 40. The USER s5 commit adds 4 rows to test/hit-regressions.c (the
+  staged review follow-up).
+- Ruling (a):  s6 has no code. The slice adds test data only.
+- Files:
+  - examples/transportProp.lang:  the iso lemmas of examples/iso.lang
+    (lines 4 to 21);  rot and rotInv on `Prod A (Prod A A)`;  rotSect,
+    rotRetr, rotE;  natSame;  P (a fold out of `GQuot Nat natSame` into
+    `Type 0`, with the geqc case `ua (rotE Field)`);  Pline;
+    transportProp;  transportPropFwd (the row `= rot Field p`, by refl);
+    tpOne. rot is not an involution, thus rot and rotInv are different
+    and the uaβ row tests the direction of the map (mutant m1). The
+    representative rows:  repFold (Quot, `fun s => 5`), repFoldG and
+    repElimG (GQuot, 5), repIntPos (6), repIntNeg (3), repElimInt (6).
+    7 rows in test/eval/expect.txt.
+  - test/json/transportProp.json:  the golden from `langc build`.
+  - examples/intSq.glue:  `isq x z = fold Field (fun n => x * x)
+    (fun n => x * x) refl z`, and the circuit square :=
+    `isq x (pos 0) == y`. test/circuit/same-ir.txt row
+    `intSq square square` (the IR is equal to the square golden).
+    test/circuit/refuse.txt row `1 WITNESS_FAIL witness intSq square
+    y=10 x=3`.
+  - test/circuit/expect.txt does not change:  the Makefile E2E_TABLE
+    reads that file, thus a row there changes e2e.
+- Deviation from the D8 text:  D8 writes the line in the transport
+  argument, `transport (<i> P (geqc A R a b r @ i)) p`. Probe 2 refuses
+  this form. The def Pline :
+  `Path (Type 0) (P (gcls Nat natSame a)) (P (gcls Nat natSame b))`
+  holds `<i> P (geqc Nat natSame a b r @ i)`, and transportProp is
+  `transport (Pline a b r) p`. tpOne is `pair 2 (pair 3 1)`, that is
+  rot (pair 1 (pair 2 3)). rotInv gives `pair 3 (pair 1 2)`.
+- Probes (no rows):
+  1. Section 6:  `Path Field (x + (y + s)) (y + (x + s))` by refl gives
+     TYPE_REFL (the start is fieldAdd x (fieldAdd y s), the end is
+     fieldAdd y (fieldAdd x s)). A Bag Field product fold gives HIT_CASE
+     at the bswap case (fieldMul, for the same reason). Thus the circuit
+     uses Int, not Bag.
+  2. `transport (<i> P (geqc ...)) p` gives PATH_EXPECTED:  the term
+     `<i> ...` needs a declared type, and glue-lang has no type
+     ascription.
+  3. A fold at Nat in a case (`fold x (fun m => fun r => r * x) n` and
+     `fold x (fun r => r * x) n`) gives HIT_CASES (`a function is not a
+     term of type Field`). Thus the pos case and the neg case of isq are
+     equal.
+  4. CIRCUIT_LOWER (O4):  no stuck `elim` gets to the lowering. A binder
+     `z : Int` gives CIRCUIT_BINDER (M1 accepts Field binders only). An
+     elim at `zeq @ k` with k := i0, at
+     `hcomp Int i0 (fun i => [ i0 -> pos 0 ]) (pos 0)`, and at
+     `hcomp Int k (fun i => [ k -> zeq @ i ]) (pos 0)` with k := i0 each
+     reduce, and the IR is equal to square. CIRCUIT_LOWER occurs only at
+     src/circuit.c:144 (no_circuit_form) and src/circuit.c:152 (depth).
+- Mutants (test data only, ~/Documents/glue-lang-M5-s6-mutants/run.sh):
+  3 of 3 KILLED.
+  - m1 (the uaβ row with the inverse map, `rotInv Field p`):  KILLED.
+    FAIL examples/transportProp.lang (TYPE_REFL at transportPropFwd),
+    9 gate failures.
+  - m2 (the same-ir golden set to range):  KILLED. FAIL same-ir intSq
+    square, 1 gate failure.
+  - m3 (the point cases of repIntPos swapped):  KILLED. FAIL eval
+    transportProp repIntPos (3, not 6) and FAIL build
+    examples/transportProp.lang, 2 gate failures.
+  - The runner restores examples/transportProp.lang and
+    test/circuit/same-ir.txt (cmp to the backups).
+- Gates (build/s6-gates.sh):  `make -B check` exit 0, `make check-clang`
+  exit 0, `forge build` exit 0, `make e2e` exit 0 (33 passed). IR check:
+  s6 changes test/circuit/refuse.txt and test/circuit/same-ir.txt, thus
+  the check compares the diff before e2e with the diff after e2e. The
+  two diffs are equal, and contracts/src/verifiers does not change.
+  `forge test` 33 passed after the restore of contracts/test/fixtures.
+  Counts against the s5 baseline (017d6ad):  native circuit 9, path 42,
+  face 35, HIT 44;  examples 33 (31 + 2), parse refusals 18, check
+  refusals 123, evals 209 (202 + 7), json 27 builds (26 + 1), build
+  refusals 8, circuits 4, same-ir 3 (2 + 1), circuit refusals 12
+  (11 + 1), satcheck refusals 6;  node regressions 6, printer 2.
+- Open items:
+  - O4 stays open for M7:  no probe gets a stuck `elim` to the lowering,
+    thus there is no CIRCUIT_LOWER row.
+  - Optional:  give isq different pos and neg cases at `pos 1` (a Nat
+    fold form of examples/functions.lang or examples/formers.lang), with
+    the same IR.

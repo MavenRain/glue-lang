@@ -1,2 +1,3 @@
 squareUa square square
 quotSq square square
+intSq square square

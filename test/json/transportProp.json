@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"tpOne","type":"Prod Field (Prod Field Field)","value":{"first":"2","second":{"first":"3","second":"1"}}},{"name":"repFoldG","type":"Nat","value":5},{"name":"repElimG","type":"Nat","value":5},{"name":"repIntPos","type":"Nat","value":6},{"name":"repIntNeg","type":"Nat","value":3},{"name":"repElimInt","type":"Nat","value":6}]}

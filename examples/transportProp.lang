@@ -1,0 +1,51 @@
+-- M5 s6: the Direction 2 smoke (M5-PLAN D8). P is a fold out of the graph
+-- quotient GQuot Nat natSame into the universe Type 0. Its case for geqc is
+-- ua (rotE Field). On the path geqc a b r, P gives the ua line (the path
+-- rule of the fold), and transport along that line is the forward map rot
+-- (uaBeta). rot is not its own inverse, thus a row with rotInv fails.
+-- Type 0 is not a set, thus a fold out of Quot into Type 0 has no case for
+-- squashc, and this file uses GQuot. The iso lemmas are from examples/iso.lang.
+
+
+-- fill0 i j: the filler of the square from g (p0 @ ~i) to x0 and g y.
+def fill0 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (p0 : Path B (f x0) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun p0 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> t x0 @ (j /\ k), ~i -> g y, ~j -> g (p0 @ ~i) ]) (g (p0 @ ~i))
+
+-- fill2 i j: the filler between the two fill0 lids. fill2 i i1 is the path from x0 to x1.
+def fill2 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 (j /\ k) i1, ~i -> fill0 A B f g t y x0 p0 (j /\ k) i1, ~j -> g y ]) (g y)
+
+-- sq i j: the square in A over the path fill2 i i1.
+def sq : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ j \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 j ~k, ~i -> fill0 A B f g t y x0 p0 j ~k, j -> t (fill2 A B f g t y x0 x1 p0 p1 i i1) @ ~k, ~j -> g y ]) (fill2 A B f g t y x0 x1 p0 p1 i j)
+
+-- sq1 i j: the square in B. sq1 i (~j) is the path part of the fiber path.
+def sq1 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> B := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp B (i \/ ~i \/ j \/ ~j) (fun k => [ i -> s (p1 @ ~j) @ k, ~i -> s (p0 @ ~j) @ k, j -> s (f (fill2 A B f g t y x0 x1 p0 p1 i i1)) @ k, ~j -> s y @ k ]) (f (sq A B f g t y x0 x1 p0 p1 i j))
+
+-- lemIso: two points of a fiber of f are equal.
+def lemIso : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> Path (fiber f y) (pack x0 p0) (pack x1 p1) := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => <i> pack (fill2 A B f g t y x0 x1 p0 p1 i i1) (<j> sq1 A B f g s t y x0 x1 p0 p1 i ~j)
+
+-- isoToEquiv: the center of the fiber over y is g y with s y.
+def isoToEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> Equiv A B := fun A => fun B => fun f => fun g => fun s => fun t => pack f (fun y => pack (pack (g y) (s y)) (fun z => lemIso A B f g s t y (g y) (witness z) (s y) (payload z)))
+
+-- The rotation of a triple and its inverse. Both laws are refl by product eta.
+def rot : (A : Type 0) -> Prod A (Prod A A) -> Prod A (Prod A A) := fun A => fun p => pair (first (second p)) (pair (second (second p)) (first p))
+def rotInv : (A : Type 0) -> Prod A (Prod A A) -> Prod A (Prod A A) := fun A => fun p => pair (second (second p)) (pair (first p) (first (second p)))
+def rotSect : (A : Type 0) -> (y : Prod A (Prod A A)) -> Path (Prod A (Prod A A)) (rot A (rotInv A y)) y := fun A => fun y => refl
+def rotRetr : (A : Type 0) -> (x : Prod A (Prod A A)) -> Path (Prod A (Prod A A)) (rotInv A (rot A x)) x := fun A => fun x => refl
+def rotE : (A : Type 0) -> Equiv (Prod A (Prod A A)) (Prod A (Prod A A)) := fun A => isoToEquiv (Prod A (Prod A A)) (Prod A (Prod A A)) (rot A) (rotInv A) (rotSect A) (rotRetr A)
+def natSame : Nat -> Nat -> Type 0 := fun a => fun b => Path Nat a b
+def P : GQuot Nat natSame -> Type 0 := fun q => fold (Type 0) (fun a => Prod Field (Prod Field Field)) (fun a => fun b => fun r => ua (rotE Field)) q
+-- A term <i> t needs a declared type, thus Pline names the line
+-- <i> P (geqc Nat natSame a b r @ i) for transportProp.
+def Pline : (a : Nat) -> (b : Nat) -> (r : natSame a b) -> Path (Type 0) (P (gcls Nat natSame a)) (P (gcls Nat natSame b)) := fun a => fun b => fun r => <i> P (geqc Nat natSame a b r @ i)
+def transportProp : (a : Nat) -> (b : Nat) -> (r : natSame a b) -> Prod Field (Prod Field Field) -> Prod Field (Prod Field Field) := fun a => fun b => fun r => fun p => transport (Pline a b r) p
+def transportPropFwd : (a : Nat) -> (b : Nat) -> (r : natSame a b) -> (p : Prod Field (Prod Field Field)) -> Path (Prod Field (Prod Field Field)) (transportProp a b r p) (rot Field p) := fun a => fun b => fun r => fun p => refl
+def tpOne : Prod Field (Prod Field Field) := transportProp 1 1 refl (pair 1 (pair 2 3))
+
+-- Representative rows: fold and elim on a representative reduce by the
+-- point rule. repFold is the fold out of Quot (an isSet case is an argument).
+-- repIntPos and repIntNeg use different point cases for pos and neg.
+def repFold : isSet Nat -> Nat := fun s => fold Nat (fun a => natAdd a 1) (fun a => fun b => fun r => <i> natAdd (r @ i) 1) s (cls Nat natSame 4)
+def repFoldG : Nat := fold Nat (fun a => natAdd a 1) (fun a => fun b => fun r => <i> natAdd (r @ i) 1) (gcls Nat natSame 4)
+def repElimG : Nat := elim (fun q => Nat) (fun a => natAdd a 1) (fun a => fun b => fun r => <i> natAdd (r @ i) 1) (gcls Nat natSame 4)
+def repIntPos : Nat := fold Nat (fun n => natAdd n n) (fun n => n) refl (pos 3)
+def repIntNeg : Nat := fold Nat (fun n => natAdd n n) (fun n => n) refl (neg 3)
+def repElimInt : Nat := elim (fun z => Nat) (fun n => natAdd n n) (fun n => n) refl (pos 3)

@@ -199,3 +199,10 @@ ctx tySize => fun g => fun t => fold Nat (fun n => Nat) 0 (fun rg => fun rt => n
 ctx tySizeT1 => 0
 ctx tySizeC1 => 2
 ctx lengthVia => 2
+transportProp tpOne => pair 2 (pair 3 1)
+transportProp repFold => fun s => 5
+transportProp repFoldG => 5
+transportProp repElimG => 5
+transportProp repIntPos => 6
+transportProp repIntNeg => 3
+transportProp repElimInt => 6
