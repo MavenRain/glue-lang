@@ -137,3 +137,4 @@ elim-nat-index.lang ELIM_CASE
 fold-overflow-proof.lang TYPE_MISMATCH
 elim-nat-overflow-proof.lang TYPE_MISMATCH
 overflow-refl.lang TYPE_REFL
+unfold-nat-list-step.lang TYPE_MISMATCH

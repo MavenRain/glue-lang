@@ -1171,22 +1171,24 @@ static const Core *rule_fold(Call *k) {
   return s == NULL ? NULL : nul(FAIL(c, "TYPE_MISMATCH", "fold needs a last argument of type Nat, List A or a domain family, and one case for each constructor; found %u arguments and a last argument of type %s", k->argc, show(c, st)));
 }
 
-/* unfold g limit seed, with g : S -> Option (Prod A S). */
+/* unfold g limit seed, with g : S -> Option (Prod A S) at List A, or (M6 s3,
+   D9) with g : S -> Option S at Nat:  the declared type selects the form. */
 static const Core *rule_unfold(Call *k) {
   Checker *c = k->c;
   const Value *st = NULL;
-  const Value *a;
+  const Value *step;
   const Core *seed;
   const Core *limit;
   const Core *g;
-  if (!val_is(k->hint, OP_LIST))
-    return need_type(k, "List A");
-  a = k->hint->args[0];
+  int at_nat = val_is(k->hint, OP_NAT);
+  if (!at_nat && !val_is(k->hint, OP_LIST))
+    return need_type(k, "List A or Nat");
   seed = infer(c, k->args[2], &st);
   limit = seed == NULL ? NULL : check(c, k->args[1], nat_type(c));
-  g = limit == NULL ? NULL : check(c, k->args[0], val_arrow(c->m, st, tyop(c, OP_OPTION, 1, tyop(c, OP_PROD, 2, a, st, NULL), NULL, NULL)));
+  step = limit == NULL || at_nat ? st : tyop(c, OP_PROD, 2, k->hint->args[0], st, NULL);
+  g = limit == NULL ? NULL : check(c, k->args[0], val_arrow(c->m, st, tyop(c, OP_OPTION, 1, step, NULL, NULL)));
   k->type = k->hint;
-  return op3(c, OP_UNFOLD, 0, 3, g, limit, seed);
+  return op3(c, at_nat ? OP_UNFOLD_NAT : OP_UNFOLD, 0, 3, g, limit, seed);
 }
 
 /* cong f p */

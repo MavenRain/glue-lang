@@ -20,7 +20,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_PCON] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_APPEND] = "append", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_ELIM_CORE] = "elim", [OP_ELIM_NAT] = "elim", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_HIT] = "fold", [OP_FOLD_BLOCK] = "fold", [OP_ELIM] = "elim", [OP_ELIM_CORE] = "elim", [OP_ELIM_NAT] = "elim", [OP_UNFOLD] = "unfold", [OP_UNFOLD_NAT] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
@@ -44,7 +44,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_PCON] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_APPEND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
-  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_ELIM_NAT] = 4, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_ELIM_NAT] = 4, [OP_UNFOLD] = 3, [OP_UNFOLD_NAT] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
@@ -1146,53 +1146,141 @@ const Value *eval_fold_hit_boundary(Machine *m, const CtorInfo *boundary, const 
   return out;
 }
 
-/* 1 when the step result R ends the list. *TAIL is then the end. */
-static int unfold_end(Machine *m, const Value *g, uint64_t left, const Value *seed, const Value *r, const Value **tail) {
+static Core *new_core(Machine *m, CoreKind kind);
+static const Core *core_leaf(Machine *m, CoreKind kind, uint64_t nat);
+
+/* M6 s3 (D8): the de Bruijn index INDEX, for the step closure. */
+static const Core *core_index(Machine *m, uint32_t index) {
+  Core *c = new_core(m, CORE_VAR);
+  if (c != NULL)
+    c->index = index;
+  return c;
+}
+
+/* M6 s3 (D8): the core name OP with ARGC of the arguments X, Y, Z. */
+static const Core *core_call(Machine *m, Op op, uint32_t argc, const Core *x, const Core *y, const Core *z) {
+  const Core **args = arena_alloc(m->arena, 3u * sizeof *args);
+  Core *c;
+  if (args == NULL) {
+    oom(m);
+    return NULL;
+  }
+  args[0] = x;
+  args[1] = y;
+  args[2] = z;
+  if (x == NULL || (argc > 1u && y == NULL) || (argc > 2u && z == NULL))
+    return NULL;
+  c = new_core(m, CORE_OP);
+  if (c == NULL)
+    return NULL;
+  c->op = op;
+  c->args = args;
+  c->argc = argc;
+  return c;
+}
+
+/* M6 s3 (D8, D9): the unfold step at a neutral step result R, with LIMIT for
+   the rest. The List form gives
+   option nil (fun p => cons (first p) (unfold g LIMIT (second p))) R, the Nat
+   form gives option 0 (fun r => natAdd (unfold g LIMIT r) 1) R. The closure
+   keeps LIMIT at index 1 and g at index 2. */
+static const Value *unfold_step(Machine *m, Op form, const Value *g, const Value *limit, const Value *r) {
+  const Core *p = core_index(m, 0);
+  const Core *rest = form == OP_UNFOLD ? core_call(m, OP_SECOND, 1u, p, NULL, NULL) : p;
+  const Core *call = core_call(m, form, 3u, core_index(m, 2), core_index(m, 1), rest);
+  const Core *body = form == OP_UNFOLD ? core_call(m, OP_CONS, 2u, core_call(m, OP_FIRST, 1u, p, NULL, NULL), call, NULL) : core_call(m, OP_NAT_ADD, 2u, call, core_leaf(m, CORE_NAT, 1), NULL);
+  const Env *env = limit == NULL ? NULL : env_push(m, env_push(m, NULL, g), limit);
+  const Value *args[3];
+  args[0] = form == OP_UNFOLD ? constant(m, OP_NIL) : val_nat(m, 0);
+  args[1] = body == NULL || env == NULL ? NULL : val_closure(m, VAL_LAM, form == OP_UNFOLD ? "p" : "r", NULL, env, body);
+  args[2] = r;
+  return args[0] == NULL || args[1] == NULL ? NULL : val_op(m, VAL_STUCK, OP_OPTION_ELIM, 0, 0, args, 3u);
+}
+
+/* 1 when the step result R ends the unfold. *TAIL is then the end:  nil (0 in
+   the Nat form) at none, the trap at a trap, and the step through option (D8)
+   at a neutral R. X and LEFT give the limit of this step (nat_index). */
+static int unfold_end(Machine *m, Op form, const Value *g, const Value *x, uint64_t left, const Value *r, const Value **tail) {
   const Value *p = val_is(r, OP_SOME) ? r->args[0] : r;
   if (val_is(r, OP_NONE)) {
-    *tail = constant(m, OP_NIL);
+    *tail = form == OP_UNFOLD ? constant(m, OP_NIL) : val_nat(m, 0);
     return 1;
   }
+  /* Nat counts the some constructor. Its payload is only the next seed. */
+  if (form == OP_UNFOLD_NAT && val_is(r, OP_SOME))
+    return 0;
   switch (scrut_of(p)) {
   case SCRUT_TRAP:
     *tail = p;
     return 1;
   case SCRUT_NEUTRAL:
-    *tail = make(m, VAL_STUCK, OP_UNFOLD, 0, 3, g, val_nat(m, left), seed);
+    if (val_is(r, OP_SOME))
+      return 0;
+    *tail = unfold_step(m, form, g, nat_index(m, x, left - 1u), r);
     return 1;
   case SCRUT_VALUE:
     break;
   }
-  if (val_is(p, OP_PAIR))
+  if (val_is(r, OP_SOME) && val_is(p, OP_PAIR))
     return 0;
-  *tail = internal(m, "an unfold step that is not an Option of a pair");
+  *tail = internal(m, form == OP_UNFOLD ? "an unfold step that is not an Option of a pair" : "an unfold step that is not an Option");
   return 1;
 }
 
-/* unfold g limit seed: at most LIMIT elements. */
-static const Value *reduce_unfold(Machine *m, const Value *const *a, uint32_t n) {
+/* M6 s3 (D9): the value of an unfold that ends at TAIL after STEPS steps:  the
+   list of ITEMS on TAIL, or in the Nat form natAdd TAIL STEPS. */
+static const Value *unfold_result(Machine *m, Op form, const ValBuf *items, uint64_t steps, const Value *tail) {
+  const Value *k;
+  if (tail == NULL)
+    return NULL;
+  if (form == OP_UNFOLD)
+    return build_list(m, items->items, items->count, tail);
+  if (tail->kind == VAL_NAT)
+    return val_nat(m, steps);
+  if (scrut_of(tail) == SCRUT_TRAP)
+    return tail;
+  k = val_nat(m, steps);
+  return k == NULL ? NULL : nat_offset(m, tail, k, NULL);
+}
+
+/* unfold g limit seed: at most LIMIT steps. The List form gives the list of
+   the step results;  the Nat form (D9) gives the number of steps. At the
+   successor spine natAdd x k (D5), k steps and then the stuck unfold g x seed.
+   A neutral step result goes through option (D8). */
+static const Value *reduce_unfold(Machine *m, Op form, const Value *const *a, uint32_t n) {
   const Value *seed = a[2];
+  const Value *x = NULL;
   const Value *out;
   const Value *r;
   const Value *tail = NULL;
   ValBuf items;
+  uint64_t count = 0;
   uint64_t i;
-  if (blocked(m, a[1], OP_UNFOLD, 0, 0, a, n, &out))
-    return out;
-  if (a[1]->kind != VAL_NAT)
-    return internal(m, "an unfold limit that is not a Nat");
+  if (!nat_spine(a[1], &x, &count)) {
+    if (blocked(m, a[1], form, 0, 0, a, n, &out))
+      return out;
+    if (a[1]->kind != VAL_NAT)
+      return internal(m, "an unfold limit that is not a Nat");
+    count = a[1]->nat;
+  }
   buf_init(&items);
-  for (i = 0; i < a[1]->nat; i++) {
+  for (i = 0; i < count; i++) {
     r = spend(m, 1) ? apply_value(m, a[0], seed) : NULL;
     if (r == NULL)
       return NULL;
-    if (unfold_end(m, a[0], a[1]->nat - i, seed, r, &tail))
-      return build_list(m, items.items, items.count, tail);
-    if (!buf_push(m, &items, r->args[0]->args[0]))
+    if (unfold_end(m, form, a[0], x, count - i, r, &tail))
+      return unfold_result(m, form, &items, i, tail);
+    if (form == OP_UNFOLD && !buf_push(m, &items, reduce_part(m, OP_FIRST, r->args, 1u, OP_PAIR, 0)))
       return NULL;
-    seed = r->args[0]->args[1];
+    seed = form == OP_UNFOLD ? reduce_part(m, OP_SECOND, r->args, 1u, OP_PAIR, 1) : r->args[0];
+    if (seed == NULL)
+      return NULL;
   }
-  return build_list(m, items.items, items.count, constant(m, OP_NIL));
+  if (x != NULL)
+    tail = make(m, VAL_STUCK, form, 0, 3, a[0], x, seed);
+  else
+    tail = form == OP_UNFOLD ? constant(m, OP_NIL) : val_nat(m, 0);
+  return unfold_result(m, form, &items, count, tail);
 }
 
 static const Value *filter_option(Machine *m, const Value *const *a, uint32_t n) {
@@ -1615,7 +1703,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_ELIM_NAT:
     return elim_nat(m, a, n);
   case OP_UNFOLD:
-    return reduce_unfold(m, a, n);
+  case OP_UNFOLD_NAT:
+    return reduce_unfold(m, op, a, n);
   case OP_FILTER:
     return reduce_filter(m, inst, a, n);
   case OP_FIELD_ADD:

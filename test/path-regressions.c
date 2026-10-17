@@ -12,6 +12,8 @@ typedef struct {
 } Case;
 
 static const Case CASES[] = {
+  {"Nat unfold successor law with an unused trapped seed",
+   "def test : Path Nat (unfold (fun (n : Nat) => some (natAdd n 1)) 1 18446744073709551615) 1 := refl\n", NULL},
   {"dependent cong at refl",
    "def r : Path Nat 0 0 := refl\n"
    "def test : (B : Nat -> Type 0) -> (f : (x : Nat) -> B x) -> Path (B 0) (f 0) (f 0) := fun B f => cong f r\n", NULL},
@@ -97,6 +99,12 @@ typedef struct {
 } EvalCase;
 
 static const EvalCase EVAL_CASES[] = {
+  {"Nat unfold ignores the final successor seed",
+   "def test : Nat := unfold (fun (n : Nat) => some (natAdd n 1)) 1 18446744073709551615\n", "1"},
+  {"Nat unfold counts a prefix before an unused trapped seed",
+   "def test : Nat := unfold (fun (n : Nat) => some (natAdd n 1)) 2 18446744073709551614\n", "2"},
+  {"Nat unfold propagates a trapped Option result",
+   "def test : Nat := unfold (fun (n : Nat) => flagIf (natEq (natAdd n 1) 0) none (some n)) 1 18446744073709551615\n", "trap"},
   {"Glue transport with no persistent faces",
    "def test : Nat := transport (ua (idEquiv Nat)) 7\n", "7"},
   {"Glue transport with fewer persistent faces than branches",

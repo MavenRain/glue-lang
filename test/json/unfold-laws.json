@@ -1,0 +1,1 @@
+{"glue-lang":1,"instances":[{"name":"countNone","type":"Nat","value":0},{"name":"countDown","type":"Nat","value":3},{"name":"countSome","type":"Nat","value":4}]}

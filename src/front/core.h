@@ -70,6 +70,7 @@ typedef enum {
   OP_WITNESS,
   OP_PAYLOAD,
   OP_ELIM_NAT, /* M6 s2 (D6): elim P z s n at Nat. */
+  OP_UNFOLD_NAT, /* M6 s3 (D9): unfold g n s at Nat, the number of steps. */
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,

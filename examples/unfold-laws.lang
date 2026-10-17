@@ -1,0 +1,29 @@
+-- M6 s3: the unfold laws. unfold at a successor spine natAdd n 1 makes one step
+-- through option at a neutral g s. unfold into Nat counts the steps until the
+-- step gives none or the limit is reached.
+def unfoldZeroL : (g : Nat -> Option (Prod Nat Nat)) -> (s : Nat) -> Path (List Nat) (unfold g 0 s) nil := fun g => fun s => refl
+def unfoldNoneL : (n : Nat) -> (s : Nat) -> Path (List Nat) (unfold (fun (x : Nat) => none) (natAdd n 1) s) nil := fun n => fun s => refl
+def unfoldSomeL : (g : Nat -> Option (Prod Nat Nat)) -> (n : Nat) -> (s : Nat) -> Path (List Nat) (unfold g (natAdd n 1) s) (option nil (fun (p : Prod Nat Nat) => cons (first p) (unfold g n (second p))) (g s)) := fun g => fun n => fun s => refl
+def unfoldSomeLc : (n : Nat) -> (s : Nat) -> Path (List Nat) (unfold (fun (x : Nat) => some (pair x x)) (natAdd n 1) s) (cons s (unfold (fun (x : Nat) => some (pair x x)) n s)) := fun n => fun s => refl
+def unfoldZeroN : (g : Nat -> Option Nat) -> (s : Nat) -> Path Nat (unfold g 0 s) 0 := fun g => fun s => refl
+def unfoldNoneN : (n : Nat) -> (s : Nat) -> Path Nat (unfold (fun (x : Nat) => none) (natAdd n 1) s) 0 := fun n => fun s => refl
+def unfoldSomeN : (g : Nat -> Option Nat) -> (n : Nat) -> (s : Nat) -> Path Nat (unfold g (natAdd n 1) s) (option 0 (fun (r : Nat) => natAdd (unfold g n r) 1) (g s)) := fun g => fun n => fun s => refl
+def unfoldSomeNc : (n : Nat) -> (s : Nat) -> Path Nat (unfold (fun (x : Nat) => some x) (natAdd n 1) s) (natAdd (unfold (fun (x : Nat) => some x) n s) 1) := fun n => fun s => refl
+-- Evaluation rows (test/eval/expect.txt): a neutral step, a some with a neutral
+-- payload, literal counts, a spine limit and a neutral step into Nat. An entry
+-- type (Nat parameters only) takes literal arguments, so countSpine reads a
+-- neutral Nat from a List parameter, as foldSpine of fold-laws.lang.
+def lenL : List Nat -> Nat := fun xs => fold (fun (x : Nat) (acc : Nat) => natAdd acc 1) 0 xs
+def stepNeutral : (g : Nat -> Option (Prod Nat Nat)) -> (s : Nat) -> List Nat := fun g => fun s => unfold g 3 s
+def listSomeNeutral : (h : Nat -> Prod Nat Nat) -> (s : Nat) -> List Nat := fun h => fun s => unfold (fun (x : Nat) => some (h x)) 2 s
+def countNone : Nat := unfold (fun (x : Nat) => none) 5 7
+def countDown : Nat := unfold (fun (n : Nat) => flagIf (natEq n 0) none (some (natSub n 1))) 10 3
+def countSome : Nat := unfold (fun (n : Nat) => some n) 4 0
+def countZero : (g : Nat -> Option Nat) -> (s : Nat) -> Nat := fun g => fun s => unfold g 0 s
+def countSpine : (xs : List Nat) -> (s : Nat) -> Nat := fun xs => fun s => unfold (fun (x : Nat) => some x) (natAdd (lenL xs) 2) s
+def countNeutral : (g : Nat -> Option Nat) -> (s : Nat) -> Nat := fun g => fun s => unfold g 3 s
+-- Uniqueness: a function that satisfies the unfold equations is the unfold.
+-- consStep gives nil a declared type in the cong function of unfoldListUniq.
+def consStep : (g : Nat -> Option (Prod Nat Nat)) -> (s : Nat) -> (t : Nat -> List Nat) -> List Nat := fun g => fun s => fun t => option nil (fun (p : Prod Nat Nat) => cons (first p) (t (second p))) (g s)
+def unfoldListUniq : (g : Nat -> Option (Prod Nat Nat)) -> (h : Nat -> Nat -> List Nat) -> ((s : Nat) -> Path (List Nat) (h 0 s) nil) -> ((n : Nat) -> (s : Nat) -> Path (List Nat) (h (natAdd n 1) s) (option nil (fun (p : Prod Nat Nat) => cons (first p) (h n (second p))) (g s))) -> (n : Nat) -> Path (Nat -> List Nat) (h n) (fun (s : Nat) => unfold g n s) := fun g => fun h => fun hz => fun hs => fun n => elim (fun y => Path (Nat -> List Nat) (h y) (fun (s : Nat) => unfold g y s)) (funExt hz) (fun k => fun ih => funExt (fun s => trans (hs k s) (cong (consStep g s) ih))) n
+def unfoldNatUniq : (g : Nat -> Option Nat) -> (h : Nat -> Nat -> Nat) -> ((s : Nat) -> Path Nat (h 0 s) 0) -> ((n : Nat) -> (s : Nat) -> Path Nat (h (natAdd n 1) s) (option 0 (fun (r : Nat) => natAdd (h n r) 1) (g s))) -> (n : Nat) -> Path (Nat -> Nat) (h n) (fun (s : Nat) => unfold g n s) := fun g => fun h => fun hz => fun hs => fun n => elim (fun y => Path (Nat -> Nat) (h y) (fun (s : Nat) => unfold g y s)) (funExt hz) (fun k => fun ih => funExt (fun s => trans (hs k s) (cong (fun (t : Nat -> Nat) => option 0 (fun (r : Nat) => natAdd (t r) 1) (g s)) ih))) n

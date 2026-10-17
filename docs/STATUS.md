@@ -2818,3 +2818,121 @@ current circuit.
   (2) The huge-literal OOM above is a resource limit, not a wrong value.
 - Build record:  s2-a hand build in the main loop (claude3);  the USER
   commit df0d1e2;  this follow-up by hand in the main loop (no subagents).
+
+### s3: the unfold step through option and unfold into Nat (2026-10-17)
+
+- Commits:  none yet.  One USER commit has the code (s3-a:  core.h,
+  eval.c, check.c and json.c), examples/unfold-laws.lang,
+  test/json/unfold-laws.json, 8 eval rows, 1 check refusal and this
+  record (s3-b).
+- Step 0 (USER question):  build/m6s3-probe/s0.lang (f0 and p0 of
+  test/check/fold-overflow-proof.lang and `def q : Path Nat (f0
+  18446744073709551615) 0 := p0 18446744073709551615`) gives
+  `TYPE_MISMATCH: q: expected a term of type Path Nat trap 0, found a
+  term of type Path Nat trap 0`, before and after the code.  Thus q is
+  refused:  conversion does not equate two traps (the s2 rule).  No code
+  change.  See open item (1).
+- Tag:  a new op OP_UNFOLD_NAT (core.h after OP_ELIM_NAT;  args g, n, s;
+  arity 3;  name `unfold`), not an inst on OP_UNFOLD, as OP_ELIM_CORE
+  (s1) and OP_ELIM_NAT (s2).  Reason:  the conversion head compares the
+  op, the inst and the fields (`a->op == b->op && a->inst == b->inst
+  ...`), thus a separate op keeps the two forms apart, and
+  reduce_unfold, blocked and unfold_end read no new inst.  -Wswitch-enum
+  lists each switch site:  only eval.c reduce_op and json.c need a case.
+- D8 (eval.c):  unfold_step makes the stuck `option nil F (g s)` (`option
+  0 F (g s)` in the Nat form).  F is a VAL_LAM closure over the env
+  [limit, g]:  `fun p => cons (first p) (unfold g n' (second p))` at List
+  and `fun r => natAdd (unfold g n' r) 1` at Nat (core_index and
+  core_call make the Core nodes of the body).  unfold_end:  none gives
+  nil (0 at Nat);  a trap gives the trap;  a neutral step result gives
+  unfold_step;  `some p` with a neutral p continues the loop (the item
+  and the seed by reduce_part OP_FIRST and OP_SECOND;  the Nat seed is
+  p).  unfold_result:  build_list at List;  `natAdd TAIL STEPS` by
+  nat_offset at Nat (a 0 tail gives the literal STEPS, a trap tail gives
+  the trap).  reduce_unfold:  at a limit `natAdd x k` (nat_spine), k
+  steps, then the stuck `unfold g x seed`;  a neutral limit stays stuck;
+  a trap limit gives the trap.  reduce_op:  `case OP_UNFOLD: case
+  OP_UNFOLD_NAT:` call reduce_unfold.
+- check.c rule_unfold:  at a declared type Nat the step type is `Option
+  S`;  at `List A` it is `Option (Prod A S)`;  else TYPE_INFER with the
+  text `unfold needs a declared type List A or Nat here` (it was `List
+  A`;  no table compares the text).
+- Probes (build/m6s3-probe/*.lang, `langc check`), before -> after:  l1
+  unfoldSomeL (the D8 List law at a neutral `g s`) TYPE_REFL -> ok;  l2
+  unfoldZeroL ok -> ok;  l3 unfoldNoneL TYPE_REFL -> ok;  l4 unfoldSomeLc
+  (a pair step) TYPE_REFL -> ok;  n1 to n5 (the Nat form `unfold g n s :
+  Nat`, unfoldZeroN, unfoldNoneN, unfoldSomeN and unfoldSomeNc) each
+  `TYPE_INFER: unfold needs a declared type List A here` -> ok.
+- Printed forms:  `make -B check` with the code and no new rows (s3-a)
+  exit 0, thus no golden changed.  No current row has an unfold at a
+  neutral `g s`, at a `some` with a neutral payload or at a spine limit.
+- examples/unfold-laws.lang:  unfoldZeroL, unfoldNoneL, unfoldSomeL,
+  unfoldSomeLc, unfoldZeroN, unfoldNoneN, unfoldSomeN and unfoldSomeNc by
+  `refl`;  the defs of the eval rows;  unfoldListUniq and unfoldNatUniq:
+  a function h that satisfies the unfold equations is the unfold (`elim`
+  at the limit, funExt, trans and cong).  consStep gives `nil` a declared
+  type in the cong function of unfoldListUniq (an inline `fun t =>
+  option nil ...` gives `TYPE_INFER: nil needs a declared type List A
+  here`).
+- Eval rows (8):  stepNeutral and countNeutral print 3 option layers, not
+  1:  the printer reads back under the closure F, and the literal limit 2
+  in F reduces again (the last tail is nil, or 1 at Nat).  This is the D8
+  normal form.  countSpine has a List parameter (`natAdd (lenL xs) 2`):
+  a type with Nat parameters only is an entry, and `langc eval` of an
+  entry needs literal arguments (EVAL_ARGS).  listSomeNeutral, countNone
+  (0), countDown (3), countSome (4) and countZero as in the plan.
+- Check refusal:  test/check/unfold-nat-list-step.lang (`def bad : Nat :=
+  unfold (fun (n : Nat) => some (pair n n)) 3 5`) gives TYPE_MISMATCH
+  (`expected a term of type Nat, found a term of type Prod Nat Nat`).
+- JSON:  test/json/unfold-laws.json (the closed instances countNone 0,
+  countDown 3 and countSome 4).
+- Huge literal limit (probe build/m6s3-probe/huge.lang, `unfold (fun (n :
+  Nat) => some n) 18446744073709551615 0`):  `EVAL_FUEL: huge: the
+  evaluation takes more than 20000000 steps` in 1.2 s.  The unfold loop
+  stops at the step limit before the arena limit.  Not fixed (open item
+  2).
+- Mutants (each with `make -B build/langc` and `make check`, reverted,
+  the hashes of eval.c and check.c compared, final `make -B build/langc`
+  exit 0):  3 KILLED, 0 SURVIVED.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. eval.c unfold_step:  the step waits for `g s` (a stuck `unfold g limit (g s)`, not the option step) | examples/unfold-laws.lang `TYPE_REFL: unfoldSomeL: ... the start normalizes to unfold g n (g s), the end normalizes to option nil (fun p => cons (first p) (unfold g n (second p))) (g s)`;  the 8 unfold-laws eval rows. |
+| 2. eval.c unfold_result:  the Nat form counts one step too many (`steps + 1u`) | examples/unfold-laws.lang `TYPE_REFL: unfoldZeroN: ... the start normalizes to 1, the end normalizes to 0`;  the 8 unfold-laws eval rows. |
+| 3. check.c rule_unfold:  the List form at a Nat declared type (`at_nat = 0`) | examples/unfold-laws.lang `TYPE_INFER: unfoldZeroN: unfold needs a declared type List A or Nat here`;  unfold-nat-list-step.lang (TYPE_INFER, not TYPE_MISMATCH);  the unfold-laws eval rows. |
+
+- Gates:  `make -B check` exit 0 (native circuit 9, path 42, face 35, HIT
+  44;  examples 37, parse refusals 18, check refusals 140, evals 255, json
+  31 builds, build refusals 8, circuits 4, same-ir 3, circuit refusals 12,
+  satcheck refusals 6;  node regressions 6, printer 2).  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed).  `git diff --exit-code -- test/circuit
+  contracts/src/verifiers` exit 0:  no IR change.  contracts/test/fixtures
+  restored from HEAD, then `forge test --root contracts` 33 passed,
+  0 failed.
+
+- Open items:  (1) The step 0 message prints the same text for the two
+  types (a trap prints as `trap`), thus it reads as a contradiction.  A
+  USER ruling can change the text.  (2) The huge-limit fuel stop is a
+  resource limit, not a wrong value.
+- Build record:  s3-a and s3-b by hand in the main loop (claude3, no
+  subagents).
+
+#### s3 review correction (2026-10-17)
+
+- MEDIUM: the Nat unfold inspected a `some` payload for traps before
+  counting the step. With `g n = some (natAdd n 1)`, depth 1 and seed
+  18446744073709551615, it returned `trap` instead of 1. The equivalent
+  `option` step returned 1 because the recursive unfold at depth 0 does
+  not use the successor seed. The closed successor law also failed with
+  TYPE_REFL.
+- Fix: at Nat, count the outer `some` constructor and pass its payload
+  only as the next seed. A trap in the Option result still propagates.
+- Four C regressions in test/path-regressions.c cover the closed law,
+  one step, a two-step prefix, and a trapped Option result. Before the
+  fix, the first three failed. After the fix, native path regressions
+  report 46 checked, 0 failed.
+- Validation: `make check` exit 0 on the staged snapshot plus the fix,
+  including Clang, native regressions, guest checks, evals, JSON and
+  circuit gates. No CI or test weakening, and no remaining review
+  blockers. No commit created.

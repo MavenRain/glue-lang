@@ -244,3 +244,11 @@ fold-laws offZ => fun xs => fold (fun x => fun acc => natAdd acc 1) 0 xs
 fold-laws dbl 5 => 10
 fold-laws idx 4 => 3
 fold-laws idx 0 => 0
+unfold-laws stepNeutral => fun g => fun s => option nil (fun p => cons (first p) (option nil (fun _x0 => cons (first _x0) (option nil (fun _x1 => cons (first _x1) nil) (g (second _x0)))) (g (second p)))) (g s)
+unfold-laws listSomeNeutral => fun h => fun s => cons (first (h s)) (cons (first (h (second (h s)))) nil)
+unfold-laws countNone => 0
+unfold-laws countDown => 3
+unfold-laws countSome => 4
+unfold-laws countZero => fun g => fun s => 0
+unfold-laws countSpine => fun xs => fun s => natAdd (unfold (fun x => some x) (fold (fun x => fun acc => natAdd acc 1) 0 xs) s) 2
+unfold-laws countNeutral => fun g => fun s => option 0 (fun r => natAdd (option 0 (fun _x0 => natAdd (option 0 (fun _x1 => 1) (g _x0)) 1) (g r)) 1) (g s)
