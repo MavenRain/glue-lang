@@ -4018,3 +4018,82 @@ specification HIT, the Poseidon hash and the transfer circuit.
   s3 (poseidon.lang:  the constants, the round defs, wrap, poseidonVec).
   s3 reads the circomlib t = 3 constants, the MDS matrix and the test
   vector from the circomlib source first (ruling (e)).
+
+### s3
+
+The Poseidon permutation (docs/M8-PLAN.md D4 to D6, section 10 row s3,
+ruling (e)). No src/ change, no IR change, no new circuit.
+
+What changed:
+- examples/poseidon.lang (new): a header comment (the sources, the form,
+  t, RF, RP), 195 round constants `rc0` to `rc194` (C[1] of the source)
+  and 9 MDS entries `mds00` to `mds22` (M[1][I][J]), each a closed Field
+  def with one literal (D5), then `sbox5`, `mdsMix`, `fullRd`, `partRd`,
+  `fullStep`, `partStep`, `perm3` (8 full and 57 partial rounds), `wrap`,
+  `poseidonVec` and `fullOne`. The state is `Prod Field (Prod Field
+  Field)`.
+- test/eval/expect.txt: `poseidon wrap => 0`, `poseidon poseidonVec =>
+  7853200120776062878684798364095072458815029376092732009249414926327459813530`
+  and `poseidon fullOne => pair M00 (pair M10 M20)` (column 0 of M). The
+  plan names no third row, thus the third row is one round def at a small
+  closed input: `fullOne` is `fullRd 0 0 0 1 0 0`. `langc eval` takes
+  arguments only for an entry (EVAL_ARGS), thus fullOne is a closed def.
+- test/json/poseidon.json (new): 207 instances (204 constants, wrap,
+  poseidonVec and fullOne;  fullOne is a Prod instance).
+- SPEC.md section 2.10: the paragraph **The Poseidon hash.** Section 9
+  gets no line: s3 opens no question.
+
+Sources (fetched with curl on 2026-10-18;  commits from the GitHub API
+`commits/HEAD`):
+- circomlibjs, commit 48b3ab37013c5ed21e9ff8a80a5b010795c97094
+  (2025-04-03): https://raw.githubusercontent.com/iden3/circomlibjs/main/src/poseidon_reference.js
+  (the rounds), .../src/poseidon_constants.js and
+  .../src/poseidon_constants.json (C and M;  the two files have the same
+  12638 hex values), .../test/poseidon.js (the vector, also as the hex
+  value 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a).
+- circomlib, commit 35e54ea21da3e8762557234298dbb553c175ea8d
+  (2025-04-03): https://raw.githubusercontent.com/iden3/circomlib/master/test/poseidoncircuit.js
+  (the t = 3 vector), .../circuits/poseidon.circom and
+  .../circuits/poseidon_constants.circom (the optimized form C, S, M, P).
+
+Parameters (from the fetched text, not from D6): t = 3 (the capacity word
+0, then 2 inputs), N_ROUNDS_F = 8, N_ROUNDS_P[t - 2] = 57, the S-box
+pow5 (x^5), C[1] with 195 values (index r * t + i), M[1] 3 x 3 (word i of
+the mix is the sum of M[i][j] * word j). The rounds 0 to 3 and 61 to 64
+are full. Each round mixes, also the last. The hash is word 0. D6 is
+correct. The vector is the same in 3 places (the circomlib test, the
+circomlibjs test, and the hex test value as a decimal).
+
+Form: the plain form (C and M). circomlib poseidon.circom uses the
+optimized form;  the two forms give the same hash. POSEIDON_M(3) of
+poseidon_constants.circom is the transpose of M[1] of the json file.
+
+Probes: each hex value to decimal with bc;  204 of 204 decimals below r
+(src/front/fr.h, 77 digits). Name guard (214 names): one hit, `wrap` is a
+C local in src/front/eval.c (not a domain name;  `langc check` gives ok).
+`langc check` ok;  each eval 0 s (no EVAL_FUEL, no EVAL_PRINT).
+
+Rows of form (i) (probe circuits in $TMPDIR, `-o`;  one hint for each
+S-box output and each state word, one constraint for each hint): a base
+circuit `a + b + c == y` 6 rows (k 5);  one full round 78 rows (k 7);  one
+partial round 60 rows (k 7);  both 132 rows (k 8). Thus a full round is 72
+rows (D4 estimate 48) and a partial round is 54 rows (estimate 46). The
+permutation estimate is 8 x 72 + 57 x 54 = 3654 rows (D4: 3006), k 12.
+
+Mutants (scratch copies, 1 line each, `sd -F` hit count 1):
+- m1 (one digit of rc100): KILLED by the poseidonVec row.
+- m2 (one digit of mds12): KILLED by the poseidonVec row.
+- m3 (the partial round S-box on word 1): KILLED by the poseidonVec row.
+The wrap and fullOne rows pass for each mutant.
+
+Gates: `make -B check` exit 0 (native circuit 9, path 46, face 35, HIT
+44;  examples 61, parse refusals 18, check refusals 154, evals 283, json
+40 builds, build refusals 8, circuits 5, same-ir 19, circuit refusals 16,
+satcheck refusals 6;  node regressions 6, printer 2);  `make check-clang`
+exit 0;  `forge build` exit 0;  `make e2e` exit 0;  the IR diff of
+test/circuit and contracts/src/verifiers is empty before and after e2e;
+`forge test` 44 passed.
+
+Open items: s4 (examples/poseidon.glue, the circuit `poseidon` with 276
+hints of form (i), a golden, an e2e row, a verifier file and its Forge
+tests, a WITNESS_FAIL row with a wrong hash) measures the real rows and k.

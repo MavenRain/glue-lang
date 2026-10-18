@@ -1056,6 +1056,32 @@ instance. The circuit square of examples/specSq.glue takes `interpS
 (test/circuit/same-ir.txt). A def with a constructor name of `SqSpec`
 gives REFUSE_NAME (test/check/domain-slaw.lang).
 
+**The Poseidon hash.** examples/poseidon.lang has the Poseidon
+permutation of circomlib over BN254 Fr (D4 to D6 of docs/M8-PLAN.md,
+ruling (e)). The parameters and the constants come from the circomlibjs
+source (src/poseidon_reference.js and src/poseidon_constants.js;
+docs/STATUS.md M8 s3 gives the URLs and the commit hashes): t = 3 (the
+capacity word 0 and 2 inputs), 8 full rounds, 57 partial rounds and the
+S-box x^5. The file uses the plain form: the 195 round constants C and
+the 3 x 3 MDS matrix M. circomlib circuits/poseidon.circom uses the
+optimized form (C, S, M, P), and the two forms give the same hash. Each
+constant is a closed def with one Field literal: the decimal form of the
+hex value of the source, below r (D5). A round adds 3 constants, applies
+the S-box `sbox5` to each word (`fullRd`) or to word 0 (`partRd`), then
+applies the MDS mix `mdsMix`. `perm3` applies the 65 rounds to a state
+of type `Prod Field (Prod Field Field)`. The eval rows
+(test/eval/expect.txt): `wrap` (`(r - 1) + 1`) gives 0; `poseidonVec`
+(word 0 of `perm3` at (0, 1, 2)) gives the circomlib value of
+`poseidon([1, 2])`,
+7853200120776062878684798364095072458815029376092732009249414926327459813530;
+`fullOne` (`fullRd` at the zero constants and the state (1, 0, 0)) gives
+column 0 of M. test/json/poseidon.json has 207 instances. The circuit
+form is form (i) (D4): one hint for each S-box output and each state
+word, and one constraint for each hint. A probe circuit gave 72 rows for
+a full round and 54 rows for a partial round (the D4 estimate was 48 and
+46). Thus the permutation needs approximately 8 x 72 + 57 x 54 = 3654
+rows, and k 12 (2^12 = 4096). The circuit `poseidon` is slice s4.
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
