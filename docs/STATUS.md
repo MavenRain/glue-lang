@@ -3821,3 +3821,84 @@ commit includes the plan.
 - Open items:  none new.  O18:  ruling (f) confirmed it (USER,
   2026-10-18);  the SPEC.md 9 O18 text is s6 work (SPEC.md 4 and 9).
   Next:  s6, the M7 close (docs/M7-PLAN.md section 10).
+
+### s6: close (2026-10-18)
+
+- Commits:  s1 efd430b (with the plan docs/M7-PLAN.md);  s2 aa2d240;  s3
+  4aefb85;  s4 0ddc6bd;  s5 b21aaf7.  s6 changes docs only:  no change in
+  src/, in domain/domain.lang, in test/ and in examples/.
+- What M7 added:  Direction 2 of design/DESIGN.md (circuits quotiented by
+  relation equivalence), with no lowering code and no IR change (rulings
+  (a) and (d)).  The domain family `Circ` (one public binder `cpub`, one
+  private binder `cpriv`, `clit`, `cadd`, `cmul` and `cpow`) and the guest
+  interpreter `ev`;  the pointwise relation `CRel`, the quotient `GQuot
+  Circ CRel` and its fold `evQ` into Field (the lowering quotient);
+  `CEqv`, `SatQ` and `SatP` (properties only, O19);  the laws of
+  docs/M7-PLAN.md section 4, each by refl;  the transport smoke example
+  (`opt`, `moveSat`, and circOpt.glue and circPow.glue with the IR of
+  square);  the obligation refusals of the `geqc` and `squashc` cases;
+  the TYPE_REFL row of D8 (no ring normal form);  the automated
+  WITNESS_HINT row (O17 closed).  The only change outside the examples,
+  the guest tables and the docs is the `family Circ` line in
+  domain/domain.lang (s2).  `git diff --numstat c8c1d5e -- src` is empty.
+- Docs:  SPEC.md 2.9 (new in s1;  s2 to s4 add to it), 4 (s6:  the
+  circuit quotient) and 9 (s5:  the O4 record, O17 closed, O19 new;  s6:
+  the O18 ruling, O20 new).  docs/PLAN.md:  the M7 row DONE 2026-10-18
+  with the slice commits.  docs/STATUS.md:  this section.
+
+#### Mutant roll-up
+
+The mutants of the `Mutants` items of s1 to s5 (s1 3, s2 3, s3 3, s4 3,
+s5 2:  14).  The s5 review found each killing row of s1 to s4 still in
+its table.
+
+| Slice | Mutant | Verdict | Killed by |
+|---|---|---|---|
+| s1 | 1. fold_hit_rule does not test a path case (check.c hit_case_type) | KILLED | check geqc-case.glue HIT_CASE;  examples quot, int, otp, transportProp, trunc (HIT_CASE) |
+| s1 | 2. rule_elim does not test a path case (check.c elim_case_type) | KILLED | check elim-geqc-case.glue ELIM_CASE;  int negNeg, otp ret, transportProp repElimG (ELIM_CASE);  3 otp eval rows |
+| s1 | 3. fold_hit_rule does not test the `squashc` case (check.c hit_case_type) | KILLED | check squashc-field.glue HIT_CASE;  quot quotRec, transportProp repFold (HIT_CASE);  4 quot eval rows |
+| s2 | 1. the `cadd` and `cmul` cases of `ev` swapped (circSyntax.glue) | KILLED | same-ir circSyntax square (IR DIFF) |
+| s2 | 2. `hb * t` to `hb + t` in the `cpow` case (circEval.lang) | KILLED | eval circEval evPow (9, not 27) |
+| s2 | 3. the `cpub` and `cpriv` cases swapped (circEval.lang) | KILLED | eval circEval evPub (3) and evPriv (9) |
+| s3 | 1. `hl + hr` to `hl` (ring-refl.lang) | KILLED | check ring-refl.lang TYPE_REFL |
+| s3 | 2. field_op gives the left operand at `+ 0` (eval.c) | KILLED | check ring-refl.lang TYPE_REFL (the only failing row) |
+| s3 | 3. pcon_boundary gives the first branch at i1 (eval.c) | KILLED | examples circRel.lang (HIT_CASE at `evQ`);  same-ir quotEnd0, quotEnd1;  16 examples, 5 native HIT rows |
+| s4 | 1. `cpow cpriv 1` to `cpow cpriv 2` (circOpt.glue) | KILLED | examples circOpt.glue TYPE_REFL;  same-ir circOpt square;  refuse circOpt (TYPE_REFL, not WITNESS_FAIL) |
+| s4 | 2. the circuit at `cpow cpriv 0` (circPow.glue) | KILLED | same-ir circPow square (IR DIFF) |
+| s4 | 3. m3 at `moveSat 4 2 refl` (circTransport.lang) | KILLED | eval circTransport m3 (`<j> 4`) |
+| s5 | 1. the hint at 0, no trap (hintTrap.glue) | KILLED | refuse hintTrap WITNESS_HINT (exit 0) |
+| s5 | 2. no overflow:  18446744073709551614 (hintTrap.glue) | KILLED | refuse hintTrap on the code (EVAL_FUEL, not WITNESS_HINT) |
+
+- Totals:  14 mutants:  14 KILLED, 0 SURVIVED.  5 mutants are in src/
+  (s1 1 to 3 in check.c, s3 2 and 3 in eval.c), 9 are in guest files.  No
+  mutant added a row.
+
+#### Review
+
+- (i) No conv rule reads a type.  M7 has no change in src/, thus the M6
+  close review (i) holds.  The ring-refl.lang row shows that M7 adds no
+  ring conv rule (D8, ruling (i)).
+- (ii) No rule `hcomp A i0 u u0 = u0` (D8 of M3):  no change in src/,
+  and the hcomp-i0-int.lang and hcomp-i0-circle.lang rows stay.
+- (iii) `hcomp` at a HIT stays a canonical value (D3 of M4):  no change
+  in src/.  evHcomp (s1) folds such a value with the eliminator `hcomp`
+  rule.
+- (iv) No IR change:  contracts/src/verifiers did not change in a slice.
+  Each new circuit through a quotient has a same-ir row against square
+  (8 rows:  5 in s1, circSyntax, circOpt and circPow).
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 55, parse refusals 18, check refusals 152, evals 276,
+  json 37 builds, build refusals 8, circuits 5, same-ir 16, circuit
+  refusals 16, satcheck refusals 6;  node regressions 6, printer 2.
+  Against s5:  no change (section 10:  none).  Against the M6 close:
+  examples +13, check refusals +6, evals +8, json +4, same-ir +8, circuit
+  refusals +2.  `make check-clang` exit 0.  `forge build --root contracts
+  --sizes` exit 0.  `make e2e` exit 0.  The diff of test/circuit and
+  contracts/src/verifiers is empty before and after e2e.
+  contracts/test/fixtures restored, then `forge test --root contracts` 44
+  passed, 0 failed.
+- Open items at the M7 close (SPEC.md 9):  O19 (new in M7:  the gap of
+  `CEqv`) and O20 (new in M7:  the indexed binder form of `Circ`, ruling
+  (h)) for M8.  O18:  RULED 2026-10-18 (USER), ruling (f).  O17 closed in
+  s5.  O3, O12 (c), O13 and O14 stay open (ruling (f));  O15 and O16
+  stay open.  Next:  the M8 kickoff (docs/PLAN.md, the M8 row).

@@ -1046,6 +1046,26 @@ the host form of each former.
   unfoldNatUniq). There is no `unfold` into a domain family: no domain
   family needs it (D9 of docs/M6-PLAN.md).
 - **Filterable**: M6 does not change `filter` (formers/tcc-json.md F8).
+- **Circuit quotient** (M7, section 2.9): the domain family `Circ`
+  (`cpub`, `cpriv`, `clit`, `cadd`, `cmul` and `cpow`) is the syntax of a
+  circuit with one public binder and one private binder. `ev y x c` is its
+  interpreter into Field (an `elim` at `Circ`; the `cpow` case is the Nat
+  fold of section 2.8). `CRel c1 c2` is the pointwise relation `(y :
+  Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)`, and `evQ y
+  x` is the fold of `GQuot Circ CRel` into Field. The lowering uses this
+  quotient: it runs on the representative, and a circuit through the
+  quotient gives the IR of the representative. `CEqv c1 c2` is an `Equiv`
+  of the satisfaction types `Sat c1 y x` and `Sat c2 y x` at each `y` and
+  `x`. `SatQ` is the fold of `GQuot Circ CEqv` into `Type 0` (the `geqc`
+  case by `ua`), and `SatP` is the fold of `GQuot Circ CRel` into `Type
+  0`. `GQuot Circ CEqv` carries properties only (O19). `opt : CRel (cmul
+  cpriv cpriv) (cpow cpriv 1)` holds by refl, and `moveSat` moves a proof
+  of `Sat` from `cmul cpriv cpriv` to `cpow cpriv 1` by `transport` along
+  the `SLine` def. The laws evPoint, evEnd0, evEnd1, evPath, evHcomp,
+  optRefl, moveSatRefl and satQFwd hold by refl (examples/circRel.lang,
+  evHcomp.lang and circTransport.lang). There is no ring normal form (D8
+  of docs/M7-PLAN.md): a relation between two different normal forms is a
+  proof term. The indexed binder form is O20.
 
 ## 5. Core types
 
@@ -1243,15 +1263,22 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   to a trap, so `witness` gives WITNESS_HINT (exit 1). Refusing `axiom a :
   Field` with REFUSE_AXIOM (rule R2) does not exclude this overflow case.
 - O18. New in M6. The closed-line rule of `transp` (section 2.8) accepts a
-  HIT family with closed parameters (`Susp Nat`). The USER can confirm that
-  D10 covers this case. A family with a dependent field is not eligible for
-  the `hcomp` rule, also when the field type does not use the earlier field.
+  HIT family with closed parameters (`Susp Nat`). RULED 2026-10-18 (USER):
+  D10 of docs/M6-PLAN.md covers a HIT family with closed parameters (`Susp
+  Nat`) (ruling (f), docs/M7-PLAN.md section 9). A family with a dependent
+  field is not eligible for the `hcomp` rule, also when the field type
+  does not use the earlier field.
 - O19. New in M7 (slice s3, D4 of docs/M7-PLAN.md). The gap of `CEqv`
   (section 2.9, **The gap of CEqv.**). An `Equiv` of the two satisfaction
   types does not give `Path Field (ev y x c1) (ev y x c2)`, because `y` is
   also an input of `ev`. Thus `GQuot Circ CEqv` has no fold into Field and
   carries properties only (`SatQ`). The lowering uses `GQuot Circ CRel`
   (RULED 2026-10-18 (USER), docs/M7-PLAN.md section 9).
+- O20. New in M7 (ruling (h), docs/M7-PLAN.md section 9). The binders of
+  `Circ` are `cpub` and `cpriv`: one public binder and one private binder
+  (the shape of square). A circuit with more binders (poly has two public
+  binders) needs an indexed binder form (`cvar (n : Nat)` with an
+  environment). RULED 2026-10-18 (USER): this form is M8 work.
 
 ## 10. Milestones
 
