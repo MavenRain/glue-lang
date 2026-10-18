@@ -11,3 +11,4 @@ quotEnd1 square square
 quotHcomp square square
 quotElimHcomp square square
 quotProof square square
+circSyntax square square

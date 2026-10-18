@@ -1,0 +1,11 @@
+-- M7 s2 (D2): the interpreter ev of examples/circSyntax.glue at each
+-- constructor of Circ, with the closed binders y = 9 and x = 3
+-- (test/eval/expect.txt). The cpow case folds hb * t n times from hb, thus
+-- cpow b n gives the value of b to the power n + 1 (evPow: 3 * 3 * 3 = 27).
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def evPub : Field := ev 9 3 cpub
+def evPriv : Field := ev 9 3 cpriv
+def evLit : Field := ev 9 3 (clit 5)
+def evAdd : Field := ev 9 3 (cadd cpub cpriv)
+def evMul : Field := ev 9 3 (cmul cpriv cpriv)
+def evPow : Field := ev 9 3 (cpow cpriv 2)

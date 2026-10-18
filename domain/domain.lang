@@ -42,3 +42,7 @@ family Web (A : Type 0) := wnode (wn : A) | wlink (wlx : Web A) (wly : Web A) (w
 -- field et of ext has the type Ty at the earlier field eg (a partner field).
 mutual family Ctx := cempty | ext (eg : Ctx) (et : Ty eg)
 family Ty (tg : Ctx) := tbase | arrow (ta : Ty tg) (tb : Ty tg)
+-- M7 s2 (D2): the circuit syntax, with one public binder cpub and one
+-- private binder cpriv (the shape of square). The guest interpreter ev is an
+-- elim into Field (examples/circSyntax.glue). The indexed form is an M8 item.
+family Circ := cpub | cpriv | clit (clv : Field) | cadd (cal : Circ) (car : Circ) | cmul (cml : Circ) (cmr : Circ) | cpow (cpb : Circ) (cpn : Nat)

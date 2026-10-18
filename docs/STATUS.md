@@ -3556,3 +3556,75 @@ commit includes the plan.
   contracts/test/fixtures restored, then `forge test --root contracts`
   44 passed, 0 failed.
 - Open items:  none new.  Next:  s2 (docs/M7-PLAN.md section 10).
+
+### s2: add the circuit syntax family Circ (2026-10-18)
+
+- Scope:  D2 of docs/M7-PLAN.md (the deep form, rulings (b) and (h)):  one
+  public binder `cpub` and one private binder `cpriv`.  The indexed form is
+  an M8 open item.  The only change outside the guest tables, examples and
+  docs is the `family Circ` line in domain/domain.lang (rule R1).  No
+  change in src/.
+- Name check:  `rg -n -w` of the 14 names (`Circ`, the 6 constructors and
+  the 7 fields) over examples, test, domain and src at efd430b:  no hit.
+- Domain probe (COMMON M7 kickoff trap):  a scratch copy of the repository
+  (rsync without .git, halo2, contracts and build) with the `family Circ`
+  line appended, then `make -B -C <copy> check`:  each count equals the s1
+  count.  Thus no old golden lists the domain families.
+- Domain:  domain/domain.lang gets the family `Circ := cpub | cpriv | clit
+  (clv : Field) | cadd (cal : Circ) (car : Circ) | cmul (cml : Circ) (cmr :
+  Circ) | cpow (cpb : Circ) (cpn : Nat)`, after the mutual block, with a
+  comment.  `make -B check`:  the s1 counts.
+- Runner trap:  the first runner guarded the append with `rg -q -F 'family
+  Circ'`, and that pattern also matches `family Circle`.  Thus the append
+  did not occur, and each probe gave NAME_UNKNOWN (`unknown name Circ`).
+  The runner stopped before the install.  The fixed guard is `family Circ
+  :=`.
+- examples/circSyntax.glue (D2, D1):  `ev`, `CRel` and `evQ` of the kickoff
+  probe (D0), and one circuit `square` with the D1 constraint `evQ y x (gcls
+  Circ CRel (cmul cpriv cpriv)) == y`.  `langc circuit examples/circSyntax.glue
+  square -o ..`:  exit 0, IR SAME.  The D1 form gives IR SAME, thus the
+  fallback `ev y x (cmul cpriv cpriv) == y` is not necessary.  `CRel` and
+  `evQ` are local defs of the .glue program, thus they do not collide with
+  examples/circRel.lang of s3.  Same-ir row `circSyntax square square`.
+- examples/circEval.lang (eval rows at each constructor, closed binders y =
+  9 and x = 3):  `evPub` 9, `evPriv` 3, `evLit` (`clit 5`) 5, `evAdd` (`cadd
+  cpub cpriv`) 12, `evMul` (`cmul cpriv cpriv`) 9, `evPow` (`cpow cpriv 2`)
+  27.  The cpow case `fold (fun (t : Field) => hb * t) hb n` gives hb to the
+  power n + 1.  Each probe gave the planned value.  6 eval rows `circEval
+  NAME => VALUE`.  test/json/circEval.json (`langc build`) has the 6
+  instances.  Delta change against section 10:  examples +2 (not +1), json
+  +1 (the eval table reads examples/FILE.lang only, s1 trap).
+- Refusal:  test/check/domain-cpow.lang (`def cpow : Field := 1`):
+  REFUSE_NAME (`cpow is a domain constructor (rule R4)`).  Row
+  `domain-cpow.lang REFUSE_NAME`.
+- SPEC.md:  2.9 gets the D2 paragraph (the `Circ` family, its constructors
+  and fields, `ev` as a guest `elim (fun d => Field)`, the M6 Nat fold in the
+  `cpow` case, the binders, the M8 open item, the s2 files).  The M4 list of
+  the smoke families (section 2.6, Names) gets the sentence "M7 adds the
+  family Circ (section 2.9)".  That list names the M4 families only (it has
+  no M5 family), thus Circ is a cross reference there.
+- Mutants:  scratch copies of the new examples, `sd -F`, the rows probed
+  directly with the real build/langc (no rebuild:  the examples change
+  only).
+  1. Swap the `cadd` and `cmul` cases of `ev` in circSyntax.glue (1 hit):
+     KILLED, `langc circuit` exit 0, IR DIFF (the same-ir row fails).
+  2. `hb * t` to `hb + t` in circEval.lang:  KILLED, evPow gives 9, not
+     27.  The pattern has 2 hits:  the cpow case and the header comment.
+     The comment hit does not change the program.
+  3. Swap the `cpub` and `cpriv` cases (`y x` to `x y`) in circEval.lang (1
+     hit):  KILLED, evPub gives 3 and evPriv gives 9.
+  No mutant SURVIVED, thus no new row.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 50, parse refusals 18, check refusals 151, evals 275,
+  json 35 builds, build refusals 8, circuits 5, same-ir 14, circuit
+  refusals 14, satcheck refusals 6;  node regressions 6, printer 2.
+  Against s1:  examples +2, check refusals +1, evals +6, json +1, same-ir
+  +1.  `make check-clang` exit 0.  `forge build --root contracts --sizes`
+  exit 0.  `make e2e` exit 0.  The diff of test/circuit and
+  contracts/src/verifiers is the same before and after e2e:  only the new
+  row of test/circuit/same-ir.txt.  The verifiers did not change, thus the
+  domain change gives no IR change.  contracts/test/fixtures restored, then
+  `forge test --root contracts` 44 passed, 0 failed.
+- Open items:  the indexed binder form of `Circ` (`cvar (n : Nat)` with an
+  environment) for M8 (question (h)).  Next:  s3 (docs/M7-PLAN.md section
+  10).

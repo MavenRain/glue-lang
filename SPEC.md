@@ -507,7 +507,8 @@ enc @ i` (examples/otp.lang).
 one of these names gives REFUSE_NAME. The smoke families in
 domain/domain.lang are Circle (`base`, `loop`), Susp (`north`, `south`,
 `merid`), Trunc (`inc`, `squash`), Quot (`cls`, `eqc`, `squashc`), OTPSpec
-(`message`, `cipher`, `encrypt`) and GQuot (`gcls`, `geqc`).
+(`message`, `cipher`, `encrypt`) and GQuot (`gcls`, `geqc`). M7 adds the
+family Circ (section 2.9).
 
 **Circuits.** M4 adds no circuit code and does not change the IR. A
 constraint side must normalize to a Field normal form (section 7.1), so a
@@ -922,6 +923,24 @@ Field paths equal reads the type, and proof irrelevance is prohibited
 (ruling 2026-10-14). An axiom gives REFUSE_AXIOM (rule R2). Thus circuits
 use `GQuot` (no `squashc`), and quotRec of examples/quot.lang keeps its
 isSet argument.
+
+**The circuit syntax.** (D2) domain/domain.lang has the family `Circ`
+(rule R1). Its constructors are `cpub`, `cpriv`, `clit (clv : Field)`,
+`cadd (cal : Circ) (car : Circ)`, `cmul (cml : Circ) (cmr : Circ)` and
+`cpow (cpb : Circ) (cpn : Nat)`. The 6 constructor names and the 7 field
+names are domain names: a def with one of these names gives REFUSE_NAME
+(test/check/domain-cpow.lang). The syntax has one public binder `cpub` and
+one private binder `cpriv` (the shape of `square`). An indexed binder form
+is an open item for M8 (docs/M7-PLAN.md question (h)). The interpreter `ev
+y x c` is a guest `elim (fun d => Field)`. Its `cpow` case `fold (fun (t :
+Field) => hb * t) hb n` uses the Nat fold of M6. Thus `cpow b n` gives the
+value of `b` to the power n + 1. examples/circEval.lang evaluates `ev 9 3`
+at each constructor (test/eval/expect.txt: 9, 3, 5, 12, 9 and 27).
+examples/circSyntax.glue has `ev`, the pointwise relation `CRel`, the
+interpreter `evQ` out of `GQuot Circ CRel` (D3) and the circuit `square`
+with the constraint `evQ y x (gcls Circ CRel (cmul cpriv cpriv)) == y`. The
+point rule and `ev` reduce the constraint to `x * x == y`. Thus the IR is
+the IR of test/circuit/square.circuit.json (test/circuit/same-ir.txt).
 
 ## 3. Type formers
 

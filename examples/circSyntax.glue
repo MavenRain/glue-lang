@@ -1,0 +1,11 @@
+-- M7 s2 (D2, D1): the circuit syntax family Circ of domain/domain.lang and
+-- its interpreter ev, a guest elim into Field. The cpow case uses the Nat
+-- fold of M6. CRel is the pointwise relation and evQ is the interpreter out
+-- of GQuot Circ CRel (D3). The point rule gives ev y x (cmul cpriv cpriv),
+-- and ev gives x * x. Thus the IR must equal test/circuit/square.circuit.json
+-- (test/circuit/same-ir.txt), and the circuit name is square.
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+
+circuit square public (y : Field) private (x : Field) := evQ y x (gcls Circ CRel (cmul cpriv cpriv)) == y

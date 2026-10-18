@@ -1,0 +1,3 @@
+-- M7 s2: cpow is a constructor name of the domain family Circ
+-- (domain/domain.lang). A def with a domain name gives REFUSE_NAME.
+def cpow : Field := 1
