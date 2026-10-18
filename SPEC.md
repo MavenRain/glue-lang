@@ -704,6 +704,180 @@ with the wrong number of cases, a case of the wrong type, or a
 non-recursive field of the second family that uses the index), JSON_VALUE
 (a stuck `elim` in an instance).
 
+### 2.8 Monads, folds and unfolds (M6)
+
+M6 adds the monad laws, the fold and unfold laws over the cubical core and
+the hint monad of the lowering. The new core names are `append` and `inv`.
+The new circuit binder keyword is `hint`. The plan, the design calls D1 to
+D16 and the USER rulings (2026-10-17) are in docs/M6-PLAN.md.
+
+**append and List bind.** `append xs ys` is the join of the List instance
+(D1; RULED 2026-10-17 (USER), question b: extend the core instance).
+
+| Redex | Result |
+|---|---|
+| `append nil ys` | `ys` |
+| `append (cons x xs) ys` | `cons x (append xs ys)` |
+| `append xs nil`, xs neutral | `xs` (the right unit) |
+| `append xs ys`, xs neutral, ys not `nil` | a neutral value |
+
+A trap end of xs stays a trap. List bind goes through append (D2): `bind
+nil f = nil` and `bind (cons a l) f = append (f a) (bind l f)`. Thus `bind
+(cons a nil) f = f a` by refl for each f. The right unit keeps normal forms
+stable under substitution: at `l := nil`, `append (f a) (bind l f)` gives
+`f a`, as direct evaluation does. `append` is a core name, thus `def
+append` gives REFUSE_NAME.
+
+**elim at the core carriers and at Nat.** `elim P c1 c2 x` (D3, D6;
+RULED 2026-10-17 (USER), question g). P is explicit. The IH comes after
+each recursive field (the M5 rule). The core op is OP_ELIM_CORE at a
+carrier and OP_ELIM_NAT at Nat.
+
+| Scrutinee | First case | Second case |
+|---|---|---|
+| `o : Option A` | `P none` | `(a : A) -> P (some a)` |
+| `s : Sum E A` | `(e : E) -> P (inl e)` | `(a : A) -> P (inr a)` |
+| `l : List A` | `P nil` | `(a : A) -> (l : List A) -> P l -> P (cons a l)` |
+| `n : Nat` | `zero : P 0` | `succ : (n : Nat) -> (ih : P n) -> P (natAdd n 1)` |
+
+| Redex | Result |
+|---|---|
+| `elim P c1 c2 none`, `elim P c1 c2 (some a)` | `c1`, `c2 a` |
+| `elim P c1 c2 (inl e)`, `elim P c1 c2 (inr a)` | `c1 e`, `c2 a` |
+| `elim P c1 c2 nil`, `elim P c1 c2 (cons a l)` | `c1`, `c2 a l (elim P c1 c2 l)` |
+| `elim P z s k`, k a literal | `s (k - 1) (.. (s 0 z))` |
+| `elim P z s (natAdd x k)`, a successor spine | `s (natAdd x (k - 1)) (.. (s x (elim P z s x)))` |
+| `elim P c1 c2 x`, x neutral | a neutral value |
+
+A trap scrutinee gives the trap. A List with a trapped tail applies its
+known cons cases, with the trapped IH (the fold does the same). A wrong
+number of cases gives ELIM_CASES. A case of the wrong type gives ELIM_CASE
+(at a family a point case keeps ELIM_CASES, as in M5). A scrutinee of
+another type gives TYPE_MISMATCH (`elim needs a last argument in a domain
+family, Option, Sum, List or Nat`). The core `option` and `either` stay the
+non-dependent forms. The ELIM_CASES, ELIM_CASE, HIT_CASES and HIT_CASE
+messages print each case type with the field names of the constructor.
+
+**The Nat successor view.** (D5) `natAdd` with one neutral operand and one
+positive literal has the offset normal form `natAdd x k`, with x neutral
+and k that literal: `natAdd x 0 = x`, `natAdd 0 x = x`,
+`natAdd k x = natAdd x k` and
+`natAdd (natAdd x a) b = natAdd x (a + b)`. An overflow of `a + b` gives
+the trap. With two neutral operands, `natAdd x y` stays stuck and is not
+a successor spine. Literal addition keeps its overflow and trap behavior.
+The form
+`natAdd x k` is a successor spine: `fold f z (natAdd x k) = f (fold f z
+(natAdd x (k - 1)))`, down to `fold f z x`. The same spine rule applies to
+`elim` at Nat and to the `unfold` limit. The rule is stable under
+substitution: `x := m` gives the m + k unroll. PRINT_MAX guards a large k.
+
+**The fold laws and F6 uniqueness.** (D7) foldZero, foldSucc, foldCons and
+foldPush (at Stack) hold by refl (examples/fold-laws.lang). Uniqueness: a
+function that satisfies the fold equations is the fold. This is a proof
+term (funExt over `elim`, with `trans` and `cong`) at Nat, List and a plain
+family (foldNatUniq, foldListUniq and foldFamUniq). At a HIT the path cases
+need squares (O14).
+
+**unfold.** `unfold g n s` has an explicit Nat depth n (RULED 2026-10-17
+(USER), question c). The declared type selects the form (D9): at `List A`,
+`g : S -> Option (Prod A S)`; at Nat, `g : S -> Option S` (the core op
+OP_UNFOLD_NAT). At another declared type, `unfold` gives TYPE_INFER. The
+step goes through the core `option` (D8), thus it does not wait for `g s`:
+
+| Redex | Result |
+|---|---|
+| `unfold g 0 s` | `nil` at List, `0` at Nat |
+| `unfold g (natAdd n 1) s`, List | `option nil (fun p => cons (first p) (unfold g n (second p))) (g s)` |
+| `unfold g (natAdd n 1) s`, Nat | `option 0 (fun r => natAdd (unfold g n r) 1) (g s)` |
+| a limit `natAdd x k` (a spine) | at most k steps; after k successful steps, the tail is `unfold g x seed` |
+| `unfold g x s`, x neutral | a neutral value |
+| a trap limit | the trap |
+| a trap step result, List | the cells already produced, with the trap as their tail |
+| a trap step result, Nat | the trap |
+
+At a literal limit and a constructor step result, `none` gives `nil` (0 at
+Nat) and `some p` gives one more cell (one more successor at Nat). At Nat
+the step counts the outer `some` and passes its payload only as the next
+seed. The laws unfoldZero, unfoldNone and unfoldSome hold by refl at List
+and at Nat (examples/unfold-laws.lang). Unfold uniqueness at List and at
+Nat is a proof by `elim` at the limit (unfoldListUniq and unfoldNatUniq).
+M6 has no unfold into a family (section 4).
+
+**Kan rules at closed data.** (D10, D11; O8 closes, RULED 2026-10-17
+(USER), question d) `transp (<_> T) phi a` gives `a`, a neutral `a` too,
+when T is a closed line: a closed head (Nat, Field, Unit, Flag, Type n), or
+Sum, Option, List, Prod or a family where each argument is a closed line or
+a Nat literal. `hcomp T phi u u0` with a constant system gives `u0`, a
+neutral `u0` too, when T is eligible. Eligibility is a separate recursive
+check: Nat, Field, Unit and Flag; Sum, Option, List and Prod with eligible
+fields; a plain family when each constructor field at the parameters is
+eligible. Type n, a HIT, a dependent field, a partner field and an open
+field are not eligible, at each depth. The rules read the line or the type
+argument, not the type of a value. At a type that is not eligible, the
+fieldwise rules and the neutral rules apply as before. Thus the fieldwise
+`hcomp` at `Option A`, then `A := Circle`, agrees with direct evaluation at
+`Option Circle` (examples/o8-laws.lang).
+
+At `phi = i1`, `hcomp T phi u u0` gives `u i1` at every type before the
+rules below apply. The table assumes `phi` is not `i1`; data means Sum,
+Option, List or a plain family. Later rows apply when the constant-system
+rule does not.
+
+| u0 (base) | u i0 (branch) | Type | Result |
+|---|---|---|---|
+| any | a constant system | eligible | `u0` |
+| constructor c | constructor c | data | fieldwise (M3) |
+| constructor c | constructor d, d not c | data | HCOMP_BASE |
+| neutral | constructor | data | HCOMP_BASE |
+| constructor | neutral | data | HCOMP_BASE |
+| neutral | neutral, not constant | data | a neutral `hcomp` |
+| neutral | a constant system | ineligible data | a neutral `hcomp` |
+| any | any | Type n | a Glue type (section 2.5) |
+| any | any | a HIT | a canonical `hcomp` (section 2.6) |
+
+At Sum, Option and List, `transp` along an open line at a neutral value
+stays neutral (no regularity, D3 of M3). Pi, Sigma, Prod and Path keep
+their fieldwise Kan rules. M6 does not drop an i0 branch of a system (D12):
+no probe input fails without it. The printer writes `@` before each
+interval argument of a path constructor in an application chain (`loop @
+i`, not `loop i`).
+
+**Overflow.** A trap is not conversion evidence: conversion does not
+equate two traps. `refl` at `natAdd 18446744073709551615 1` gives
+TYPE_REFL. Two successor laws by `refl` at a neutral n, applied at
+18446744073709551615, do not compose into a closed `Path Nat 0 1`
+(TYPE_MISMATCH).
+
+**inv and hint.** Sections 2.1 to 2.3 give `inv` (the Fr inverse, `inv 0 =
+0`), the circuit binder `hint h := e`, the hint example and the codes.
+Section 7.1 gives the hint rows. The constraints see h as a variable of
+type Field, not e (RULED 2026-10-17 (USER), question h). A residual `inv`
+in a constraint normal form gives CIRCUIT_LOWER (O4 closes).
+
+**Conversion.** M6 adds no conv rule. Two OP_APPEND, OP_ELIM_CORE,
+OP_ELIM_NAT, OP_UNFOLD_NAT or OP_FIELD_INV values convert when their
+arguments convert, argument by argument. No conv rule reads a type. `hcomp`
+at a HIT stays canonical, and there is no rule `hcomp A i0 u u0 = u0`.
+
+**Printer and JSON.** The printer writes `append xs ys`, `elim P c1 c2 x`,
+`unfold g n s` and `inv x`. OP_APPEND, OP_ELIM_CORE, OP_ELIM_NAT and
+OP_UNFOLD_NAT are in the not-a-type-former group of op_json. Each reduces
+at closed arguments, thus a closed instance cannot hold one.
+
+**Circuits.** (D13) The constrained monad is the current lowering (section
+7.1). A fold or an unfold with a static depth normalizes before the
+lowering: examples/foldPow.glue and examples/unfoldPow.glue give the IR of
+`square`, `poly` and `nonzero` (test/circuit/same-ir.txt). M6 does not
+change the IR of a current circuit (RULED 2026-10-17 (USER), question a).
+
+**Refusal codes (M6).** The new code is WITNESS_HINT (section 2.3).
+Existing codes with new causes: REFUSE_NAME (`append`, `inv`), ELIM_CASES
+and ELIM_CASE (`elim` at a carrier or at Nat), TYPE_MISMATCH (`elim` at
+another type; a proof that needs two traps to convert; a List step at a Nat
+declared type), TYPE_INFER (`unfold` at a declared type that is not `List
+A` or Nat), HCOMP_BASE (two constructor heads at data), CIRCUIT_LOWER (a
+residual `inv` in a constraint), CIRCUIT_UNCONSTRAINED (an unused hint).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -725,10 +899,27 @@ the host form of each former.
 > filter (F8) that the design uses. Name each carrier that the host does not
 > give.
 
-- **Monad**: `pure`, `map`, `bind` on <carriers>.
-- **Algebra**: `fold` on <carriers>. `unfold` on <carriers>, or the reason
-  that there is no `unfold`.
-- **Filterable**: `filter` on <carriers>.
+- **Monad**: `pure`, `map` and `bind` on Option, Sum E and List (the core
+  instance), with the List join `append` (section 2.8). The laws are in
+  examples/monad-laws.lang. Left identity holds by refl at each carrier
+  (leftIdO, leftIdS and leftIdL). Right identity, associativity and the
+  map law at a variable m are proof terms by `elim` on m (rightIdO/S/L,
+  assocO/S/L and mapBindO/S/L). At List they also use `cong`, `sym`,
+  `trans` and the lemmas appendAssoc and bindAppend (each by `elim` at
+  List). At closed values each law holds by refl.
+- **Algebra**: `fold` on Nat, List A, each domain family, each HIT and a
+  `mutual` block (sections 2.6 and 2.7). `elim` is the dependent form at a
+  family, at a carrier and at Nat. The laws are in examples/fold-laws.lang:
+  foldZero, foldSucc, foldCons and foldPush hold by refl. Uniqueness (F6)
+  is a proof term at Nat, List and a plain family (foldNatUniq,
+  foldListUniq and foldFamUniq). Uniqueness at a HIT is O14.
+- **Coalgebra**: `unfold g n s` into List A and into Nat, with an explicit
+  Nat depth n (section 2.8). The laws are in examples/unfold-laws.lang:
+  unfoldZero, unfoldNone and unfoldSome hold by refl in each form.
+  Uniqueness is a proof by `elim` at the limit (unfoldListUniq and
+  unfoldNatUniq). There is no `unfold` into a domain family: no domain
+  family needs it (D9 of docs/M6-PLAN.md).
+- **Filterable**: M6 does not change `filter` (formers/tcc-json.md F8).
 
 ## 5. Core types
 
@@ -828,7 +1019,8 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   not fit in the usable rows. docs/IR.md now has the rule of section 7.1.
 - O3. CIRCUIT_UNCONSTRAINED is a syntactic check. A private binder that is
   only in `x == x` or `x - x == 0` passes the check, but the proof does not
-  constrain it.
+  constrain it. M6 (slice s5): the same applies to a hint. A hint that is
+  only in `v == v` passes the check (docs/STATUS.md M6 s5, open item 2).
 - O4. Closed in M6 (slice s5). The core op `inv` gives a stuck Field value
   that the lowering refuses: test/check/hint-residual.glue (`x * inv x ==
   1`) and test/check/inv-helper.glue (the same through a definition) give
@@ -857,14 +1049,15 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   of type `Partial phi A` has type `A`, so the ordinary elimination rules
   for `A` apply there (D4 of docs/M3-PLAN.md, slice s1). `transp` and
   `hcomp` use it (section 2.5).
-- O8. Kan values that stay stuck (docs/M3-PLAN.md 3.4). Narrowed in M4:
-  the families have Kan rules (section 2.6), thus `transp (<_> Color) i0
-  red` gives `red`. RULED 2026-10-15 (USER): `hcomp` is a canonical value
-  at a HIT only. Thus `hcomp` stays stuck at a Sum, Option, List or plain
-  family when `u0` and the branches do not have the same constructor, and
-  at a stuck type. `transp` stays stuck at a neutral value of a Sum, Option
-  or List. The fold and unfold families have no Kan rule; over the cubical
-  core they are M6 (docs/PLAN.md, M6 row). In an instance, a stuck Kan
+- O8. Closed in M6 (slice s4). RULED 2026-10-17 (USER): O8 closes as rules,
+  not as gaps (docs/M6-PLAN.md question d; section 2.8, D10 and D11). The
+  closed-line `transp` rule also reduces at neutral values of closed Sum,
+  Option and List types. At eligible data, a constant `hcomp` system gives
+  its base, including a neutral base. Other data cases follow the table in
+  section 2.8: incompatible constructor heads give HCOMP_BASE, while two
+  neutral heads can stay stuck. An open type can also leave Kan operations
+  stuck. At a HIT, `hcomp` is canonical unless `phi = i1` (section 2.6).
+  In an instance, a stuck Kan
   value, a canonical `hcomp` value or a value of a Glue type gives
   JSON_VALUE (src/json.c; test/emit/transp-hcomp.lang, hcomp-instance.lang
   and glue-instance.lang). The stuck values at a HIT are O12.
@@ -886,7 +1079,7 @@ prints `ok` or gives one refusal. It accepts k up to 16.
     With `ret`, `transport (ua (isoToEquiv OTPSpec OTPSpec flip flip ret
     ret)) message = cipher` holds for the non-identity iso `flip`
     (examples/otp.lang).
-  - (f) O4 stays open for M7. M5 s6 probed CIRCUIT_LOWER with a stuck
+  - (f) O4 closed in M6 (slice s5, the `inv` CIRCUIT_LOWER rows). M5 s6 probed CIRCUIT_LOWER with a stuck
     `elim` in a constraint: no stuck `elim` gets to the lowering. A binder
     `z : Int` gives CIRCUIT_BINDER (a circuit has Field binders only). An
     `elim` at `zeq @ k` with k := i0, at `hcomp Int i0 (fun i => [ i0 ->
@@ -897,6 +1090,25 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   constructors) in a `mutual` block (MUTUAL_BLOCK); non-uniform indices
   such as `Ty (ext g a)`; `elim` at a block family (ELIM_CASES). A block
   holds two families only.
+- O14. New in M6. F6 uniqueness at a HIT: the path cases of the proof need
+  squares (D7 of docs/M6-PLAN.md). M6 proves uniqueness at Nat, List and a
+  plain family only.
+- O15. New in M6. Resource limits at a huge literal: `dbl
+  18446744073709551615` and `fold plus1 0 18446744073709551615` stop with
+  OOM (the 1 GiB arena), and `unfold` at the limit 18446744073709551615
+  stops with EVAL_FUEL. Each is a limit, not a wrong value.
+- O16. New in M6. The TYPE_MISMATCH message for a proof that needs two
+  traps to convert prints the same text for the two types (`Path Nat trap
+  0`), thus it reads as a contradiction. A USER ruling can change the text.
+- O17. New in M6. The automated circuit refusal suite has no WITNESS_HINT
+  row. This refusal is reachable: a hint with the Field term
+  `fold (fun (y : Field) => y) 0 (natAdd 18446744073709551615 1)` computes
+  to a trap, so `witness` gives WITNESS_HINT (exit 1). Refusing `axiom a :
+  Field` with REFUSE_AXIOM (rule R2) does not exclude this overflow case.
+- O18. New in M6. The closed-line rule of `transp` (section 2.8) accepts a
+  HIT family with closed parameters (`Susp Nat`). The USER can confirm that
+  D10 covers this case. A family with a dependent field is not eligible for
+  the `hcomp` rule, also when the field type does not use the earlier field.
 
 ## 10. Milestones
 

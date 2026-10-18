@@ -3299,3 +3299,188 @@ current circuit.
   native regressions:  the new same-ir row kills it only in the direct
   probe.
 - Build record:  s6 by hand in the main loop (claude3, no subagents).
+
+### s7: close (2026-10-18)
+
+- Commits:  plan ac8625c;  s1 f521e4e;  s2 df0d1e2 and 36595d0;  s3
+  fcb1902;  s4 1b9f817;  s5 and s6 4f0e083 (one USER commit).  s7 has no
+  compiler code.
+- Docs:  SPEC.md 2.8 (new:  append and List bind, `elim` at the carriers
+  and at Nat, the Nat successor view, the fold laws and F6 uniqueness,
+  `unfold` into List and into Nat, the Kan rules at closed data, the
+  overflow rule, conversion, printer, circuits and codes), 4 (the monad,
+  the algebra and the coalgebra) and 9 (O3:  a hint too;  O8 closed in
+  s4;  O12 (f):  O4 closed in s5;  O14 to O18 new).  docs/PLAN.md:  the
+  M6 row DONE 2026-10-18 with the slice commits;  its O14 cite holds.
+  formers/FORMERS.md and formers/tcc-json.md:  no change.  The F5 to F7
+  cells give the status of the host kit (DONE, with the examples of the
+  kit).  M6 adds the laws and the Nat form of F7 in this language:
+  SPEC.md 2.8 and 4 record them.  docs/STATUS.md:  this section.
+- Build record:  the s7-a agents (4 Fable, then 4 opus/xhigh with the
+  marker once) died on Fable 429 and on the reasoning_extraction
+  classifier, and wrote nothing.  s7-a ran the 3 plan s5 mutants by hand
+  (build/m6s7-mutants.sh, output build/m6s7-mutants.out, logs
+  build/m6s7-probe/).  s7-b did the rest by hand in the main loop.
+
+#### Mutant roll-up
+
+The plan section 8 mutant columns (s1 to s6, 3 each = 18), then each
+mutant that a slice added.  Each was KILLED or not applicable.  No mutant
+SURVIVED.
+
+| Slice | Mutant | Verdict | Killed by |
+|---|---|---|---|
+| s1 | plan:  no right-unit rule (append_values) | KILLED | monad-laws.lang TYPE_REFL leftIdL |
+| s1 | plan:  cons bind without append (bind_list) | KILLED | monad-laws.lang ELIM_CASE rightIdL |
+| s1 | plan:  the IH before l in ccons (elim_list) | KILLED | eval monad-laws lenThree INTERNAL |
+| s2 | plan:  the spine at k, not k - 1 (reduce_fold_nat) | KILLED | fold-laws.lang TYPE_REFL foldSucc;  nat-elim.lang ELIM_CASE foldId |
+| s2 | plan:  the literal on the left only (nat_spine) | KILLED | fold-laws.lang TYPE_REFL foldSucc;  nat-elim.lang countSucc |
+| s2 | plan:  `elim` Nat with the IH dropped (elim_nat) | KILLED | nat-elim.lang TYPE_REFL countSucc |
+| s2 | added (obligation):  no offset normalization (nat_add) | KILLED | nat-elim.lang TYPE_REFL countOffset;  eval bag sizeOpen |
+| s3 | plan:  the step waits for `g s` (unfold_step) | KILLED | unfold-laws.lang TYPE_REFL unfoldSomeL;  8 eval rows |
+| s3 | plan:  the Nat form counts one step too many (unfold_result) | KILLED | unfold-laws.lang TYPE_REFL unfoldZeroN;  8 eval rows |
+| s3 | plan:  the List form at a Nat declared type (rule_unfold) | KILLED | unfold-laws.lang TYPE_INFER unfoldZeroN;  unfold-nat-list-step.lang |
+| s4 | plan:  the closed rule at an open line (closed_line) | KILLED | native HIT regressions;  gate.sh:  6 examples and 5 eval rows |
+| s4 | plan:  the hcomp rule at a HIT (hcomp_closed) | KILLED | hcomp-i0-circle.lang, hcomp-i0-int.lang;  o8-laws hcompCircle rows;  2 builds (8 failures) |
+| s4 | plan:  no i0 drop | not applicable | D12 has no code (s4 skipped it:  no probe input fails), thus there is no rule to remove |
+| s4 | added (obligation):  a HIT excluded only at the outer head (hcomp_closed) | KILLED | native path regressions (4);  o8-laws.lang TYPE_REFL substCircleField |
+| s4 | added:  the print chain does not stop at a path constructor (print_value) | KILLED | eval quot quotSquashcStuck, o8-laws loopPair |
+| s5 | plan (run in s7-a):  `inv 0` is not 0 (fr.c fr_inv gives 1 at 0) | KILLED | eval `inv zero` (want 0, got 1);  build examples/inv.lang (json differs) |
+| s5 | plan (run in s7-a):  a hint row with an instance copy (circuit.c put_copies) | KILLED | circuit nonzero golden;  same-ir foldPow nonzero |
+| s5 | plan (run in s7-a):  the constraint context sees e | KILLED | foldPow.glue and nonzero.glue CIRCUIT_LOWER;  circuit and witness nonzero goldens;  same-ir foldPow nonzero;  witness rows `x=3 v=1` and `x=0` |
+| s5 | added:  fr_inv with the power r - 1 | KILLED | eval `inv three`, `inv one`, `inv big`;  build inv.lang;  witness nonzero |
+| s5 | added (obligation):  a shallow source-level ban on `E * inv F` | KILLED | nonzero.glue CIRCUIT_LOWER invOne |
+| s5 | added:  a residual `inv x` lowers as x (lower_value) | KILLED | hint-residual.glue, inv-helper.glue |
+| s5 | added:  the hint gets 0 (witness_hints) | KILLED | witness nonzero golden |
+| s5 | added:  an unused hint is accepted (lower_circuit) | KILLED | hint-unused.glue |
+| s6 | plan:  the unroll one step short (reduce_fold_nat) | KILLED | same-ir foldPow square, poly, nonzero and unfoldPow square;  31 FAIL lines |
+| s6 | plan:  a static depth left blocked (reduce_unfold) | KILLED | 4 native Nat unfold regressions;  direct probe:  unfoldPow square CIRCUIT_LOWER |
+| s6 | plan:  a same-ir row against the wrong circuit (same-ir.txt) | KILLED | same-ir foldPow square and unfoldPow square |
+
+- Totals:  18 plan mutants:  17 KILLED, 1 not applicable (s4 no i0
+  drop).  8 added mutants:  8 KILLED.  0 SURVIVED.
+- The 3 plan s5 mutants (s5 open item 3, s6 open item 1):  one runner
+  script (backup, `sd` with the hit count, `make -B check`, restore from
+  the backup), each pattern hit 1, src/ clean against HEAD after the
+  run.  M3 is at the lowering env, not at the checker:  check.c 3938
+  circuit_hints pushes h as a Field variable and has no let binder, thus
+  the mutant binds each hint row in circuit.c lower_circuit (243) to
+  `eval_core(m, env, ci->hints[..])`, not to `val_var(m, i)`.  The clean
+  `make -B check` after the run (build/m6s7-probe/final.log) gave the s6
+  close counts.
+
+#### Review
+
+- (i) No conv rule reads a type.  The conv functions (eval.c conv_fun
+  1941 to conv_values 2226) do not name OP_APPEND, OP_ELIM_CORE,
+  OP_ELIM_NAT, OP_UNFOLD_NAT or OP_FIELD_INV, and read no type:  the M6
+  ops convert by the stuck-head rule (op, inst, then each argument).  The
+  reducers of OP_ELIM_CORE, OP_ELIM_NAT, OP_FOLD_NAT, OP_UNFOLD and
+  OP_UNFOLD_NAT (eval.c reduce_op 1703 to 1730;  elim_core 676 and 690,
+  reduce_fold_nat 753, elim_nat 781, the unfold step 1189 to 1282) test
+  the head of the scrutinee or the limit (blocked, val_is), not a type.
+  The D10 rules read the line or the type argument (kan.c closed_line,
+  hcomp_closed), not the type of a value.
+- (ii) No rule `hcomp A i0 u u0 = u0`.  hcomp-i0-int.lang and
+  hcomp-i0-circle.lang give TYPE_REFL (gate rows;  the s4 mutant 2 makes
+  them exit 0).  The s4 rule at an eligible closed type with only i0
+  faces (b20) is the closed-type rule of a constant system, not a
+  general i0 rule (D8 of M3 forbids it at a general A).
+- (iii) `hcomp` at a HIT stays canonical (D3 of M4).  hcomp_closed
+  refuses a HIT at each depth (the s4 mutants 2 and 3 KILLED);  the eval
+  rows hcompCircle, hcompOptionCircle and hcompListCircle keep the stuck
+  hcomp.
+- (iv) A trap is not conversion evidence (s2).  conv_loop (eval.c 2176)
+  has the VAL_TRAP case with this rule.  fold-overflow-proof.lang and
+  elim-nat-overflow-proof.lang give TYPE_MISMATCH;  overflow-refl.lang
+  gives TYPE_REFL.
+- (v) A residual `inv` in a constraint gives CIRCUIT_LOWER
+  (hint-residual.glue, inv-helper.glue), and `inv 0` is 0 (the eval row
+  `inv zero`;  the s5 plan mutant 1 KILLED).  A closed `inv 1` computes
+  before the lowering (invOne in examples/nonzero.glue).
+- Result:  no compiler defect found in (i) to (v).  The documentation
+  corrections from the staged review are recorded below.  No change to src/.
+
+#### Gates
+
+- `make -B check` exit 0:  native circuit 9, path 46, face 35, HIT 44;
+  examples 42, parse refusals 18, check refusals 146, evals 268, json 33
+  builds, build refusals 8, circuits 5, same-ir 8, circuit refusals 14,
+  satcheck refusals 6;  node regressions 6, printer 2.  Each count is
+  the same as the s6 close (s7 adds no row).  Against the M5 close:
+  path +4, examples +9, check refusals +23, evals +59, json +6, circuits
+  +1, same-ir +5, circuit refusals +2.
+- `make check-clang` exit 0.  `forge build --root contracts --sizes`
+  exit 0.  `make e2e` exit 0 (5 rows, forge test 44 passed).  `git diff
+  --exit-code -- test/circuit contracts/src/verifiers` exit 0:  no IR
+  change.  contracts/test/fixtures restored, then `forge test --root
+  contracts` 44 passed, 0 failed.  Logs:  build/m6s7-gates/.
+
+#### Open items
+
+- SPEC.md 9 O14:  F6 uniqueness at a HIT (the path cases need squares).
+- SPEC.md 9 O15:  s2 `dbl` and `fold plus1 0` at 18446744073709551615
+  give OOM (the 1 GiB arena);  s3 the huge `unfold` limit gives
+  EVAL_FUEL.  Resource limits, not wrong values.
+- SPEC.md 9 O16:  s3 TYPE_MISMATCH `Path Nat trap 0` against the same
+  text (USER open item).
+- SPEC.md 9 O17:  automated refusal coverage for WITNESS_HINT is missing;
+  the overflow probe below reaches it.
+- SPEC.md 9 O3:  s5 (2) O3 also covers a hint.
+- SPEC.md 9 O18:  s4 (2) the closed-line rule at a HIT family with
+  closed parameters (`Susp Nat`, USER can confirm);  s4 (3) a dependent
+  field is not eligible for the hcomp rule.
+- s4 (1):  D12 (the i0 branch drop) is not in M6.  A USER ruling can ask
+  for it for a different reason.
+- s4 (4):  b19 prints a nested system `[ k -> [ k -> second a ] ]` (from
+  before s4).
+- s2 (1):  elim_at_nat repeats the case loop of elim_carrier (a later
+  cleanup).
+- s6 (2):  the s6 M2 mutant (unfold depth stuck) fails the native
+  regressions first, thus `make check` stops before the new same-ir row.
+  The direct probe kills it.
+- O12 (c) and O13 stay open (ruling (e) of docs/M6-PLAN.md).
+- M7:  docs/PLAN.md M7 row (Direction 2:  circuits quotiented by
+  relation equivalence).  The M7 kickoff prompt has not been written yet.
+
+#### Staged review corrections (2026-10-18)
+
+Four documentation contracts were corrected against the evaluator and
+guest probes. Each finding is MEDIUM; no CI or test was weakened.
+
+- WITNESS_HINT is reachable from a well-typed hint. The assumption in
+  s5 open item 1 that every closed Field term is a literal was incorrect.
+  This guest circuit checks, but `witness hintTrap x=0` gives WITNESS_HINT
+  and exit 1, with no witness file:
+
+  ```text
+  def badField : Field := fold (fun (y : Field) => y) 0 (natAdd 18446744073709551615 1)
+  circuit hintTrap private (x : Field) hint v := badField := v == x
+  ```
+
+  SPEC.md O17 now distinguishes missing automated coverage from
+  reachability. No compiler change is needed.
+- A trapped List unfold step preserves cells produced before it. For
+  `listStep 0 = some (pair 7 1)` and `listStep 1 = trap`,
+  `unfold listStep 2 0 : List Nat` evaluates to `cons 7 trap`, rather than
+  discarding the first cell. The corresponding Nat unfold gives a trap.
+  SPEC.md 2.8 now gives separate List and Nat rules and allows a successor
+  spine to stop before its literal offset is exhausted.
+- `natAdd` of two neutral operands stays stuck. The probe
+  `fun xs => fun ys => natAdd (length xs) (length ys)`, where `length` is
+  the List fold, retains both neutral folds. SPEC.md 2.8 now requires a
+  positive literal operand for the offset normal form.
+- The `hcomp` table omitted the full-face rule. At `i1`,
+  `hcomp (Type 0) i1 (fun i => [ i1 -> Nat ]) Nat` evaluates to `Nat`,
+  and `hcomp Circle i1 (fun i => [ i1 -> base ]) base` evaluates to `base`,
+  before the universe or HIT rule can apply. SPEC.md 2.8 now states this
+  precedence. O8 also drops the old claims that closed-data transport at a
+  neutral value stays stuck and incompatible constructor heads stay stuck.
+  The neutral-data rows exclude Pi, Sigma, Prod and Path, which retain
+  their fieldwise rules: transport of a neutral function at `A -> A`
+  produces a lambda, rather than a neutral transport of the function.
+
+Validation: a fresh TinyCC build from HEAD 4f0e083 and `make check` passed
+(including check-clang, all native and guest regressions, and printer
+checks). All probes above were rerun with that fresh binary. These fixes
+change documentation only; the counts in the s7 gates above are unchanged.
