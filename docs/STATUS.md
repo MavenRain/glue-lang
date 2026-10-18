@@ -3760,3 +3760,64 @@ commit includes the plan.
 - Open items:  none new.  s5 records O19 and the O4 record in SPEC.md
   section 9, and closes O17 (hintTrap.glue and the WITNESS_HINT row).
   Next:  s5 (docs/M7-PLAN.md section 10).
+
+### s5: close O17 and record O19 (2026-10-18)
+
+- Scope:  D11 of docs/M7-PLAN.md and ruling (f):  O17 closes with an
+  automated row;  SPEC.md section 9 gets the O4 record, O17 closed and
+  O19 new;  the review of the s1 to s4 mutants.  No change in src/ and in
+  domain/domain.lang.
+- examples/hintTrap.glue:  the circuit of the M6 staged review
+  corrections, `def badField : Field := fold (fun (y : Field) => y) 0
+  (natAdd 18446744073709551615 1)` and `circuit hintTrap private (x :
+  Field) hint v := badField := v == x`.  `langc check` gives ok.  No def
+  name gave REFUSE_NAME.  `langc circuit .. hintTrap -o` exit 0 (559
+  bytes), because the lowering does not evaluate a hint.  The examples
+  gate takes a .glue example with no golden (test/gate.sh line 6 runs
+  `langc check` only).  No json build (a .glue example, s1 trap).
+- Row:  `1 WITNESS_HINT witness hintTrap hintTrap x=0` in
+  test/circuit/refuse.txt.  The probe gives exit 1 and `langc:
+  WITNESS_HINT: hintTrap: the hint v does not compute to a Field
+  literal`, and no file at -o.
+- SPEC.md 9:  O4 (the record text "O4 stays open for M7" gets the M7
+  result:  no quotient value gets to the lowering stuck, A1 to A4);  O17
+  closed in M7 (the file and the row;  the M6 record stays);  O19 new
+  (the gap of `CEqv`, D4, as SPEC.md 2.9 **The gap of CEqv.**).
+- Mutant review:  each killing row of the s1 to s4 mutants is still in
+  its table (`rg -n -x -F`).  s1 1 to 3:  test/check/expect.txt lines
+  147, 148 and 149 (geqc-case.glue HIT_CASE, elim-geqc-case.glue
+  ELIM_CASE, squashc-field.glue HIT_CASE).  s2 1:  test/circuit/same-ir.txt
+  line 14 (circSyntax).  s2 2 and 3:  test/eval/expect.txt line 274
+  (`circEval evPow => 27`), lines 269 and 270 (`evPub => 9`, `evPriv =>
+  3`).  s3 1 and 2:  check line 152 (ring-refl.lang TYPE_REFL).  s3 3:
+  the examples row of circRel.lang (also same-ir lines 9 and 10, quotEnd0
+  and quotEnd1).  s4 1:  the examples row of circOpt.glue, same-ir line
+  15 and refuse.txt line 15.  s4 2:  same-ir line 16 (circPow).  s4 3:
+  eval line 275 (`circTransport m3 => <j> 9`).  Each file of these rows
+  is present.  No row is missing, thus no mutant rerun.
+- Mutants of the new row:  scratch copies of examples/hintTrap.glue, run
+  with the real build/langc.  Each `sd -F` pattern has 1 match:  the
+  header comment does not match.
+  1. The hint at a value with no trap (`hint v := badField` to `hint v :=
+     0`):  check ok, circuit exit 0, `witness .. x=0` exit 0 and a file
+     at -o.  KILLED by the refuse row.  The examples row passes.
+  2. No overflow (`18446744073709551615 1` to `18446744073709551614 1`):
+     check ok, circuit exit 0, `witness .. x=0` exit 1 with `langc:
+     EVAL_FUEL: hintTrap: the evaluation takes more than 20000000 steps`
+     and no file.  KILLED by the refuse row on the code (EVAL_FUEL, not
+     WITNESS_HINT).  The fold of 18446744073709551615 steps is the O15
+     resource limit.  The examples row passes.
+  No mutant SURVIVED, thus no new row.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 55, parse refusals 18, check refusals 152, evals 276,
+  json 37 builds, build refusals 8, circuits 5, same-ir 16, circuit
+  refusals 16, satcheck refusals 6;  node regressions 6, printer 2.
+  Against s4:  examples +1, circuit refusals +1 (as section 10).  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0.  Before e2e, the diff of test/circuit and
+  contracts/src/verifiers holds only the new row, and after e2e it is the
+  same.  contracts/src/verifiers did not change.  contracts/test/fixtures
+  restored, then `forge test --root contracts` 44 passed, 0 failed.
+- Open items:  none new.  O18:  ruling (f) confirmed it (USER,
+  2026-10-18);  the SPEC.md 9 O18 text is s6 work (SPEC.md 4 and 9).
+  Next:  s6, the M7 close (docs/M7-PLAN.md section 10).

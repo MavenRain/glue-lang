@@ -1,0 +1,9 @@
+-- M7 s5 (O17, D11): a well-typed hint whose value traps. The hint v is the
+-- Field fold of the identity step at a Nat sum that overflows, thus the
+-- fold computes to a trap (SPEC.md 9, O17). langc check gives ok, and langc
+-- circuit gives the IR, because the lowering does not evaluate a hint.
+-- langc witness evaluates the hint and gives WITNESS_HINT (exit 1) with no
+-- file (test/circuit/refuse.txt). The circuit hintTrap has no golden.
+def badField : Field := fold (fun (y : Field) => y) 0 (natAdd 18446744073709551615 1)
+
+circuit hintTrap private (x : Field) hint v := badField := v == x

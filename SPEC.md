@@ -1159,7 +1159,12 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   (x * x)` gives `x * x`. With hfT = `hcomp (Type 0) i0 (fun i => [ i0 ->
   Field ]) Field`, `unglue (transp (<_> hfT) i0 (glue [ i0 -> x ] x))` and
   `unglue` of an `hcomp` in hfT give `x`. M5 (slice s6) found no circuit
-  that gives it (O12 (f)). O4 stays open for M7.
+  that gives it (O12 (f)). O4 stayed open for M7. M7 (slices s1 to s4)
+  found no quotient value that gets to the lowering stuck (A1 to A4 of
+  docs/M7-PLAN.md, section 2.9): the point rule, the boundary rule at a
+  constant interval and the `hcomp` rule of the eliminator reduce each
+  quotient value in a constraint, and each M7 circuit gives the IR of
+  `square`.
 - O5. Closed in M4. RULED 2026-10-15 (USER): D9 of docs/M4-PLAN.md. The
   JSON target writes a Path component of a data value as `null` only when
   the path is constant (its body at a fresh interval variable does not use
@@ -1226,7 +1231,13 @@ prints `ok` or gives one refusal. It accepts k up to 16.
 - O16. New in M6. The TYPE_MISMATCH message for a proof that needs two
   traps to convert prints the same text for the two types (`Path Nat trap
   0`), thus it reads as a contradiction. A USER ruling can change the text.
-- O17. New in M6. The automated circuit refusal suite has no WITNESS_HINT
+- O17. Closed in M7 (slice s5). examples/hintTrap.glue holds the circuit
+  `hintTrap` of the overflow fold below, and the row `1 WITNESS_HINT
+  witness hintTrap hintTrap x=0` in test/circuit/refuse.txt is the
+  automated WITNESS_HINT row. `langc check` gives ok, and `langc witness`
+  gives WITNESS_HINT with exit 1 and no file. The text below is the record
+  of M6.
+  New in M6. The automated circuit refusal suite has no WITNESS_HINT
   row. This refusal is reachable: a hint with the Field term
   `fold (fun (y : Field) => y) 0 (natAdd 18446744073709551615 1)` computes
   to a trap, so `witness` gives WITNESS_HINT (exit 1). Refusing `axiom a :
@@ -1235,6 +1246,12 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   HIT family with closed parameters (`Susp Nat`). The USER can confirm that
   D10 covers this case. A family with a dependent field is not eligible for
   the `hcomp` rule, also when the field type does not use the earlier field.
+- O19. New in M7 (slice s3, D4 of docs/M7-PLAN.md). The gap of `CEqv`
+  (section 2.9, **The gap of CEqv.**). An `Equiv` of the two satisfaction
+  types does not give `Path Field (ev y x c1) (ev y x c2)`, because `y` is
+  also an input of `ev`. Thus `GQuot Circ CEqv` has no fold into Field and
+  carries properties only (`SatQ`). The lowering uses `GQuot Circ CRel`
+  (RULED 2026-10-18 (USER), docs/M7-PLAN.md section 9).
 
 ## 10. Milestones
 
