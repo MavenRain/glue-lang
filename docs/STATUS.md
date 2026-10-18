@@ -3628,3 +3628,67 @@ commit includes the plan.
 - Open items:  the indexed binder form of `Circ` (`cvar (n : Nat)` with an
   environment) for M8 (question (h)).  Next:  s3 (docs/M7-PLAN.md section
   10).
+
+### s3: add the circuit relations and their laws (2026-10-18)
+
+- Scope:  D3, D4 and D8 of docs/M7-PLAN.md (rulings (b) and (i)):  the
+  pointwise `CRel` for the lowering, `CEqv` for properties only, no ring
+  conv rule.  No change in src/ and in domain/domain.lang.  No circuit and
+  no test/circuit change.
+- examples/circRel.lang:  `ev`, `CRel` and `evQ` (as circSyntax.glue),
+  `Sat`, `CEqv`, `SatQ` (the `geqc` case `ua (e y x)`), `SatP`, `QLine`,
+  and the 5 laws of section 4 as defs with Pi binders and the body `refl`:
+  evPoint, evEnd0, evEnd1, evPath and satQFwd.  `langc check` gives ok.
+  The term `<i> evQ y x (geqc Circ CRel c1 c2 r @ i)` as an argument of
+  `Path` in the type of evPath checks:  no `EvLine` def.  satQFwd holds by
+  refl (the computation rule of `ua`, as transportPropFwd):  no TYPE_REFL.
+  No def name gave REFUSE_NAME.  `QLine` is after evPath in the file, thus
+  a boundary mutant fails at an `ev` fold or law first.  `langc build`
+  exit 0 with 0 instances (a def with a Pi type is not a JSON instance):
+  test/json/circRel.json is `{"glue-lang":1,"instances":[]}`.
+- test/check/ring-refl.lang and the row `ring-refl.lang TYPE_REFL` (D8):
+  `langc: TYPE_REFL: ringRefl: refl cannot prove the path: the start
+  normalizes to fieldMul x x, the end normalizes to fieldAdd (fieldMul x
+  x) 0`.
+- Delta against section 10 (examples +1, check refusals +1):  also json +1
+  (a .lang example adds a json build, s1 trap).  The plan does not list
+  it.  No eval row (section 8 lists none for s3).
+- SPEC.md 2.9:  4 paragraphs after **The circuit syntax.**:  **The circuit
+  relations.** (D3, D4), **The laws of the relations.**, **The gap of
+  CEqv.** (D4, O19) and **No ring normal form.** (D8).  The SPEC.md
+  section 9 record of O19 is s5.
+- Mutants:  a scratch copy for the guest mutant;  for each src mutant a
+  scratch rsync copy of the repository and `make -B -C <copy> build/langc`,
+  run on the REAL new files.  Each `sd -F` pattern has 1 hit.
+  1. Guest:  `hl + hr` to `hl` in a copy of ring-refl.lang:  `langc
+     check` exit 0.  KILLED by the row `ring-refl.lang TYPE_REFL`.
+  2. src:  field_op (src/front/eval.c) gives the left operand for a Field
+     add with the literal 0 on the right (2 added lines after the trap
+     test).  The copy's check of test/check/ring-refl.lang gives exit 0.
+     KILLED by the ring-refl row.  It is the only failing row:  the 4
+     native harnesses pass, and test/gate.sh gives `gate: 1 failures`.
+  3. src:  pcon_boundary (eval.c line 1535) gives the body of the first
+     branch (`sys->args[1u]`) at the first face that is i1, thus `geqc ..
+     @ i1` gives the i0 end.  KILLED by the examples row of circRel.lang.
+     Difference from the prompt:  the first error is HIT_CASE at `evQ`,
+     not TYPE_REFL at evEnd1, because the checker gets the boundary of the
+     `geqc` case type with the same rule.  Old rows also kill it:  16 of 51
+     examples fail (quotEnd0.glue and quotEnd1.glue are 2 of them), many
+     eval rows fail (circle.lang:  TYPE_MISMATCH at `m`), and 5 of 44
+     native HIT rows fail.
+  No mutant SURVIVED, thus no new row.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 51, parse refusals 18, check refusals 152, evals 275,
+  json 36 builds, build refusals 8, circuits 5, same-ir 14, circuit
+  refusals 14, satcheck refusals 6;  node regressions 6, printer 2.
+  Against s2:  examples +1, check refusals +1, json +1.  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0.  The diff of test/circuit and contracts/src/verifiers
+  is clean before and after e2e.  contracts/test/fixtures restored, then
+  `forge test --root contracts` 44 passed, 0 failed.
+- Open items:  O19 (new, D4):  an `Equiv` of the two satisfaction types
+  does not give `Path Field (ev y x c1) (ev y x c2)`, because `y` is also
+  an input of `ev`.  Thus `CEqv` gives no fold of `GQuot Circ CEqv` into
+  Field, and `GQuot Circ CEqv` carries properties only.  The SPEC.md
+  section 9 record is s5.  The indexed binder form of `Circ` stays an M8
+  item (question (h)).  Next:  s4 (docs/M7-PLAN.md section 10).

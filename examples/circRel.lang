@@ -1,0 +1,25 @@
+-- M7 s3 (D3, D4): the circuit relations and the s3 laws of docs/M7-PLAN.md
+-- section 4. ev, CRel and evQ are as in examples/circSyntax.glue. CRel is the
+-- pointwise relation of the lowering quotient GQuot Circ CRel (D3). CEqv is
+-- the DESIGN relation: an Equiv of the satisfaction types Sat c1 y x and
+-- Sat c2 y x at each y and x (D4). SatQ is the fold of GQuot Circ CEqv into
+-- Type 0 with the case ua (e y x). SatP is the fold of GQuot Circ CRel into
+-- Type 0. CEqv does not give a fold into Field (O19), thus GQuot Circ CEqv
+-- carries properties only.
+-- The laws, each a refl: evPoint (the point rule), evEnd0 and evEnd1 (the
+-- boundary rule at i0 and at i1), evPath (the path case) and satQFwd (the ua
+-- computation rule, as transportPropFwd of examples/transportProp.lang).
+-- QLine is a def because a term <i> t needs a declared type.
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+def Sat : Circ -> Field -> Field -> Type 0 := fun c => fun y => fun x => Path Field (ev y x c) y
+def CEqv : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Equiv (Sat c1 y x) (Sat c2 y x)
+def SatQ : Field -> Field -> GQuot Circ CEqv -> Type 0 := fun y => fun x => fun q => fold (Type 0) (fun c => Sat c y x) (fun c1 => fun c2 => fun e => ua (e y x)) q
+def SatP : Field -> Field -> GQuot Circ CRel -> Type 0 := fun y => fun x => fun q => fold (Type 0) (fun c => Sat c y x) (fun c1 => fun c2 => fun r => <i> Path Field (r y x @ i) y) q
+def evPoint : (y : Field) -> (x : Field) -> (c : Circ) -> Path Field (evQ y x (gcls Circ CRel c)) (ev y x c) := fun y => fun x => fun c => refl
+def evEnd0 : (y : Field) -> (x : Field) -> (c1 : Circ) -> (c2 : Circ) -> (r : CRel c1 c2) -> Path Field (evQ y x (geqc Circ CRel c1 c2 r @ i0)) (ev y x c1) := fun y => fun x => fun c1 => fun c2 => fun r => refl
+def evEnd1 : (y : Field) -> (x : Field) -> (c1 : Circ) -> (c2 : Circ) -> (r : CRel c1 c2) -> Path Field (evQ y x (geqc Circ CRel c1 c2 r @ i1)) (ev y x c2) := fun y => fun x => fun c1 => fun c2 => fun r => refl
+def evPath : (y : Field) -> (x : Field) -> (c1 : Circ) -> (c2 : Circ) -> (r : CRel c1 c2) -> Path (Path Field (ev y x c1) (ev y x c2)) (<i> evQ y x (geqc Circ CRel c1 c2 r @ i)) (r y x) := fun y => fun x => fun c1 => fun c2 => fun r => refl
+def QLine : (c1 : Circ) -> (c2 : Circ) -> (e : CEqv c1 c2) -> (y : Field) -> (x : Field) -> Path (Type 0) (SatQ y x (gcls Circ CEqv c1)) (SatQ y x (gcls Circ CEqv c2)) := fun c1 => fun c2 => fun e => fun y => fun x => <i> SatQ y x (geqc Circ CEqv c1 c2 e @ i)
+def satQFwd : (c1 : Circ) -> (c2 : Circ) -> (e : CEqv c1 c2) -> (y : Field) -> (x : Field) -> (p : Sat c1 y x) -> Path (Sat c2 y x) (transport (QLine c1 c2 e y x) p) (witness (e y x) p) := fun c1 => fun c2 => fun e => fun y => fun x => fun p => refl

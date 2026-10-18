@@ -1,0 +1,8 @@
+-- M7 s3 (D3, D8): there is no Field ring normal form. ev y x of
+-- cadd (cmul cpriv cpriv) (clit 0) is x * x + 0, and x * x + 0 does not
+-- convert with x * x. Thus refl is not a proof of this CRel, and the check
+-- gives TYPE_REFL. A CRel between two different normal forms needs a proof
+-- term from the program (docs/M7-PLAN.md question (i)).
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def ringRefl : CRel (cmul cpriv cpriv) (cadd (cmul cpriv cpriv) (clit 0)) := fun y => fun x => refl

@@ -942,6 +942,48 @@ with the constraint `evQ y x (gcls Circ CRel (cmul cpriv cpriv)) == y`. The
 point rule and `ev` reduce the constraint to `x * x == y`. Thus the IR is
 the IR of test/circuit/square.circuit.json (test/circuit/same-ir.txt).
 
+**The circuit relations.** (D3, D4) examples/circRel.lang has `ev`, `CRel`
+and `evQ` (as examples/circSyntax.glue) and the relations of the two
+quotients. `CRel c1 c2 = (y : Field) -> (x : Field) -> Path Field (ev y x
+c1) (ev y x c2)` is the pointwise relation of the lowering quotient `GQuot
+Circ CRel` (D3). The interpreter `evQ y x q` is the fold of `q` into Field
+with the point case `ev y x c` and the `geqc` case `r y x`. The `geqc` case
+needs a Field path, and `CRel` gives it. `Sat c y x = Path Field (ev y x c)
+y` is the satisfaction type of `c` at `y` and `x`. The DESIGN relation
+`CEqv c1 c2 = (y : Field) -> (x : Field) -> Equiv (Sat c1 y x) (Sat c2 y
+x)` is in `Type 0`, and GQuot accepts it (D4). `SatQ y x` is the fold of
+`GQuot Circ CEqv` into `Type 0` with the point case `Sat c y x` and the
+`geqc` case `ua (e y x)`. `SatP y x` is the fold of `GQuot Circ CRel` into
+`Type 0` with the `geqc` case `<i> Path Field (r y x @ i) y`.
+
+**The laws of the relations.** Each law in examples/circRel.lang is a def
+with Pi binders and the body `refl`. evPoint: `evQ y x (gcls Circ CRel c)`
+converts with `ev y x c` (the point rule). evEnd0 and evEnd1: `evQ y x
+(geqc Circ CRel c1 c2 r @ i0)` converts with `ev y x c1`, and the `@ i1`
+form converts with `ev y x c2` (the boundary rule at a constant interval).
+evPath: the line `<i> evQ y x (geqc Circ CRel c1 c2 r @ i)` converts with
+`r y x` (the path case). The line is an argument of `Path`, and it checks
+without a def. satQFwd: `transport (QLine c1 c2 e y x) p` converts with
+`witness (e y x) p`, the forward map of `e y x` (the computation rule of
+`ua`, as transportPropFwd of examples/transportProp.lang). `QLine` is the
+def of the line `<i> SatQ y x (geqc Circ CEqv c1 c2 e @ i)`, as `Pline` of
+examples/transportProp.lang. A def with a Pi type is not a JSON instance,
+thus test/json/circRel.json has no instance.
+
+**The gap of CEqv.** (D4, O19) An `Equiv` of the two satisfaction types
+does not give `Path Field (ev y x c1) (ev y x c2)`, because `y` is also an
+input of `ev`. Thus `CEqv` gives no fold of `GQuot Circ CEqv` into Field,
+and `GQuot Circ CEqv` carries properties only. The lowering uses `GQuot
+Circ CRel`. The open item O19 records this gap.
+
+**No ring normal form.** (D8) `x * x + 0` and `x * x` have different
+normal forms (`fieldAdd (fieldMul x x) 0` and `fieldMul x x`). Thus
+`refl` is not a proof of `CRel (cmul cpriv cpriv) (cadd (cmul cpriv cpriv)
+(clit 0))`, and the check gives TYPE_REFL (test/check/ring-refl.lang). A
+`CRel` between two terms with different normal forms needs a proof term
+from the program. M7 adds no ring conv rule (docs/M7-PLAN.md question
+(i)).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
