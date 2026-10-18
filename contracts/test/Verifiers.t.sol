@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity 0.8.24;
 
+import {Halo2Verifier as NonzeroVerifier} from "../src/verifiers/nonzero.sol";
 import {Halo2Verifier as PolyVerifier} from "../src/verifiers/poly.sol";
 import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
@@ -70,7 +71,12 @@ abstract contract VerifierCase {
 
     function testRedirectedInstancePointerIsRejected() public view {
         uint256[] memory bad = copyInstances();
-        bad[0] = addmod(bad[0], 1, R);
+        if (bad.length == 0) {
+            // No public input (nonzero): the appended array has one value, so its count is wrong.
+            bad = new uint256[](1);
+        } else {
+            bad[0] = addmod(bad[0], 1, R);
+        }
         bytes memory redirected = bytes.concat(calldata_, abi.encode(bad));
         // Point the ABI argument at the appended array. The original valid
         // array remains at the generator's hardcoded offset.
@@ -109,7 +115,8 @@ abstract contract VerifierCase {
     }
 
     function testWrongInstanceCountIsRejected() public view {
-        uint256[] memory fewer = new uint256[](instances.length - 1);
+        // No public input (nonzero): there is no shorter array, only a longer one.
+        uint256[] memory fewer = new uint256[](instances.length == 0 ? 0 : instances.length - 1);
         uint256[] memory more = new uint256[](instances.length + 1);
         for (uint256 i = 0; i < instances.length; i++) {
             more[i] = instances[i];
@@ -117,7 +124,7 @@ abstract contract VerifierCase {
                 fewer[i] = instances[i];
             }
         }
-        require(!accepts(proof, fewer), "too few instances are accepted");
+        require(instances.length == 0 || !accepts(proof, fewer), "too few instances are accepted");
         require(!accepts(proof, more), "too many instances are accepted");
     }
 
@@ -183,5 +190,21 @@ contract PolyVerifierTest is VerifierCase {
         require(
             instances.length == 2 && instances[0] == 3 && instances[1] == 19, "the public inputs of poly are not a=3 y=19"
         );
+    }
+}
+
+/// examples/nonzero.glue with x=3. The hint v is private, so there is no
+/// public input.
+contract NonzeroVerifierTest is VerifierCase {
+    function name() internal pure override returns (string memory) {
+        return "nonzero";
+    }
+
+    function deploy() internal override returns (address) {
+        return address(new NonzeroVerifier());
+    }
+
+    function testThereIsNoPublicInput() public view {
+        require(instances.length == 0, "nonzero has a public input");
     }
 }

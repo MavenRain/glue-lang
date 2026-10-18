@@ -71,6 +71,7 @@ typedef enum {
   RULE_UNFOLD,
   RULE_CONG,
   RULE_NAT2,
+  RULE_FIELD1,
   RULE_FLAG_IF,
   RULE_INTERVAL,
   RULE_PATH,
@@ -149,6 +150,7 @@ static const Builtin BUILTINS[] = {
   {"elim", 2, RULE_ELIM, OP_ELIM, OP_NAT, 0},
   {"unfold", 3, RULE_UNFOLD, OP_UNFOLD, OP_LIST, 0},
   {"cong", 2, RULE_CONG, OP_PATHP, OP_NAT, 0},
+  {"inv", 1, RULE_FIELD1, OP_FIELD_INV, OP_FIELD, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -314,6 +316,10 @@ static const Value *tyop(Checker *c, Op op, uint32_t n, const Value *a, const Va
 
 static const Value *nat_type(Checker *c) {
   return tyop(c, OP_NAT, 0, NULL, NULL, NULL);
+}
+
+static const Value *field_type(Checker *c) {
+  return tyop(c, OP_FIELD, 0, NULL, NULL, NULL);
 }
 
 static const Value *flag_type(Checker *c) {
@@ -1211,6 +1217,14 @@ static const Core *rule_nat2(Call *k) {
   return op3(c, k->b->op, 0, 2, x, y, NULL);
 }
 
+/* inv x (M6 s5):  Field -> Field. */
+static const Core *rule_field1(Call *k) {
+  Checker *c = k->c;
+  const Core *x = check(c, k->args[0], field_type(c));
+  k->type = field_type(c);
+  return op3(c, k->b->op, 0, 1, x, NULL, NULL);
+}
+
 /* flagIf b yes no */
 static const Core *rule_flag_if(Call *k) {
   Checker *c = k->c;
@@ -1948,6 +1962,8 @@ static const Core *rule(Call *k) {
     return rule_cong(k);
   case RULE_NAT2:
     return rule_nat2(k);
+  case RULE_FIELD1:
+    return rule_field1(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
   case RULE_INTERVAL:
@@ -2442,10 +2458,6 @@ static const Core *elab_binder(Checker *c, const Term *t, CoreKind kind, const V
   pop(c);
   *type = ivl || sa || sb ? tyop(c, OP_SSET, 0, NULL, NULL, NULL) : val_univ(c->m, la > lb ? la : lb);
   return finish(c, core_bind(c, kind, t->name, a, b), hint, type);
-}
-
-static const Value *field_type(Checker *c) {
-  return tyop(c, OP_FIELD, 0, NULL, NULL, NULL);
 }
 
 /* glue-lang: a Field literal, the canonical decimal of a value below r. */
@@ -3921,6 +3933,19 @@ static int circuit_binders(Checker *c, const Field *fs, size_t n, const char **n
   return 1;
 }
 
+/* M6 s5 (D14): hint h := e. e checks at Field over the earlier binders, then
+   h is a Field variable:  the constraints do not see e. */
+static int circuit_hints(Checker *c, const Field *hs, size_t n, const Core **cores, const char **names, uint32_t *at) {
+  size_t i;
+  for (i = 0; i < n; i++) {
+    cores[i] = check(c, hs[i].type, field_type(c));
+    if (cores[i] == NULL || !push(c, hs[i].name, field_type(c)))
+      return 0;
+    names[(*at)++] = hs[i].name;
+  }
+  return 1;
+}
+
 /* M2 ruling b: a == b is the type Path Field a b. */
 static const Core *field_path(Checker *c, const Core *a, const Core *b) {
   const Core *line = core_bind(c, CORE_PLAM, "i", NULL, op3(c, OP_FIELD, 0, 0, NULL, NULL, NULL));
@@ -3930,17 +3955,19 @@ static const Core *field_path(Checker *c, const Core *a, const Core *b) {
 static int check_circuit(Checker *c, const Decl *d) {
   Machine *m = c->m;
   CircuitInfo *info = &m->circuits[m->circuit_count];
-  uint32_t n = (uint32_t)(d->param_count + d->private_count);
+  uint32_t n = (uint32_t)(d->param_count + d->private_count + d->hint_count);
   const char **names = arena_alloc(m->arena, (n + 1u) * sizeof *names);
+  const Core **hints = arena_alloc(m->arena, (d->hint_count + 1u) * sizeof *hints);
   ConstraintInfo *ks = arena_alloc(m->arena, (d->constraint_count + 1u) * sizeof *ks);
   uint32_t at = 0;
   size_t i;
   for (i = 0; i < m->circuit_count; i++)
     if (strcmp(m->circuits[i].name, d->name) == 0)
       return FAIL(c, "REFUSE_NAME", "%s is a circuit already", d->name);
-  if (names == NULL || ks == NULL)
+  if (names == NULL || ks == NULL || hints == NULL)
     return FAIL(c, "OOM", "out of memory");
-  if (!circuit_binders(c, d->params, d->param_count, names, &at) || !circuit_binders(c, d->privates, d->private_count, names, &at))
+  if (!circuit_binders(c, d->params, d->param_count, names, &at) || !circuit_binders(c, d->privates, d->private_count, names, &at)
+      || !circuit_hints(c, d->hints, d->hint_count, hints, names, &at))
     return 0;
   for (i = 0; i < d->constraint_count; i++) {
     const Constraint *k = &d->constraints[i];
@@ -3958,6 +3985,8 @@ static int check_circuit(Checker *c, const Decl *d) {
   info->binders = names;
   info->public_count = (uint32_t)d->param_count;
   info->private_count = (uint32_t)d->private_count;
+  info->hint_count = (uint32_t)d->hint_count;
+  info->hints = hints;
   info->constraints = ks;
   info->constraint_count = (uint32_t)d->constraint_count;
   m->circuit_count++;

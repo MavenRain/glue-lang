@@ -3064,3 +3064,238 @@ current circuit.
   print is from before s4.
 - Build record:  s4-a and s4-b by hand in the main loop (claude3, no
   subagents).
+
+### s5: add the hint binder and the core op inv (2026-10-17)
+
+- Commits:  none yet.  One USER commit has the code (s5-a:  the front
+  end;  s5-b:  circuit.c and the rows), the docs and the contracts
+  (s5-c), and this record (s5-d).
+- D14 inv (fr.c fr_inv):  square and multiply over fr_mul from the top
+  bit of r - 2.  `inv 0` is 0 because r - 2 is not 0.  fr.h declares
+  it.  core.h:  OP_FIELD_INV after OP_FIELD_MUL.  eval.c:  OP_NAME
+  "inv", OP_ARITY 1, field_inv (at a neutral value blocked() gives the
+  stuck op, at a literal fr_inv) and the reduce case.  json.c op_json:
+  the case is with the other value ops.  -Wswitch-enum found no other
+  site.
+- D15 (check.c):  the builtin `{"inv", 1, RULE_FIELD1, OP_FIELD_INV,
+  OP_FIELD, 0}` and rule_field1 (Field -> Field).  field_type moved up
+  next to nat_type (its definition was after its first use).  `def inv`
+  gives REFUSE_NAME from the BUILTINS table (rule R4):  no new code.
+- D14 hint (front end):  lexer TOK_KW_HINT after TOK_KW_PRIVATE.
+  parser.c:  `case TOK_KW_HINT:` at the 3 switch sites, and parse_hints
+  (`(hint NAME := TERM)*`;  the Field `type` of each hint holds the term
+  e).  parse_decl sets d->hints and d->hint_count to zero.  ast.h Decl:
+  hints, hint_count.  core.h CircuitInfo:  hint_count, hints (the Core
+  of each e).  check.c circuit_hints:  e checks at Field (check(),
+  TYPE_MISMATCH) over the earlier binders, then push(h : Field).
+  names[] holds the public, private and hint names in that order.
+- D14 lowering (circuit.c lower_circuit):  n = public + private +
+  hint_count.  A hint row is a ROW_INPUT after the private rows.
+  fixed_at gives 0 on an input row, and put_copies copies the public
+  rows only:  thus a hint row has zero selectors and no instance copy.
+  lower_value:  VAL_VAR uses bound + hint_count.  A residual `inv x` is
+  a VAL_STUCK OP_FIELD_INV:  the arith test sends it to no_circuit_form
+  (CIRCUIT_LOWER, the text does not change).
+- D14 witness (circuit.c):  witness_args matches the public, private
+  and hint names.  A hint name gives WITNESS_ARGS (exit 2).  The new
+  static witness_hints (after witness_checks) makes an env of val_field
+  literals for binders 0 to i - 1, then calls eval_core on
+  ci->hints[j].  A result that is not OP_FIELD_LIT gives the new code
+  WITNESS_HINT (exit 1).  eval.c val_field is not static now;  core.h
+  declares it after val_nat.
+- D13:  no code.  The current lowering is the constrained monad.
+- O4 closes (ruling (e) of docs/M6-PLAN.md, RULED 2026-10-17:  the
+  recommendation).  test/check/hint-residual.glue (`x * inv x == 1`)
+  and test/check/inv-helper.glue (`h x == x`, with the guest helper
+  `def h : Field -> Field := fun y => inv y`) give CIRCUIT_LOWER.  These
+  are the first gate rows of CIRCUIT_LOWER.
+- Docs:  SPEC.md 2.1 (`inv`), 2.2 (the hint form, `hint` in the keyword
+  list, the hint paragraph and the nonzero example), 2.3 (the 3 rows
+  below), 7.1 (hint rows;  no row for `inv`;  a closed `inv k` computes
+  first) and O4 in section 9.  docs/IR.md:  no change.  `rg -n
+  'private|binder|hint' docs/IR.md` has no match:  the text names no
+  binder kinds.
+- Rows:  examples/nonzero.glue (circuit nonzero `private (x : Field)
+  hint v := inv x := x * v == 1`;  circuit invOne `x * inv 1 == x`,
+  which lowers).  examples/inv.lang (three, zero, one `3 * (inv 3)`,
+  one2 `3 * inv 3`, stuck, big) with test/json/inv.json and 6
+  test/eval/expect.txt rows.  test/check:  inv-def.lang REFUSE_NAME,
+  hint-residual.glue and inv-helper.glue CIRCUIT_LOWER, hint-unused.glue
+  CIRCUIT_UNCONSTRAINED, hint-type.glue TYPE_MISMATCH.
+  test/circuit/expect.txt `nonzero nonzero x=3` and the goldens (k 5,
+  4 rows:  the x input row, the v hint row, the mul row, the const 1
+  row;  public 0;  the witness instance is `[[]]`;  satcheck ok).
+  test/circuit/refuse.txt:  `2 WITNESS_ARGS witness nonzero nonzero x=3
+  v=1` and `1 WITNESS_FAIL witness nonzero nonzero x=0`.
+- Plan deviation:  `fieldMul` is not a surface name (NAME_UNKNOWN).
+  The plan row `fieldMul 3 (inv 3)` is the eval row `3 * (inv 3)`
+  (= 1).
+- Probes after s5-a (build/m6s5-probe/, `langc check` and `eval`):
+
+| Probe | Before | After s5-a |
+|---|---|---|
+| inv3.lang `def three : Field := inv 3` | NAME_UNKNOWN `three: unknown name inv` | ok;  eval three = 14592161914559516814830937163504850059032242933610689562465469457717205663745, zero (`inv 0`) = 0, one (`3 * (inv 3)`) = 1, stuck (`fun x => inv x`) = `fun x => inv x`, big (`inv` of r - 1) = r - 1 |
+| definv.lang `def inv : Field -> Field := fun x => x` | ok | REFUSE_NAME `inv: inv is a core name (rule R4)` |
+| nonzero.glue `circuit nonzero private (x : Field) hint v := inv x := x * v == 1` | PARSE_EXPECT `nonzero.glue:1:37: expected ':=', found a name` | INTERNAL `nonzero: the evaluator found a variable outside its scope` (circuit.c was not done) |
+| hinttype.glue (`hint v := flagYes`) | (not run) | TYPE_MISMATCH `e: expected a term of type Field, found a term of type Flag` |
+| `rg -n '\bhint\b\|\binv\b' examples test domain src` | no `inv`;  `hint` only as a C identifier in check.c and in the comment of test/check/glue-no-hint.lang (and its expect.txt row name) | (the plan said one comment hit:  the C identifier hits are not names) |
+
+- Probes after s5-b:
+
+| Probe | After s5-a | After s5-b |
+|---|---|---|
+| nonzero.glue check | INTERNAL `the evaluator found a variable outside its scope` | ok;  circuit ok, witness x=3 ok (v = inv 3), satcheck ok |
+| witness x=3 v=1 | (not run) | WITNESS_ARGS (exit 2) `v is a hint: witness computes its value from its term` |
+| witness x=0 | (not run) | WITNESS_FAIL `1:56: the constraint fails: the left side is 0, the right side is 1` |
+| residual.glue (`x * inv x == 1`) | (not run) | CIRCUIT_LOWER `a constraint side normalizes to a stuck operation that is not + - *, ...` |
+| unused.glue | (not run) | CIRCUIT_UNCONSTRAINED `the hint v is in no constraint, ...` |
+| helper.glue (`h x == x`) | (not run) | CIRCUIT_LOWER (the same text) |
+| invone.glue (`x * inv 1 == x`) | (not run) | circuit ok |
+| hintaxiom.glue (`axiom a : Field`, `hint v := a`) | (not run) | REFUSE_AXIOM `a: an axiom has no proof (rule R2)` |
+| hint-o3.glue (`hint v := x`, `x * x == 9; v == v`) | (not run) | circuit ok (s5-d;  open item (2)) |
+
+- Printed forms:  no current golden row changed.  The 4 tables
+  (test/check/expect.txt, test/eval/expect.txt, test/circuit/expect.txt
+  and refuse.txt) have new rows only.  The new texts, with reasons:
+  (1) CIRCUIT_UNCONSTRAINED at a hint:  `the hint %s is in no
+  constraint, so the proof does not constrain it`.  The private text
+  does not change.  Reason:  a hint is not a private binder, thus the
+  private text is not true for it.
+  (2) WITNESS_ARGS:  `v is a hint: witness computes its value from its
+  term`.  Reason:  the command line gives no value for a hint (D14).
+  (3) WITNESS_HINT (a new code, exit 1):  `the hint %s does not compute
+  to a Field literal`.  Reason:  a defensive diagnostic, so that a user
+  input does not give INTERNAL.  SPEC.md 2.3 has the 3 rows.
+- e2e probe (s5-c, build/m6s5-probe/e2e/, sandbox on):  the halo2 chain
+  for nonzero by hand (circuit, witness x=3, satcheck, keygen
+  --dev-srs, prove, verify `ok: the proof of nonzero verifies`,
+  solidity).  Each step exit 0.  proof.json `.instances` is `[]`.
+  halo2 accepts 0 public inputs, thus no IR change and no halo2/ change
+  (ruling a).
+- Contracts (s5-c):  Verifiers.t.sol imports NonzeroVerifier and has
+  NonzeroVerifierTest (testThereIsNoPublicInput:  `instances.length ==
+  0`).  VerifierCase has two guards for 0 instances.  (1)
+  testRedirectedInstancePointerIsRejected:  an empty `bad` becomes an
+  array of one value.  Reason:  `bad[0]` reverts at 0 instances, and an
+  array of one value has the wrong count, so the verifier must refuse
+  it.  (2) testWrongInstanceCountIsRejected:  `fewer` has length 0 at 0
+  instances, and the "too few" check is `instances.length == 0 ||
+  !accepts(proof, fewer)`.  Reason:  `instances.length - 1` underflows
+  at 0, and at 0 there is no shorter array.  The "too many" check does
+  not change.  The 3 current circuits run the same checks as before.
+  DeployVerifier.s.sol:  the import, a nonzero branch, the doc and the
+  revert text (`make e2e` runs the deploy script for each name of
+  test/circuit/expect.txt).  contracts/README.md:  the name list, the
+  Numbers row and the Replace line.
+- contracts/src/verifiers/nonzero.sol and
+  contracts/test/fixtures/nonzero.proof.json are new.  The e2e probe
+  wrote the first copies:  forge build runs before e2e, and
+  Verifiers.t.sol imports nonzero.sol.  `make e2e` writes nonzero.sol
+  byte-identical (the dev SRS keygen).
+- Numbers (contracts/README.md):  `| nonzero | 5,387 | 1,216,448 |
+  262,661 |`.  The size is the runtime size of `forge build --sizes`.
+  The gas report gives a deployment size of 5,419 = runtime + 32 (the
+  same offset as square, 5,647 and 5,615).  The deployment cost is
+  1,216,448.  verifyProof is the max column (as in the other rows).
+- Mutants (s5-c, a mutants.py in the session scratchpad, over fr.c,
+  check.c and circuit.c;  each
+  string matches once;  each mutant with `make -B`, reverted, the hashes
+  compared;  final rebuild exit 0, sha ok):  5 KILLED, 0 SURVIVED.  Each
+  kill is a guest gate row, thus no `gate N` run.  Mutant (2):  check.c
+  has no generic Term or Core walker (self_applied, about 3585, matches
+  one shape only), thus a full source-level ban is more than 2 lines.
+  The mutant is a one-line shallow ban after the rhs line of the
+  constraint loop (about 3976):  `if (rhs != NULL && lhs->kind ==
+  CORE_OP && lhs->argc == 2 && lhs->args[1]->kind == CORE_OP &&
+  lhs->args[1]->op == OP_FIELD_INV) return FAIL(c, "CIRCUIT_LOWER", "%s:
+  a constraint names inv", d->name);`.  It refuses a left side `E * inv
+  F` before normalization.  Only invOne (`x * inv 1 == x`) can kill it:
+  hint-residual gives the same code, and inv-helper (`h x == x`) does
+  not have the shallow form.
+
+| Mutant | Verdict | Killed by |
+|---|---|---|
+| (1) fr_inv:  the power r - 1 | KILLED | eval rows `inv three` (got 1), `inv one` and `inv one2` (got 3), `inv big` (got 1);  build examples/inv.lang (json differs);  witness nonzero (golden differs) |
+| (2) check:  the shallow source-level ban `E * inv F` at the left side | KILLED | examples/nonzero.glue `CIRCUIT_LOWER: invOne: a constraint names inv` (the intended row).  The other nonzero rows (circuit, witness, the 2 refuse rows) fail with it, because langc checks the whole file first |
+| (3) lower_value:  a residual `inv x` lowers as x | KILLED | hint-residual.glue (got CIRCUIT_UNCONSTRAINED:  v is then unused), inv-helper.glue (got exit 0) |
+| (4) witness_hints:  the hint gets 0 | KILLED | witness nonzero (golden differs) |
+| (5) lower_circuit:  an unused hint is accepted | KILLED | hint-unused.glue (got exit 0) |
+
+- Gates (s5-c):  `make -B check` exit 0 (native circuit 9, path 46,
+  face 35, HIT 44;  examples 40, parse refusals 18, check refusals 146,
+  evals 268, json 33 builds, build refusals 8, circuits 5, same-ir 3,
+  circuit refusals 14, satcheck refusals 6;  node regressions 6, printer
+  2).  `make check-clang` exit 0.  `forge build --root contracts
+  --sizes` exit 0 (Halo2Verifier runtime 5,387, DeployVerifier 24,473).
+  `make e2e` exit 0:  the e2e rows square, range, poly, square
+  (quotSq) and nonzero;  forge test 44 passed (was 33:  4 contracts,
+  11 tests each);  the deploy script ran for each name.  The hashes of
+  test/circuit/expect.txt, refuse.txt, same-ir.txt, nonzero.sol and
+  Verifiers.t.sol are the same before and after e2e.  `git diff
+  --exit-code -- 'test/circuit/*.json' contracts/src/verifiers` exit 0:
+  no IR change at the 4 current circuits.  contracts/test/fixtures
+  restored from HEAD (the nonzero fixture is untracked and stays), then
+  `forge test --root contracts` 44 passed, 0 failed.
+- Open items:  (1) No guest row reaches WITNESS_HINT.  `axiom a :
+  Field` gives REFUSE_AXIOM (rule R2), and a closed Field term computes
+  to a literal.  (2) O3 also covers a hint:  CIRCUIT_UNCONSTRAINED is a
+  syntactic check, thus a hint that is only in `v == v` passes
+  (hint-o3.glue, circuit ok).  (3) The plan s5 mutant column (`inv 0`
+  is not 0;  a hint row with an instance copy;  the constraint context
+  sees e) did not run.  The 5 mutants above came from the s5 prompt.
+  The s7 mutant roll-up can add the 3 plan mutants.
+- Trap:  `langc circuit` and `langc witness` without -o write
+  NAME.circuit.json and NAME.witness.json in the cwd (the repository
+  root).  Give -o in a probe.
+- Build record:  s5-a to s5-d by hand in the main loop (claude3, no
+  subagents).
+
+### s6: smoke the fold and unfold circuits (2026-10-17)
+
+- Commits:  none yet.  The s6 files are staged on top of the staged s5
+  (tree 95a1dddc).  s6 has no code change.
+- New circuit sources (plan section 6):  examples/foldPow.glue has
+  square (`pow x 1`, the fold of `t => x * t` from x at Nat), poly
+  (`cube x`, the fold of `t => t * x` from x at depth 2) and nonzero
+  (the fold at depth 1 gives `x * v == 1`, the hint term stays
+  `inv x`).  examples/unfoldPow.glue has square (the unfold into Nat
+  `stepCount` counts down from the seed 1 through option to none, and
+  gives the static depth 1 of the fold) and poly (the unfold into
+  List Field with the limit 2 gives `cons x (cons x nil)`, and the
+  List fold gives `x * x * x`).
+- The IR of each of the 5 circuits is byte-identical to the golden of
+  its name.  Thus each circuit has a same-ir row and no new golden,
+  verifier or fixture:  test/circuit/same-ir.txt +5 rows (3 to 8).
+  The IR has no hint term (`langc witness` computes the hint), thus
+  the nonzero row compares the constraint `x * v == 1` only.
+- Probe (build/m6s6-probe, not a gate row):  `langc witness` for each
+  of the 5 circuits with the values of test/circuit/expect.txt is
+  byte-identical to the witness golden of its name.  A same-ir row
+  compares the circuit only, and an expect.txt row adds an e2e run.
+- Trap:  `depth` is a domain definition, thus `def depth` gives
+  REFUSE_NAME (rule R4).  The unfold definition is `stepCount`.
+- Mutants (plan section 8, s6 column), 3/3 KILLED:
+
+| Mutant | Edit | Result |
+|---|---|---|
+| M1 the unroll one step short | eval.c reduce_fold_nat:  `k + 1 < count` | KILLED:  same-ir foldPow square, poly, nonzero and unfoldPow square FAIL;  foldPow.glue gives CIRCUIT_UNCONSTRAINED (nonzero);  31 FAIL lines |
+| M2 a static depth left blocked | eval.c reduce_unfold:  OP_UNFOLD_NAT stays stuck at a literal limit | KILLED:  4 native Nat unfold regressions FAIL, then make stops before test/gate.sh.  Direct probe:  unfoldPow square gives CIRCUIT_LOWER (the depth is stuck), unfoldPow poly (List) is the same as before |
+| M3 a same-ir row against the wrong circuit | same-ir.txt:  `foldPow square square` to `foldPow square poly` | KILLED:  same-ir foldPow square and unfoldPow square FAIL (the pattern also matched the unfoldPow row) |
+
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face
+  35, HIT 44;  examples 42 (was 40);  parse refusals 18, check
+  refusals 146, evals 268, json 33 builds, build refusals 8, circuits
+  5, same-ir 8 (was 3), circuit refusals 14, satcheck refusals 6;
+  node regressions 6, printer 2.  `make check-clang` exit 0.  `forge
+  build --root contracts --sizes` exit 0.  `make e2e` exit 0, forge
+  test 44 passed.  The hash of `git diff -- test/circuit
+  contracts/src/verifiers` is the same before and after e2e (only
+  same-ir.txt, +5).  `git diff --exit-code -- 'test/circuit/*.json'
+  contracts/src/verifiers` exit 0:  no IR change.
+  contracts/test/fixtures restored from the index, then `forge test
+  --root contracts` 44 passed, 0 failed.
+- Open items:  (1) The 3 plan s5 mutants (s5 open item 3) are still
+  for the s7 roll-up.  (2) M2 has no gate row that runs after the
+  native regressions:  the new same-ir row kills it only in the direct
+  probe.
+- Build record:  s6 by hand in the main loop (claude3, no subagents).

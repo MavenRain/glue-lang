@@ -1,0 +1,2 @@
+-- A residual inv x in a constraint normal form has no circuit form (M6 s5).
+circuit bad private (x : Field) hint v := inv x := x * inv x == 1

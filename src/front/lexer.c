@@ -28,6 +28,7 @@ static const struct {
   {"circuit", TOK_KW_CIRCUIT},
   {"public", TOK_KW_PUBLIC},
   {"private", TOK_KW_PRIVATE},
+  {"hint", TOK_KW_HINT},
   {"range8", TOK_KW_RANGE8},
   {"mutual", TOK_KW_MUTUAL},
 };
@@ -59,6 +60,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_CIRCUIT: return "'circuit'";
     case TOK_KW_PUBLIC: return "'public'";
     case TOK_KW_PRIVATE: return "'private'";
+    case TOK_KW_HINT: return "'hint'";
     case TOK_KW_RANGE8: return "'range8'";
     case TOK_LANGLE: return "'<'";
     case TOK_RANGLE: return "'>'";

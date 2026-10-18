@@ -152,7 +152,7 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
   if (l->depth >= LOWER_DEPTH_LIMIT) return diag_fail(l->m->diag, "CIRCUIT_LOWER", l->ci->name, "a constraint is deeper than %u operations", LOWER_DEPTH_LIMIT);
   switch (v->kind) {
     case VAL_VAR:
-      if (v->nat >= l->ci->public_count + l->ci->private_count) return no_circuit_form(l, "a variable that is not a binder");
+      if (v->nat >= l->ci->public_count + l->ci->private_count + l->ci->hint_count) return no_circuit_form(l, "a variable that is not a binder");
       l->used[v->nat] = 1;
       out->col = COL_A;
       out->row = (uint32_t)v->nat;
@@ -220,8 +220,10 @@ static int lower_check(Lower *l, const Env *env, const ConstraintInfo *k) {
   return 0;
 }
 
+/* M6 s5 (D14): a hint row is an input row too (zero selectors, no instance
+   copy), after the private rows. */
 static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
-  uint32_t n = ci->public_count + ci->private_count;
+  uint32_t n = ci->public_count + ci->private_count + ci->hint_count;
   const Env *env = NULL;
   uint32_t i;
   memset(l, 0, sizeof *l);
@@ -245,7 +247,8 @@ static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
     if (!lower_check(l, env, &ci->constraints[i])) return 0;
   for (i = ci->public_count; i < n; i++)
     if (!l->used[i])
-      return diag_fail(m->diag, "CIRCUIT_UNCONSTRAINED", ci->name, "the private binder %s is in no constraint, so the proof does not constrain it", ci->binders[i]);
+      return diag_fail(m->diag, "CIRCUIT_UNCONSTRAINED", ci->name, "the %s %s is in no constraint, so the proof does not constrain it",
+                       i < ci->public_count + ci->private_count ? "private binder" : "hint", ci->binders[i]);
   for (i = 0; i < ci->public_count; i++)
     if (!l->used[i]) return diag_fail(m->diag, "CIRCUIT_UNUSED_PUBLIC", ci->name, "the public binder %s is in no constraint", ci->binders[i]);
   return 1;
@@ -370,6 +373,7 @@ int circuit_document(Machine *m, const char *name, const char **text, size_t *le
 
 static int witness_args(Machine *m, const CircuitInfo *ci, char *const *args, int arg_count, Fr *inputs) {
   uint32_t n = ci->public_count + ci->private_count;
+  uint32_t all = n + ci->hint_count;
   unsigned char *seen = arena_alloc(m->arena, n + 1u);
   uint32_t i;
   int a;
@@ -377,9 +381,10 @@ static int witness_args(Machine *m, const CircuitInfo *ci, char *const *args, in
   for (a = 0; a < arg_count; a++) {
     const char *eq = strchr(args[a], '=');
     size_t name_len = eq == NULL ? 0 : (size_t)(eq - args[a]);
-    for (i = 0; i < n; i++)
+    for (i = 0; i < all; i++)
       if (eq != NULL && strlen(ci->binders[i]) == name_len && strncmp(ci->binders[i], args[a], name_len) == 0) break;
-    if (eq == NULL || i == n) return diag_fail(m->diag, "WITNESS_ARGS", ci->name, "%s is not BINDER=VALUE for a binder of the circuit", args[a]);
+    if (eq == NULL || i == all) return diag_fail(m->diag, "WITNESS_ARGS", ci->name, "%s is not BINDER=VALUE for a binder of the circuit", args[a]);
+    if (i >= n) return diag_fail(m->diag, "WITNESS_ARGS", ci->name, "%s is a hint: witness computes its value from its term", ci->binders[i]);
     if (seen[i]) return diag_fail(m->diag, "WITNESS_ARGS", ci->name, "the binder %s has two values", ci->binders[i]);
     if (!fr_parse(eq + 1, strlen(eq + 1), &inputs[i])) return diag_fail(m->diag, "WITNESS_ARGS", ci->name, "the value of %s is not a canonical decimal below r", ci->binders[i]);
     seen[i] = 1;
@@ -436,15 +441,39 @@ static int witness_checks(const Lower *l, Fr *cells) {
   return 1;
 }
 
+/* M6 s5 (D14): computes each hint from its term over the values of the
+   earlier binders (public, private, then the earlier hints). */
+static int witness_hints(Machine *m, const CircuitInfo *ci, Fr *inputs) {
+  uint32_t base = ci->public_count + ci->private_count;
+  const Env *env = NULL;
+  char text[FR_TEXT_MAX];
+  uint32_t i;
+  for (i = 0; i < base + ci->hint_count; i++) {
+    const Value *lit;
+    if (i >= base) {
+      const Value *v = eval_core(m, env, ci->hints[i - base]);
+      if (v == NULL) return m->diag->set ? 0 : oom(m->diag);
+      if (!val_is(v, OP_FIELD_LIT) || !fr_parse(v->name, strlen(v->name), &inputs[i]))
+        return diag_fail(m->diag, "WITNESS_HINT", ci->name, "the hint %s does not compute to a Field literal", ci->binders[i]);
+    }
+    fr_print(&inputs[i], text);
+    lit = val_field(m, text);
+    env = lit == NULL ? NULL : env_push(m, env, lit);
+    if (env == NULL) return m->diag->set ? 0 : oom(m->diag);
+  }
+  return 1;
+}
+
 int circuit_witness(Machine *m, const char *name, char *const *args, int arg_count, const char **text, size_t *len) {
   Buf b = {m->arena, m->diag, NULL, 0, 0};
   Lower l;
   const CircuitInfo *ci = find_circuit(m, name);
   if (ci == NULL || !lower_circuit(m, ci, &l)) return 1;
-  Fr *inputs = arena_alloc(m->arena, (ci->public_count + ci->private_count + 1u) * sizeof *inputs);
+  Fr *inputs = arena_alloc(m->arena, (ci->public_count + ci->private_count + ci->hint_count + 1u) * sizeof *inputs);
   Fr *cells = arena_alloc(m->arena, (ADVICE_COUNT * l.row_count + 1u) * sizeof *cells);
   if (inputs == NULL || cells == NULL) return oom(m->diag), 1;
   if (!witness_args(m, ci, args, arg_count, inputs)) return 2;
+  if (!witness_hints(m, ci, inputs)) return 1;
   fill_advice(&l, inputs, cells);
   if (!witness_checks(&l, cells)) return 1;
   int ok = putf(&b, "{\"glue-lang-witness\":1,\n\"name\":\"%s\",\n\"advice\":[", ci->name);

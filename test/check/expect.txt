@@ -139,3 +139,8 @@ elim-nat-overflow-proof.lang TYPE_MISMATCH
 overflow-refl.lang TYPE_REFL
 unfold-nat-list-step.lang TYPE_MISMATCH
 hcomp-base-data.lang HCOMP_BASE
+inv-def.lang REFUSE_NAME
+hint-residual.glue CIRCUIT_LOWER
+inv-helper.glue CIRCUIT_LOWER
+hint-unused.glue CIRCUIT_UNCONSTRAINED
+hint-type.glue TYPE_MISMATCH

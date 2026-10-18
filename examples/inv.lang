@@ -1,0 +1,8 @@
+-- M6 s5 (D14): the core op inv is the inverse in Fr (x to the power r - 2),
+-- and inv 0 = 0. At a literal it computes; at a neutral value it stays.
+def three : Field := inv 3
+def zero : Field := inv 0
+def one : Field := 3 * (inv 3)
+def one2 : Field := 3 * inv 3
+def stuck : Field -> Field := fun x => inv x
+def big : Field := inv 21888242871839275222246405745257275088548364400416034343698204186575808495616

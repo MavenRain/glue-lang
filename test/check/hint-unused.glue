@@ -1,0 +1,2 @@
+-- The hint v is in no constraint, so the proof does not constrain it (M6 s5).
+circuit unused private (x : Field) hint v := inv x := x * x == 1

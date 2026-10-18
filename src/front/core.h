@@ -83,6 +83,7 @@ typedef enum {
   OP_FIELD_ADD,
   OP_FIELD_SUB,
   OP_FIELD_MUL,
+  OP_FIELD_INV, /* M6 s5: inv x, the Fr inverse (inv 0 = 0) */
   OP_PATHP,    /* M2: the line (a PLAM closure), then the two ends */
   OP_INTERVAL, /* M2 s4: I as the domain of a Pi. No term has this type */
   OP_SSET,     /* M2 s4: the sort of I, Partial and each Pi over them */
@@ -245,6 +246,10 @@ typedef struct {
   const char *const *binders;
   uint32_t public_count;
   uint32_t private_count;
+  /* M6 s5 (D14): binders public_count + private_count on are hints. hints[j]
+     is the term e of hint j, over the binders before it. */
+  uint32_t hint_count;
+  const Core *const *hints;
   const ConstraintInfo *constraints;
   uint32_t constraint_count;
 } CircuitInfo;
@@ -285,6 +290,8 @@ typedef struct {
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
    NULL result, so a caller can test once at the end. */
 const Value *val_nat(Machine *m, uint64_t n);
+/* glue-lang: a Field literal of the canonical decimal TEXT. */
+const Value *val_field(Machine *m, const char *text);
 const Value *val_var(Machine *m, uint32_t level);
 const Value *val_univ(Machine *m, uint64_t level);
 const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t field, const Value *const *args, uint32_t argc);

@@ -161,6 +161,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_CIRCUIT:
     case TOK_KW_PUBLIC:
     case TOK_KW_PRIVATE:
+    case TOK_KW_HINT:
     case TOK_KW_RANGE8:
     case TOK_KW_MUTUAL:
     case TOK_BAR:
@@ -379,6 +380,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_CIRCUIT:
     case TOK_KW_PUBLIC:
     case TOK_KW_PRIVATE:
+    case TOK_KW_HINT:
     case TOK_KW_RANGE8:
     case TOK_KW_MUTUAL:
     case TOK_BAR:
@@ -608,7 +610,31 @@ static int parse_constraint(Parser *p, Constraint *k) {
   return k->rhs != NULL;
 }
 
-/* circuit NAME [public BINDERS] [private BINDERS] := constraint (; constraint)* */
+/* M6 s5 (D14): (hint NAME := TERM)*. A hint term ends at the next `hint`
+   or `:=`. The `type` of each Field holds the term. */
+static int parse_hints(Parser *p, Decl *d) {
+  Field *items = NULL;
+  size_t count = 0;
+  size_t cap = 0;
+  while (at(p, TOK_KW_HINT)) {
+    const Token *tok = cur(p);
+    bump(p);
+    items = grow(p, items, count, &cap, sizeof *items);
+    if (items == NULL) return 0;
+    items[count].line = tok->line;
+    items[count].col = tok->col;
+    items[count].name = take_name(p, "a hint name");
+    if (items[count].name == NULL || !expect(p, TOK_DEFINE, "':='")) return 0;
+    items[count].type = parse_term(p);
+    if (items[count].type == NULL) return 0;
+    count++;
+  }
+  d->hints = items;
+  d->hint_count = count;
+  return 1;
+}
+
+/* circuit NAME [public BINDERS] [private BINDERS] (hint NAME := TERM)* := constraint (; constraint)* */
 static int parse_circuit(Parser *p, Decl *d) {
   bump(p);
   d->kind = DECL_CIRCUIT;
@@ -617,6 +643,7 @@ static int parse_circuit(Parser *p, Decl *d) {
   p->def = d->name;
   if (!parse_binders(p, TOK_KW_PUBLIC, &d->params, &d->param_count)) return 0;
   if (!parse_binders(p, TOK_KW_PRIVATE, &d->privates, &d->private_count)) return 0;
+  if (!parse_hints(p, d)) return 0;
   if (!expect(p, TOK_DEFINE, "':='")) return 0;
   Constraint *items = NULL;
   size_t count = 0;
@@ -648,6 +675,8 @@ static int parse_decl(Parser *p, Decl *d) {
   d->line = tok->line;
   d->col = tok->col;
   d->block = 0;
+  d->hints = NULL;
+  d->hint_count = 0;
   switch (tok->kind) {
     case TOK_KW_DEF: return parse_def(p, d);
     case TOK_KW_AXIOM: return parse_axiom(p, d);
@@ -670,6 +699,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_SEMI:
     case TOK_KW_PUBLIC:
     case TOK_KW_PRIVATE:
+    case TOK_KW_HINT:
     case TOK_KW_RANGE8:
     case TOK_BAR:
     case TOK_KW_REC:

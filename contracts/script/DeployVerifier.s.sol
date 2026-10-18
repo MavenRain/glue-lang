@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity 0.8.24;
 
+import {Halo2Verifier as NonzeroVerifier} from "../src/verifiers/nonzero.sol";
 import {Halo2Verifier as PolyVerifier} from "../src/verifiers/poly.sol";
 import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
 import {Console, Vm, VM_ADDRESS} from "../test/Vm.sol";
 
 /// Deploy the verifier of one example circuit: `--sig 'run(string)' NAME`,
-/// with NAME one of square, range, poly (src/verifiers/NAME.sol). The key
+/// with NAME one of square, range, poly, nonzero (src/verifiers/NAME.sol). The key
 /// comes from the forge flags (`--account NAME` or `--private-key KEY`) and
 /// the chain from `--rpc-url`. The verifying key is in the contract, so
 /// there is one contract for each circuit.
@@ -32,6 +33,9 @@ contract DeployVerifier {
         if (key == keccak256("poly")) {
             return address(new PolyVerifier());
         }
-        revert("DeployVerifier: the circuit is not square, range or poly");
+        if (key == keccak256("nonzero")) {
+            return address(new NonzeroVerifier());
+        }
+        revert("DeployVerifier: the circuit is not square, range, poly or nonzero");
     }
 }

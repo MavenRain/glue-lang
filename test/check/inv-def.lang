@@ -1,0 +1,2 @@
+-- inv is a core name (M6 s5, rule R4).
+def inv : Field -> Field := fun x => x

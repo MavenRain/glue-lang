@@ -1,0 +1,3 @@
+-- A residual inv through a guest helper has no circuit form too (M6 s5).
+def h : Field -> Field := fun y => inv y
+circuit helper private (x : Field) := h x == x

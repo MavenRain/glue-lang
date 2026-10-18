@@ -99,6 +99,9 @@ typedef struct {
   /* DECL_CIRCUIT: params are the public binders. */
   const Field *privates;
   size_t private_count;
+  /* M6 s5: the hint binders. The `type` of each holds the hint term e. */
+  const Field *hints;
+  size_t hint_count;
   const Constraint *constraints;
   size_t constraint_count;
 } Decl;

@@ -30,6 +30,7 @@ typedef enum {
   TOK_KW_CIRCUIT,
   TOK_KW_PUBLIC,
   TOK_KW_PRIVATE,
+  TOK_KW_HINT,
   TOK_KW_RANGE8,
   TOK_LANGLE, /* < */
   TOK_RANGLE, /* > */

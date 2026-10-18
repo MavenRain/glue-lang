@@ -30,6 +30,8 @@ void fr_add(Fr *out, const Fr *a, const Fr *b);
 void fr_sub(Fr *out, const Fr *a, const Fr *b);
 void fr_neg(Fr *out, const Fr *a);
 void fr_mul(Fr *out, const Fr *a, const Fr *b);
+/* The inverse of A:  A^(r - 2) (Fermat), thus 0 at 0 (glue-lang `inv`). */
+void fr_inv(Fr *out, const Fr *a);
 int fr_eq(const Fr *a, const Fr *b);
 /* 1 when X is less than BOUND. */
 int fr_lt_u64(const Fr *x, uint64_t bound);

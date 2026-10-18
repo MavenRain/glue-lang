@@ -40,12 +40,17 @@ The compiler writes the target; a program cannot.
 A Field literal is a decimal below r. `+`, `-` and `*` are modulo r. `*` binds
 more tightly than `+` and `-`. All three associate to the left.
 
+`inv : Field -> Field` is the inverse modulo r, with `inv 0 = 0` (M6 s5,
+D14). At a literal k, `inv k` computes to k^(r-2) mod r. At a neutral value,
+`inv x` is a stuck value. `inv` is a core name, thus `def inv` gives
+REFUSE_NAME (D15).
+
 ### 2.2 Circuits (M1)
 
 A program can also declare circuits:
 
 ```
-circuit NAME [public BINDERS] [private BINDERS] := C (; C)*
+circuit NAME [public BINDERS] [private BINDERS] (hint NAME := TERM)* := C (; C)*
 BINDERS := (x : Field) (y : Field) ...
 C       := SUM == SUM | range8 SUM
 ```
@@ -63,8 +68,22 @@ for each constraint, the checker forms that type, and the lowering reads its
 two ends (section 7.1). The constraint form and the IR did not change in M2
 (ruling 2026-10-14). `range8 e` tells the prover to show that 0 <= e < 256. A constraint can
 call an ordinary definition of a Field-valued function. The call inlines at
-lowering. `circuit`, `public`, `private` and `range8` are keywords. `witness`
-is a core name, so the witness binders use the keyword `private`.
+lowering. `circuit`, `public`, `private`, `hint` and `range8` are keywords.
+`witness` is a core name, so the witness binders use the keyword `private`.
+
+A hint `hint h := e` (M6 s5, D14) is a Field value that the witness
+computes. The checker checks e at Field over the public binders, the private
+binders and the earlier hints. The constraints see h as a Field variable:
+they do not see e. `langc witness` computes the value of h from e and the
+values of the earlier binders. The command line gives no value for a hint.
+Example (`examples/nonzero.glue`):
+
+```
+circuit nonzero private (x : Field) hint v := inv x := x * v == 1
+```
+
+The constraint `x * v == 1` proves that x is not 0. A residual `inv` in a
+constraint gives CIRCUIT_LOWER (section 7.1).
 
 ### 2.3 Refusal codes for Field and circuits
 
@@ -77,11 +96,12 @@ is a core name, so the witness binders use the keyword `private`.
 | RANGE8_FIELD | 1 | a `range8` operand that is not a Field |
 | REFUSE_NAME | 1 | two circuits with one name |
 | CIRCUIT_LOWER | 1 | a constraint side whose normal form is not a Field literal, a binder or `+ - *` of these |
-| CIRCUIT_UNCONSTRAINED | 1 | a private binder that is in no constraint |
+| CIRCUIT_UNCONSTRAINED | 1 | a private binder or a hint that is in no constraint |
 | CIRCUIT_UNUSED_PUBLIC | 1 | a public binder that is in no constraint |
 | CIRCUIT_ENTRY | 1 | `circuit` or `witness` with a name that is not a circuit |
 | WITNESS_FAIL | 1 | a witness that does not satisfy a constraint |
-| WITNESS_ARGS | 2 | a witness argument that is not `BINDER=VALUE`, a missing or repeated binder, or a value that is not a decimal below r |
+| WITNESS_ARGS | 2 | a witness argument that is not `BINDER=VALUE`, a missing or repeated binder, a value for a hint, or a value that is not a decimal below r |
+| WITNESS_HINT | 1 | a hint term that does not compute to a Field literal |
 | SAT_JSON | 1 | a satcheck document that is not JSON of the IR subset |
 | SAT_IR | 1 | a satcheck document that does not obey docs/IR.md |
 | SAT_GATE | 1 | a gate poly that is not zero on a row |
@@ -744,7 +764,8 @@ An instance is a top-level definition whose type is a data type (F14).
 ### 7.1 Circuits: lowering to the Plonkish IR v1
 
 `langc circuit PROG NAME` writes NAME.circuit.json. `langc witness PROG NAME
-BINDER=VALUE...` writes NAME.witness.json. docs/IR.md is the contract for the
+BINDER=VALUE...` writes NAME.witness.json. It computes the value of each hint
+from its term (section 2.2). docs/IR.md is the contract for the
 two documents. M1 uses the gate set of docs/IR.md section 4: advice a, b, c;
 fixed ql, qr, qo, qm, qc, qrange, t; instance column 0; gate `arith` with
 ql*a + qr*b + qm*a*b + qc - qo*c = 0; lookup `range8` with input qrange*a and
@@ -753,8 +774,10 @@ table t.
 The compiler evaluates each constraint side to a normal form, with the binders
 as variables. Then it lowers the normal form:
 
-1. Rows 0 to n-1 are input rows, one for each binder (public binders first).
-   The value of the binder is in advice a.
+1. Rows 0 to n-1 are input rows, one for each binder: the public binders,
+   then the private binders, then the hints. The value of the binder is in
+   advice a. A hint row has the form of a private binder row: it has no
+   instance copy, and its selectors are zero (item 5 can set qrange).
 2. A Field literal k is a constant row: qc = k, qo = 1. The value is in c.
 3. Each `+`, `-` or `*` is an arith row. Copies tie a and b to the wires of
    the operands. The value is in c. `+` sets ql = qr = qo = 1. `-` sets
@@ -764,6 +787,11 @@ as variables. Then it lowers the normal form:
 5. `range8 e` on a binder sets qrange = 1 on the input row of the binder.
    On any other wire, it adds a range row: a copy of the wire in a, and
    qrange = 1.
+
+The lowering has no row for `inv`. A residual `inv` in a normal form (for
+example `inv x` with x a binder, also through a definition) gives
+CIRCUIT_LOWER. A closed `inv k` computes to a literal before the lowering,
+thus `x * inv 1 == x` lowers (examples/nonzero.glue, circuit invOne).
 
 The copies are in this order: instance(0, i) to advice(a, i) for each public
 binder i; for each row, a then b; then the `==` copies.
@@ -801,7 +829,11 @@ prints `ok` or gives one refusal. It accepts k up to 16.
 - O3. CIRCUIT_UNCONSTRAINED is a syntactic check. A private binder that is
   only in `x == x` or `x - x == 0` passes the check, but the proof does not
   constrain it.
-- O4. No gate test gives CIRCUIT_LOWER yet. M1 has no Field-valued normal
+- O4. Closed in M6 (slice s5). The core op `inv` gives a stuck Field value
+  that the lowering refuses: test/check/hint-residual.glue (`x * inv x ==
+  1`) and test/check/inv-helper.glue (the same through a definition) give
+  CIRCUIT_LOWER. The text below is the record before M6.
+  No gate test gave CIRCUIT_LOWER. M1 has no Field-valued normal
   form other than literals, binders and `+ - *`. M3 (slice s5) found no
   circuit that gives it. A circuit has only Field binders (no interval
   binder and no type binder), thus the closed-type rules reduce each Kan

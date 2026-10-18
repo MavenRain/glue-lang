@@ -251,6 +251,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FIELD_ADD:
   case OP_FIELD_SUB:
   case OP_FIELD_MUL:
+  case OP_FIELD_INV:
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
   case OP_FLAG_NO:

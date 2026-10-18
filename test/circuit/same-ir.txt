@@ -1,3 +1,8 @@
 squareUa square square
 quotSq square square
 intSq square square
+foldPow square square
+foldPow poly poly
+foldPow nonzero nonzero
+unfoldPow square square
+unfoldPow poly poly

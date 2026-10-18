@@ -1,0 +1,14 @@
+-- M6 s6: three current circuits through fold at Nat (D5). pow x n folds
+-- t => x * t over the static depth n from x, so pow x 1 is x * x. cube folds
+-- t => t * x twice, so cube x is x * x * x. The lowering unrolls each fold, so
+-- the IR of each circuit must equal the golden of its name
+-- (test/circuit/same-ir.txt).
+def pow : Field -> Nat -> Field := fun x => fun n => fold (fun (t : Field) => x * t) x n
+def cube : Field -> Field := fun x => fold (fun (t : Field) => t * x) x 2
+
+circuit square public (y : Field) private (x : Field) := pow x 1 == y
+
+circuit poly public (a : Field) (y : Field) private (x : Field) := cube x + a * x + 5 == y
+
+-- The hint term stays inv x. The fold at depth 1 gives the constraint x * v == 1.
+circuit nonzero private (x : Field) hint v := inv x := fold (fun (t : Field) => x * t) v 1 == 1

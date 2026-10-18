@@ -1,0 +1,6 @@
+-- M6 s5 (D14): the hint binder and the core op inv. witness computes the hint
+-- v from its term inv x; the constraint x * v == 1 proves that x is not 0.
+circuit nonzero private (x : Field) hint v := inv x := x * v == 1
+
+-- A closed inv 1 computes to 1 before the lowering, so this circuit lowers.
+circuit invOne private (x : Field) := x * inv 1 == x

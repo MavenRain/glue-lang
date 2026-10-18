@@ -25,7 +25,7 @@ static const char *const OP_NAMES[] = {
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FIELD] = "Field", [OP_FIELD_LIT] = "fieldLiteral", [OP_FIELD_ADD] = "fieldAdd",
-  [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul",
+  [OP_FIELD_SUB] = "fieldSub", [OP_FIELD_MUL] = "fieldMul", [OP_FIELD_INV] = "inv",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_PATHP] = "PathP",
   [OP_INTERVAL] = "I", [OP_SSET] = "SSet", [OP_PARTIAL] = "Partial", [OP_SYS] = "?",
   [OP_TRANSP] = "transp", [OP_KAN_DOM] = "?", [OP_KAN_COD] = "?",
@@ -46,7 +46,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_APPEND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_HIT] = VARIES, [OP_FOLD_BLOCK] = VARIES, [OP_ELIM] = VARIES, [OP_ELIM_CORE] = 4, [OP_ELIM_NAT] = 4, [OP_UNFOLD] = 3, [OP_UNFOLD_NAT] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
-  [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2,
+  [OP_FIELD_ADD] = 2, [OP_FIELD_SUB] = 2, [OP_FIELD_MUL] = 2, [OP_FIELD_INV] = 1,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_PATHP] = 3, [OP_INTERVAL] = 0, [OP_SSET] = 0, [OP_PARTIAL] = 2,
   [OP_SYS] = VARIES, [OP_TRANSP] = 3, [OP_KAN_DOM] = 2, [OP_KAN_COD] = 3,
@@ -1340,7 +1340,7 @@ static const Value *reduce_filter(Machine *m, uint32_t inst, const Value *const 
 /* 1 when both arguments are numbers. Else *OUT is the trap or the stuck
    operation. */
 /* glue-lang: a Field literal holds its canonical decimal in name. */
-static const Value *val_field(Machine *m, const char *text) {
+const Value *val_field(Machine *m, const char *text) {
   Value *v = new_value(m, VAL_OP);
   char *copy = v == NULL || text == NULL ? NULL : arena_strndup(m->arena, text, strlen(text));
   if (copy == NULL)
@@ -1348,6 +1348,22 @@ static const Value *val_field(Machine *m, const char *text) {
   v->op = OP_FIELD_LIT;
   v->name = copy;
   return v;
+}
+
+/* M6 s5: inv x by fr_inv (inv 0 = 0). A neutral argument gives the stuck
+   operation, which the circuit lowering refuses (CIRCUIT_LOWER). */
+static const Value *field_inv(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  char text[FR_TEXT_MAX];
+  Fr x;
+  Fr z;
+  if (blocked(m, a[0], OP_FIELD_INV, 0, 0, a, n, &out))
+    return out;
+  if (!val_is(a[0], OP_FIELD_LIT) || !fr_parse(a[0]->name, strlen(a[0]->name), &x))
+    return internal(m, "a Field inverse of a value that is not a Field literal");
+  fr_inv(&z, &x);
+  fr_print(&z, text);
+  return val_field(m, text);
 }
 
 /* glue-lang: Field arithmetic modulo r. A neutral argument gives the stuck
@@ -1711,6 +1727,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FIELD_SUB:
   case OP_FIELD_MUL:
     return field_op(m, op, a, n);
+  case OP_FIELD_INV:
+    return field_inv(m, a, n);
   case OP_NAT_ADD:
     return nat_add(m, a, n);
   case OP_NAT_SUB:

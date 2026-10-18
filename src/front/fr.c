@@ -167,6 +167,23 @@ void fr_mul(Fr *out, const Fr *a, const Fr *b) {
   *out = rem;
 }
 
+/* Square and multiply over fr_mul, from the top bit of r - 2. At 0 the
+   power is 0, because r - 2 is not 0. */
+void fr_inv(Fr *out, const Fr *a) {
+  uint32_t e[FR_LIMBS];
+  Fr acc;
+  unsigned i;
+  memcpy(e, R, sizeof e);
+  e[0] -= 2u;
+  fr_from_u64(&acc, 1);
+  for (i = FR_LIMBS * 32u; i > 0; i--) {
+    fr_mul(&acc, &acc, &acc);
+    if ((e[(i - 1) / 32u] >> ((i - 1) % 32u)) & 1u)
+      fr_mul(&acc, &acc, a);
+  }
+  *out = acc;
+}
+
 int fr_eq(const Fr *a, const Fr *b) {
   return cmp_limbs(a->w, b->w) == 0;
 }

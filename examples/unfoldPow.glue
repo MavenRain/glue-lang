@@ -1,0 +1,14 @@
+-- M6 s6: two current circuits through unfold (D8, D9). stepCount counts down
+-- from the seed 1 through option to none, so the unfold into Nat gives the
+-- static depth 1 and pow x stepCount is x * x. copies x is the unfold into List
+-- Field with the limit 2, so the list fold gives x * x * x. The lowering
+-- computes each unfold and unrolls each fold, so the IR of each circuit must
+-- equal the golden of its name (test/circuit/same-ir.txt).
+def stepCount : Nat := unfold (fun (n : Nat) => flagIf (natEq n 0) none (some (natSub n 1))) 4 1
+def pow : Field -> Nat -> Field := fun x => fun n => fold (fun (t : Field) => x * t) x n
+def copies : Field -> List Field := fun x => unfold (fun (s : Field) => some (pair s s)) 2 x
+def cube : Field -> Field := fun x => fold (fun (a : Field) (acc : Field) => acc * a) x (copies x)
+
+circuit square public (y : Field) private (x : Field) := pow x stepCount == y
+
+circuit poly public (a : Field) (y : Field) private (x : Field) := cube x + a * x + 5 == y

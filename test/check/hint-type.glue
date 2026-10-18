@@ -1,0 +1,2 @@
+-- A hint term checks at Field (M6 s5).
+circuit e private (x : Field) hint v := flagYes := x * v == 1
