@@ -315,6 +315,66 @@ static int data_ctor(const Value *v) {
   return val_is(v, OP_INL) || val_is(v, OP_INR) || val_is(v, OP_NONE) || val_is(v, OP_SOME) || val_is(v, OP_NIL) || val_is(v, OP_CONS);
 }
 
+/* M6 s4 (D10): a closed line. T is built from the closed heads by Sum,
+   Option, List, Prod and a family with closed parameters (a closed type or
+   a Nat literal), so T has no variable and transp gives its argument. */
+static int closed_line(const Value *t) {
+  uint32_t k;
+  if (closed_type(t))
+    return 1;
+  if (!(data_type(t) || val_is(t, OP_PROD) || val_is(t, OP_FAMILY)))
+    return 0;
+  for (k = 0; k < t->argc; k++)
+    if (!(closed_line(t->args[k]) || (val_is(t, OP_FAMILY) && t->args[k]->kind == VAL_NAT)))
+      return 0;
+  return 1;
+}
+
+/* M6 s4 (D10): 1 when hcomp at A with a constant system gives u0. Nat,
+   Field, Unit and Flag; Sum, Option, List and Prod with eligible fields; a
+   plain family when each constructor field at the parameters of A is
+   eligible (a recursive field is A itself). Type n, a HIT, a path, a
+   partner or a dependent field and an open field type are not eligible, at
+   each depth (thus Option Circle is not). A separate check from
+   closed_line: a nested universe keeps the universe rule. DEPTH bounds the
+   walk through the field families. */
+static int hcomp_closed(Machine *m, const Value *a, uint32_t depth) {
+  const FamilyInfo *f;
+  const Env *penv = NULL;
+  uint32_t j;
+  uint32_t k;
+  if (a == NULL || depth > 64u)
+    return 0;
+  if (val_is(a, OP_NAT) || val_is(a, OP_FIELD) || val_is(a, OP_UNIT) || val_is(a, OP_FLAG))
+    return 1;
+  if (data_type(a) || val_is(a, OP_PROD)) {
+    for (k = 0; k < a->argc; k++)
+      if (!hcomp_closed(m, a->args[k], depth + 1u))
+        return 0;
+    return 1;
+  }
+  if (!plain_family(m, a) || a->argc != m->families[a->inst].param_count)
+    return 0;
+  f = &m->families[a->inst];
+  for (k = 0; k < f->param_count; k++)
+    if ((penv = env_push(m, penv, a->args[k])) == NULL)
+      return 0;
+  for (j = 0; j < f->ctor_count; j++) {
+    const CtorInfo *c = &m->ctors[f->first_ctor + j];
+    const Env *env = penv;
+    for (k = 0; k < c->field_count; k++) {
+      if (c->fields[k].dependent || c->fields[k].recursive > 1)
+        return 0;
+      if (c->fields[k].recursive == 0 && !hcomp_closed(m, eval_core(m, env, c->fields[k].type), depth + 1u))
+        return 0;
+      /* The field value: a type that uses no earlier field does not read it. */
+      if ((env = env_push(m, env, a)) == NULL)
+        return 0;
+    }
+  }
+  return 1;
+}
+
 /* transp (<i> T[i]) phi x, with T[i] = COD(L, i, i0) (the right type of a
    Sum) when COD is 1, else DOM(L, i). X, PHI and L are indices outside <i>. */
 static const Core *field_transp(Machine *m, int cod, uint32_t x, uint32_t phi, uint32_t l) {
@@ -1182,7 +1242,8 @@ const Value *kan_transp(Machine *m, const Value *line, const Value *phi, const V
   head = probe_head(m, line);
   if (head == NULL)
     return NULL;
-  if (closed_type(head))
+  /* M6 s4 (D10): a closed line gives a, a neutral a too. */
+  if (closed_line(head))
     return a;
   /* M4 s2 (D4): a family without parameters is a closed type. */
   if (val_is(head, OP_FAMILY)) {
@@ -1534,7 +1595,9 @@ const Value *kan_hcomp(Machine *m, const Value *a, const Value *phi, const Value
     return kan_fail(m, "an hcomp with a bad face");
   if (ivl_is_const(phi->ivl, 1))
     return apply_value(m, u, val_ivl_end(m, 1));
-  if (closed_type(a) && a->kind != VAL_UNIV) {
+  /* M6 s4 (D10): at an eligible type a constant system gives u0, a neutral
+     u0 too. */
+  if (hcomp_closed(m, a, 0)) {
     if (hcomp_constant(m, u, u0))
       return u0;
     if (m->diag->set)

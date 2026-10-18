@@ -2778,7 +2778,7 @@ static void print_value(Printer *p, const Value *v, int atom) {
     p->depth--;
     return;
   }
-  while (is_chain(v) && !p->full) {
+  while (is_chain(v) && !is_pcon(v) && !p->full) {
     if (atom) {
       put(p, "(");
       open++;
@@ -2793,7 +2793,11 @@ static void print_value(Printer *p, const Value *v, int atom) {
     v = v->args[v->argc - 1u];
     atom = 1;
   }
-  print_other(p, v, atom);
+  /* M6 s4: a path constructor as the last argument prints `loop @ i`. */
+  if (is_pcon(v))
+    print_pcon(p, v, atom);
+  else
+    print_other(p, v, atom);
   for (i = 0; i < open; i++)
     put(p, ")");
   p->depth--;

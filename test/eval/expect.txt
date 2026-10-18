@@ -174,7 +174,7 @@ trunc truncRecInc => fun pB => 0
 quot quotRecOne => fun sN => 1
 quot quotEqcTransp => fun R => fun r => fun k => eqc Nat (R i1) 1 2 (transp (<j> R j 1 2) i0 r) @ k
 quot quotEqcLine => fun A => fun R => fun a => fun b => fun r => fun k => eqc (A i1) (R i1) (transp (<i> A i) i0 a) (transp (<i> A i) i0 b) (transp (<j> R j (transp (<_x0> A (j /\ _x0)) ~j a) (transp (<_x0> A (j /\ _x0)) ~j b)) i0 r) @ k
-quot quotSquashcStuck => fun R => fun x => fun y => fun p => fun q => fun k => fun l => transp (<i> Quot Nat (R i)) i0 (squashc Nat (R i0) x y p q k l)
+quot quotSquashcStuck => fun R => fun x => fun y => fun p => fun q => fun k => fun l => transp (<i> Quot Nat (R i)) i0 (squashc Nat (R i0) x y p q @ k @ l)
 otp fieldMessage => 7
 otp fieldEncrypt => <i> 7
 otp interpField => fun x => fold Field 7 7 (<i> 7) x
@@ -252,3 +252,10 @@ unfold-laws countSome => 4
 unfold-laws countZero => fun g => fun s => 0
 unfold-laws countSpine => fun xs => fun s => natAdd (unfold (fun x => some x) (fold (fun x => fun acc => natAdd acc 1) 0 xs) s) 2
 unfold-laws countNeutral => fun g => fun s => option 0 (fun r => natAdd (option 0 (fun _x0 => natAdd (option 0 (fun _x1 => 1) (g _x0)) 1) (g r)) 1) (g s)
+o8-laws transpClosed => fun a => a
+o8-laws hcompConst => fun k => fun a => a
+o8-laws hcompCircle => fun k => fun a => hcomp Circle k (fun i => [ k -> a ]) a
+o8-laws hcompOptionCircle => fun k => fun a => hcomp (Option Circle) k (fun i => [ k -> a ]) a
+o8-laws hcompListCircle => fun k => fun a => hcomp (List Circle) k (fun i => [ k -> a ]) a
+o8-laws transpOpen => fun P => fun n => fun u => transp (<i> P n) i0 u
+o8-laws loopPair => <i> pair base (loop @ i)

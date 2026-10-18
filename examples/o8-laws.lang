@@ -1,0 +1,35 @@
+-- M6 s4: O8 closes as Kan rules at closed data (D10). transp along a closed
+-- line gives its argument, a neutral argument too. hcomp with a constant system
+-- at an eligible type gives u0, a neutral u0 too. Type n, a HIT and a type
+-- with a HIT field are not eligible (D3 of M4): there hcomp stays canonical.
+def transpSum : (a : Sum Nat Flag) -> Path (Sum Nat Flag) (transp (<_> Sum Nat Flag) i0 a) a := fun a => refl
+def transpOption : (a : Option Nat) -> Path (Option Nat) (transp (<_> Option Nat) i0 a) a := fun a => refl
+def transpList : (a : List Nat) -> Path (List Nat) (transp (<_> List Nat) i0 a) a := fun a => refl
+def transpProd : (a : Prod Nat Field) -> Path (Prod Nat Field) (transp (<_> Prod Nat Field) i0 a) a := fun a => refl
+def transpLot : (a : Lot 3) -> Path (Lot 3) (transp (<_> Lot 3) i0 a) a := fun a => refl
+def transpNested : (a : Option (Prod (Type 0) (List Flag))) -> Path (Option (Prod (Type 0) (List Flag))) (transp (<_> Option (Prod (Type 0) (List Flag))) i0 a) a := fun a => refl
+def transpFace : (k : I) -> (a : List (Option Nat)) -> Path (List (Option Nat)) (transp (<_> List (Option Nat)) k a) a := fun k => fun a => refl
+def transpSusp : (a : Susp Nat) -> Path (Susp Nat) (transp (<_> Susp Nat) i0 a) a := fun a => refl
+def hcompSum : (k : I) -> (a : Sum Nat Flag) -> Path (Sum Nat Flag) (hcomp (Sum Nat Flag) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompOption : (k : I) -> (a : Option Nat) -> Path (Option Nat) (hcomp (Option Nat) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompList : (k : I) -> (a : List Nat) -> Path (List Nat) (hcomp (List Nat) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompProd : (k : I) -> (a : Prod Nat Field) -> Path (Prod Nat Field) (hcomp (Prod Nat Field) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompItem : (k : I) -> (a : Item) -> Path Item (hcomp Item k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompStack : (k : I) -> (a : Stack) -> Path Stack (hcomp Stack k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompLot : (k : I) -> (a : Lot 3) -> Path (Lot 3) (hcomp (Lot 3) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+def hcompNested : (k : I) -> (a : List (Option Unit)) -> Path (List (Option Unit)) (hcomp (List (Option Unit)) k (fun i => [ k -> a ]) a) a := fun k => fun a => refl
+-- Substitution: the fieldwise hcomp at Option A, then A := Circle, is the
+-- direct hcomp at Option Circle, and both keep some (hcomp Circle ..).
+def optionFill : (A : Type 0) -> (k : I) -> (x : A) -> Option A := fun A => fun k => fun x => hcomp (Option A) k (fun i => [ k -> some x ]) (some x)
+def substCircle : (k : I) -> Path (Option Circle) (optionFill Circle k base) (hcomp (Option Circle) k (fun i => [ k -> some base ]) (some base)) := fun k => refl
+def substCircleField : (k : I) -> Path (Option Circle) (optionFill Circle k base) (some (hcomp Circle k (fun i => [ k -> base ]) base)) := fun k => refl
+-- Evaluation rows (test/eval/expect.txt): a closed line and a constant system
+-- at a neutral value give the value; hcomp at Circle, Option Circle and List
+-- Circle and transp along an open line stay neutral; loop @ i prints with @.
+def transpClosed : (a : Option Nat) -> Option Nat := fun a => transp (<_> Option Nat) i0 a
+def hcompConst : (k : I) -> (a : Option Nat) -> Option Nat := fun k => fun a => hcomp (Option Nat) k (fun i => [ k -> a ]) a
+def hcompCircle : (k : I) -> (a : Circle) -> Circle := fun k => fun a => hcomp Circle k (fun i => [ k -> a ]) a
+def hcompOptionCircle : (k : I) -> (a : Option Circle) -> Option Circle := fun k => fun a => hcomp (Option Circle) k (fun i => [ k -> a ]) a
+def hcompListCircle : (k : I) -> (a : List Circle) -> List Circle := fun k => fun a => hcomp (List Circle) k (fun i => [ k -> a ]) a
+def transpOpen : (P : Nat -> Type 0) -> (n : Nat) -> (u : P n) -> P n := fun P => fun n => fun u => transp (<i> P n) i0 u
+def loopPair : Path (Prod Circle Circle) (pair base base) (pair base base) := <i> pair base (loop @ i)

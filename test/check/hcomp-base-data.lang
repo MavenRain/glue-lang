@@ -1,0 +1,1 @@
+def bad : (k : I) -> Option Nat := fun k => hcomp (Option Nat) k (fun i => [ k -> none ]) (some 3)

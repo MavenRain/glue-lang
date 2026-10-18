@@ -2936,3 +2936,131 @@ current circuit.
   including Clang, native regressions, guest checks, evals, JSON and
   circuit gates. No CI or test weakening, and no remaining review
   blockers. No commit created.
+
+### s4: O8 closes as Kan rules at closed data (2026-10-17)
+
+- Commits:  none yet.  One USER commit has the code (s4-a:  kan.c and
+  eval.c), examples/o8-laws.lang, test/json/o8-laws.json, 7 eval rows,
+  1 check refusal, 1 changed golden row and this record (s4-b).
+- D10 transp (kan.c closed_line, 321):  kan_transp (1246) tests the
+  line head with closed_line, not closed_type.  closed_line is true at a
+  closed type, and at Sum, Option, List, Prod and a family when each
+  argument is a closed line or (at a family) a Nat literal.  Thus
+  `transp (<_> T) phi a` gives `a` at each such T, a neutral `a` too.
+  The rule reads the line, not the type of `a`.
+- D10 hcomp (kan.c hcomp_closed, 341):  kan_hcomp (1600) calls
+  hcomp_closed before the Pi, Sigma, Prod and data rules, then
+  hcomp_constant gives `u0`.  The old test was `closed_type(a) &&
+  a->kind != VAL_UNIV`.  hcomp_closed is a separate recursive check:
+  Nat, Field, Unit and Flag;  Sum, Option, List and Prod with eligible
+  fields;  a plain family when each constructor field at the parameters
+  is eligible (a recursive field is the family itself).  Type n, a HIT,
+  a dependent field, a partner field and an open field are not
+  eligible, at each depth.  The walk stops at depth 64.  A nested
+  universe keeps the universe rule (b11).  D3 of M4 and D8 of M3 stay:
+  a HIT is never eligible, and the rule needs a constant system.
+- Review note (a) (an empty system):  b20 `hcomp (Option Nat) i0 (fun
+  i => [ i0 -> a ]) a` TYPE_REFL -> ok.  Each face is i0, thus
+  hcomp_constant is true and the new rule gives `u0`.  This is the
+  closed-type rule of note (a) at more types, not a wrong value:  at a
+  constructor `u0` the fieldwise rule gives the same value, and D8 of M3
+  forbids the rule only at a general A.
+- D11:  no code.  d01, d03 and d04 stay neutral (the table below).
+- D12:  skipped (no code, no mutant).  f01 (the empty-face `elim` hcomp
+  at a dependent motive), f02 (`hfill Circle k .. base i1` against the
+  hcomp), f03 (the same at Nat) and f04 (the M5 s3 (b) fill) give ok
+  before the code.  No input fails.  See open item (1).
+- Printer (eval.c print_value, 2781 and 2797):  the chain loop stops at
+  a path constructor, and the tail prints by print_pcon.  Root cause of
+  the M5 s2 quirk:  the loop read the path constructor as a chain op,
+  thus its last interval argument printed without `@`.  `rg -n 'loop i'
+  test` has no match.
+- Probes (build/m6s4-probe/*.lang, `langc check`), before -> after:
+
+| Probes | Before | After |
+|---|---|---|
+| (a) transp, closed line:  a01 to a05 (Nat, Field, Unit, Flag, Type 0), a09 (Prod Nat Field, eta), a16 (Item, no parameters), a13 (`some 3`), a14 (`makeLot 3 7`) | ok | ok |
+| (a) transp, closed line, neutral `a`:  a06 Sum Nat Flag, a07 Option Nat, a08 List Nat, a10 Lot 3, a11 Option (Prod (Type 0) (List Flag)), a12 List (Option Nat) at face k, a15 Susp Nat | TYPE_REFL (`the start normalizes to transp (<_> T) i0 a, the end normalizes to a`) | ok |
+| (b) hcomp, constant system, neutral `u0`:  b01 Nat, b02 Flag, b06 Prod Nat Field (fieldwise and eta) | ok | ok |
+| (b) the same:  b03 Sum Nat Flag, b04 Option Nat, b05 List Nat, b07 Item, b08 Stack (recursive field), b09 Lot 3, b10 List (Option Unit) | TYPE_REFL | ok |
+| (b) not eligible:  b11 Type 0 (`Glue a [ k -> pack a (lineToEquiv (<i> a)) ]`), b12 Circle, b13 Option Circle, b14 List Circle, b15 DPair Circle (fun c => Nat), b16 Option A (open), b17 Option (Type 0), b18 DPair Nat (fun n => Nat) (dependent field), b19 Prod Nat Circle | TYPE_REFL | TYPE_REFL, the same text |
+| Review note (a):  b20 (only i0 faces) | TYPE_REFL | ok |
+| (c) substitution:  c01 (fieldwise at Option A, then A := Circle, against Option Circle), c03 (= `some (hcomp Circle k (fun i => [ k -> base ]) base)`) | ok | ok |
+| (c) c02 (= `some base`) | TYPE_REFL | TYPE_REFL |
+| (d) D11:  d01 `transp (<i> P n) i0 u`, d03 `transp (<_> Option A) i0 a`, d04 hcomp (Option Nat) with `q @ i` | TYPE_REFL (neutral) | TYPE_REFL (neutral) |
+| (d) d02 | ok | ok |
+| (e) e01 (`none` against `some 3`), e02 (`none` against a neutral `a`), e03 (a neutral `a` against `none`) | HCOMP_BASE | HCOMP_BASE |
+| (f) D12:  f01 to f04 | ok | ok |
+| (g) g01 (`<i> pair base (loop @ i)`) | TYPE_REFL, prints `(loop i)` | TYPE_REFL, prints `(loop @ i)` |
+
+- Classification (step 0 (e)), hcomp at a non-HIT data type, phi not
+  i1.  HCOMP_BASE is a check refusal (check.c 2698):  u i0 must convert
+  to `u0` on each face.  A neutral branch that converts to `u0` at i0
+  passes the check;  then the hcomp stays stuck unless the system is
+  constant at an eligible type.
+
+| u0 (base) | u i0 (branch) | Type | Result |
+|---|---|---|---|
+| any | constant system (the same value at each i) | eligible | `u0` (D10, new) |
+| constructor c | constructor c | data | fieldwise:  c with an hcomp at each field (M3, no change) |
+| constructor c | constructor d, d not c | data | HCOMP_BASE (e01) |
+| neutral | constructor | data | HCOMP_BASE (e02) |
+| constructor | neutral | data | HCOMP_BASE (e03) |
+| neutral | neutral, not constant | data | a stuck hcomp (D11, d04) |
+| neutral | constant system | not eligible:  a HIT field, an open field, a dependent field, Type n in a field | a stuck hcomp (b13 to b18) |
+| any | any | Type n | hcomp_univ gives a Glue type (b11) |
+| any | any | a HIT | a canonical hcomp (D3 of M4, b12) |
+
+- Printed forms:  `make -B check` with s4-a and no new rows gave exit 2
+  with 1 failure.  test/eval/expect.txt 177 `quot quotSquashcStuck`:
+  `(squashc Nat (R i0) x y p q k l)` -> `(squashc Nat (R i0) x y p q @ k
+  @ l)`.  Reason:  the printer fix (squashc has 2 interval arguments).
+  D10 changed no golden row.
+- examples/o8-laws.lang:  the refl rows of a06 to a12, a15 (transpSum
+  to transpSusp), b03 to b10 (hcompSum to hcompNested), c01
+  (substCircle) and c03 (substCircleField, with the helper optionFill);
+  the defs of the eval rows.  test/json/o8-laws.json is
+  `{"glue-lang":1,"instances":[]}`:  the example has no closed instance
+  (as universes.json and kanpath.json).
+- Eval rows (7):  transpClosed (`fun a => a`), hcompConst (`fun k =>
+  fun a => a`), hcompCircle, hcompOptionCircle and hcompListCircle (the
+  stuck hcomp), transpOpen (`transp (<i> P n) i0 u`) and loopPair (`<i>
+  pair base (loop @ i)`).
+- Check refusal:  test/check/hcomp-base-data.lang (e01) gives
+  HCOMP_BASE (`u i0 is none and u0 is some 3`).  hcomp-base.lang covers
+  Nat only.
+- Mutants (each with `make -B build/langc` and `make check`, reverted,
+  the hashes of kan.c and eval.c compared, final `make -B build/langc`
+  exit 0):  4 KILLED, 0 SURVIVED.  `make check` stops at the first
+  failing native harness:  for mutants 1 and 3 a second run (gate.sh
+  only) lists the guest rows.
+
+| Mutant | First failing rows |
+|---|---|
+| 1. kan.c closed_line:  a head that is not data, Prod or a family gives 1 (an open line passes) | native HIT regressions `parameterized mutual partner transport computes its dependent fill: expected ok, got TYPE_REFL`;  gate.sh:  examples bag.lang (transpCons), circle.lang (meridT), gluekan.lang, iso.lang, otp.lang, transportProp.lang;  eval `kan stuckP` (`fun P => fun n => fun u => u`), `equality moved`, `kan piLine`, `kan sigmaLine`, `kan meetLine`. |
+| 2. kan.c hcomp_closed:  `val_is(a, OP_FAMILY)` for `plain_family` (a HIT passes) | hcomp-i0-circle.lang and hcomp-i0-int.lang (exit 0, not TYPE_REFL);  eval `circle elimEmptyFold` (`<i> base`);  o8-laws hcompCircle, hcompOptionCircle and hcompListCircle (`fun k => fun a => a`);  build transp-hcomp.lang and hcomp-instance.lang (exit 0, not JSON_VALUE).  8 failures. |
+| 3. kan.c hcomp_closed:  Sum, Option, List and Prod do not test their fields (a HIT is excluded only at the outer head) | native path regressions, 4 failed (`Sum hcomp projects on the branch face`:  `inl x`, not `inl (hcomp A k ..)`;  an open field passes too);  gate.sh:  examples/o8-laws.lang `TYPE_REFL: substCircleField: ... the start normalizes to some base, the end normalizes to some (hcomp Circle k (fun i => [ k -> base ]) base)`, thus the 7 o8-laws eval rows and the o8-laws build. |
+| 4. eval.c print_value:  the chain loop does not stop at a path constructor | eval `quot quotSquashcStuck` (`q k l`) and `o8-laws loopPair` (`<i> pair base (loop i)`). |
+
+- Gates:  `make -B check` exit 0 (native circuit 9, path 46, face 35, HIT
+  44;  examples 38, parse refusals 18, check refusals 141, evals 262, json
+  32 builds, build refusals 8, circuits 4, same-ir 3, circuit refusals 12,
+  satcheck refusals 6;  node regressions 6, printer 2).  `make
+  check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.
+  `make e2e` exit 0 (33 passed).  `git diff --exit-code -- test/circuit
+  contracts/src/verifiers` exit 0:  no IR change.  contracts/test/fixtures
+  restored from HEAD, then `forge test --root contracts` 33 passed,
+  0 failed.
+
+- Open items:  (1) D12 is skipped:  no input fails (f01 to f04 ok).  A
+  USER ruling can ask for the i0 branch drop for a different reason.
+  (2) Susp Nat under D10:  Susp is a HIT.  closed_line accepts a family
+  with closed parameters, a HIT family too (a15 TYPE_REFL -> ok).
+  Circle (no parameters) has the rule since M4 s2 (D4).  The USER can
+  confirm that D10 covers a HIT with closed parameters.  (3) A family
+  with a dependent field (b18 `DPair Nat (fun n => Nat)`) is not
+  eligible, also when the field type does not use the earlier field.
+  (4) b19 prints a nested system `[ k -> [ k -> second a ] ]`.  This
+  print is from before s4.
+- Build record:  s4-a and s4-b by hand in the main loop (claude3, no
+  subagents).
