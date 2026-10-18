@@ -1,0 +1,10 @@
+-- M8 s1 (D3, P7): the circuit square through the indexed binder form. evV,
+-- envSq, CRelV and evQV are as in examples/circVar.lang. The point rule gives
+-- the representative, and the environment gives x at index 1. Thus the IR
+-- must equal test/circuit/square.circuit.json (test/circuit/same-ir.txt),
+-- and the circuit name is square.
+def evV : (Nat -> Field) -> CircV -> Field := fun en => fun c => elim (fun d => Field) (fun n => en n) (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def envSq : Field -> Field -> Nat -> Field := fun y => fun x => fun n => elim (fun d => Field) y (fun k => fun ih => x) n
+def CRelV : CircV -> CircV -> Type 0 := fun c1 => fun c2 => (en : Nat -> Field) -> Path Field (evV en c1) (evV en c2)
+def evQV : (Nat -> Field) -> GQuot CircV CRelV -> Field := fun en => fun q => fold Field (fun c => evV en c) (fun c1 => fun c2 => fun r => r en) q
+circuit square public (y : Field) private (x : Field) := evQV (envSq y x) (gcls CircV CRelV (vmul (vvar 1) (vvar 1))) == y

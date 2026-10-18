@@ -3902,3 +3902,57 @@ its table.
   (h)) for M8.  O18:  RULED 2026-10-18 (USER), ruling (f).  O17 closed in
   s5.  O3, O12 (c), O13 and O14 stay open (ruling (f));  O15 and O16
   stay open.  Next:  the M8 kickoff (docs/PLAN.md, the M8 row).
+
+## M8
+
+Plan:  docs/M8-PLAN.md (RULED 2026-10-18 (USER):  each recommendation of
+section 9, (a) to (h)).  Direction 4:  the indexed binder form (O20), the
+specification HIT, the Poseidon hash and the transfer circuit.
+
+### s1
+
+- What changed:  O20, the indexed binder form.  domain/domain.lang:  the
+  family `CircV` (`vvar (vvn : Nat)`, `vlit`, `vadd`, `vmul`, `vpow`)
+  after `family Circ`, with a comment line.  examples/circVar.lang:  `evV`
+  (an `elim` at `CircV`;  the `vpow` case is the Nat fold, as the `cpow`
+  case of `ev`), the environments `envSq y x` and `envP a y x` (each an
+  `elim` at Nat), `CRelV`, `evQV`, the laws evVPoint, evVSq and optV (each
+  `refl`) and the closed defs `evVsq` (9) and `evVidx` (3).
+  examples/circVarSq.glue (circuit square through `GQuot CircV CRelV`) and
+  examples/circVarPoly.glue (circuit poly:  `a` at index 0, `y` at index 1,
+  `x` at index 2).  test/json/circVar.json (2 instances:  evVsq, evVidx).
+  test/check/domain-vvar.lang (REFUSE_NAME).  Rows:  2 in
+  test/circuit/same-ir.txt, 2 in test/eval/expect.txt, 1 in
+  test/check/expect.txt.  SPEC.md:  section 2.10 (new:  Direction 4 (M8),
+  **The indexed binder form.**);  the section 4 bullet **Circuit
+  quotient** points to `CircV`;  section 9 O20 is closed.  No src/ change.
+  This commit includes docs/M8-PLAN.md.
+- Probes (real build/langc after `make -B build/langc`):  the name guard
+  `rg -w` of the 14 new names gave no hit before the append.  `langc check`
+  gives ok for the 3 examples.  `langc eval` gives 9 (evVsq) and 3
+  (evVidx).  `langc circuit .. -o` gives an IR byte-identical to
+  test/circuit/square.circuit.json and test/circuit/poly.circuit.json
+  (poly:  9 rows).  domain-vvar.lang gives REFUSE_NAME (rule R4).
+- Mutants (scratch copies, real build/langc;  each `sd -F` pattern had 1
+  hit):  (m1) the envSq index swap (`fun k => fun ih => x` to `y`):
+  KILLED.  TYPE_REFL at evVSq (the start normalizes to `fieldMul y y`).
+  `langc eval` checks the whole file first, thus the eval row `circVar
+  evVsq => 9` fails with TYPE_REFL (not with 81), and the examples gate
+  also fails.  (m2) `vvar 2` to `vvar 0` in circVarPoly.glue:  KILLED.
+  CIRCUIT_UNCONSTRAINED (x is in no constraint), by the same-ir row
+  `circVarPoly poly poly` only (the examples gate runs `langc check`, and
+  check gives ok).  (m3) the vpow case `hb * t` to `hb + t`:  KILLED.
+  TYPE_REFL at optV, by the examples gate and the json build of circVar.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35, HIT
+  44;  examples 58, parse refusals 18, check refusals 153, evals 278, json
+  38 builds, build refusals 8, circuits 5, same-ir 18, circuit refusals
+  16, satcheck refusals 6;  node regressions 6, printer 2.  Against the M7
+  close:  examples +3, check refusals +1, evals +2, json +1, same-ir +2
+  (docs/M8-PLAN.md section 10, row s1).  `make check-clang` exit 0.
+  `forge build --root contracts --sizes` exit 0.  `make e2e` exit 0.  The
+  diff of test/circuit and contracts/src/verifiers is the 2 same-ir.txt
+  rows only, the same before and after e2e.  contracts/test/fixtures
+  restored, then `forge test --root contracts` 44 passed, 0 failed.
+- Open items:  O20 closed (SPEC.md 9).  O19, O3, O12 (c), O13, O14, O15
+  and O16 stay open.  Next:  s2 (the specification HIT in the SqSpec
+  form).

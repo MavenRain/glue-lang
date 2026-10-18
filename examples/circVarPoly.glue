@@ -1,0 +1,9 @@
+-- M8 s1 (D3, P8): the circuit poly through the indexed binder form, with two
+-- public binders (a at index 0, y at index 1) and one private binder (x at
+-- index 2). evV and envP are as in examples/circVar.lang, and cubic is as in
+-- examples/poly.glue. Thus the IR must equal test/circuit/poly.circuit.json
+-- (test/circuit/same-ir.txt), and the circuit name is poly.
+def evV : (Nat -> Field) -> CircV -> Field := fun en => fun c => elim (fun d => Field) (fun n => en n) (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def envP : Field -> Field -> Field -> Nat -> Field := fun a => fun y => fun x => fun n => elim (fun d => Field) a (fun k => fun ih => elim (fun d => Field) y (fun k2 => fun ih2 => x) k) n
+def cubic : Field -> Field -> Field := fun a => fun t => t * t * t + a * t + 5
+circuit poly public (a : Field) (y : Field) private (x : Field) := cubic (evV (envP a y x) (vvar 0)) (evV (envP a y x) (vvar 2)) == evV (envP a y x) (vvar 1)

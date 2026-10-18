@@ -1004,6 +1004,34 @@ moveSatRefl, `Path (Path Field 9 9) (moveSat 9 3 refl) refl`, is `refl`.
 `langc eval` gives `<j> 9` for `m3`, the closed def `moveSat 9 3 refl`
 (test/eval/expect.txt). test/json/circTransport.json has no instance.
 
+### 2.10 Direction 4 (M8)
+
+**The indexed binder form.** The domain family `CircV` (`vvar`, `vlit`,
+`vadd`, `vmul` and `vpow`) is the circuit syntax with an indexed binder:
+`vvar n` is the binder at the index `n` of an environment `Nat -> Field`
+(D3 of docs/M8-PLAN.md, O20). An environment is an `elim` at Nat. `envSq
+y x` gives `y` at index 0 and `x` at index 1. `envP a y x` gives `a`, `y`
+and `x` at the indexes 0, 1 and 2. The value of an environment at a closed
+index reduces. `evV en c` is the interpreter into Field (an `elim` at
+`CircV`; the `vpow` case is the Nat fold of section 2.8, as the `cpow`
+case of `ev`). `CRelV c1 c2` is the pointwise relation `(en : Nat ->
+Field) -> Path Field (evV en c1) (evV en c2)`, and `evQV en` is the fold
+of `GQuot CircV CRelV` into Field. These laws hold by refl
+(examples/circVar.lang): evVPoint (`evQV en (gcls CircV CRelV c)`
+converts with `evV en c`), evVSq (`evV (envSq y x) (vmul (vvar 1) (vvar
+1))` converts with `x * x`) and optV (`CRelV (vmul (vvar 1) (vvar 1))
+(vpow (vvar 1) 1)`). `langc eval` gives 9 for `evVsq` and 3 for `evVidx`
+(test/eval/expect.txt). The circuit square of examples/circVarSq.glue
+goes through `GQuot CircV CRelV`. The circuit poly of
+examples/circVarPoly.glue has two public binders (`a` at index 0, `y` at
+index 1) and one private binder (`x` at index 2). The two IRs equal
+test/circuit/square.circuit.json and test/circuit/poly.circuit.json
+(test/circuit/same-ir.txt). `CircV` is a new family next to `Circ`,
+because a `cvar` constructor in `Circ` changes 7 files: each fold over
+`Circ` gets one more case. The new family changes no M7 file. A def with
+a constructor name of `CircV` gives REFUSE_NAME
+(test/check/domain-vvar.lang).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -1065,7 +1093,8 @@ the host form of each former.
   optRefl, moveSatRefl and satQFwd hold by refl (examples/circRel.lang,
   evHcomp.lang and circTransport.lang). There is no ring normal form (D8
   of docs/M7-PLAN.md): a relation between two different normal forms is a
-  proof term. The indexed binder form is O20.
+  proof term. The indexed binder form is the family `CircV` (section
+  2.10).
 
 ## 5. Core types
 
@@ -1274,7 +1303,10 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   also an input of `ev`. Thus `GQuot Circ CEqv` has no fold into Field and
   carries properties only (`SatQ`). The lowering uses `GQuot Circ CRel`
   (RULED 2026-10-18 (USER), docs/M7-PLAN.md section 9).
-- O20. New in M7 (ruling (h), docs/M7-PLAN.md section 9). The binders of
+- O20. Closed in M8 (slice s1). The domain family `CircV` has the binder
+  `vvar n`, the index `n` of an environment `Nat -> Field` (section 2.10).
+  The text below is the record of M7.
+  New in M7 (ruling (h), docs/M7-PLAN.md section 9). The binders of
   `Circ` are `cpub` and `cpriv`: one public binder and one private binder
   (the shape of square). A circuit with more binders (poly has two public
   binders) needs an indexed binder form (`cvar (n : Nat)` with an

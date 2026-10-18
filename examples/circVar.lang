@@ -1,0 +1,19 @@
+-- M8 s1 (D3): the indexed binder form. The domain family CircV has the
+-- binder vvar n, the index n of an environment Nat -> Field. envSq y x
+-- (index 0 is y, index 1 is x) and envP a y x (index 0 is a, index 1 is y,
+-- index 2 is x) are environments, each an elim at Nat. evV is the
+-- interpreter into Field, an elim at CircV. The vpow case is the Nat fold of
+-- M6, as the cpow case of ev. CRelV is the pointwise relation and evQV is
+-- the interpreter out of GQuot CircV CRelV. The laws evVPoint, evVSq and
+-- optV hold by refl. evVsq and evVidx are the eval rows
+-- (test/eval/expect.txt).
+def evV : (Nat -> Field) -> CircV -> Field := fun en => fun c => elim (fun d => Field) (fun n => en n) (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def envSq : Field -> Field -> Nat -> Field := fun y => fun x => fun n => elim (fun d => Field) y (fun k => fun ih => x) n
+def envP : Field -> Field -> Field -> Nat -> Field := fun a => fun y => fun x => fun n => elim (fun d => Field) a (fun k => fun ih => elim (fun d => Field) y (fun k2 => fun ih2 => x) k) n
+def CRelV : CircV -> CircV -> Type 0 := fun c1 => fun c2 => (en : Nat -> Field) -> Path Field (evV en c1) (evV en c2)
+def evQV : (Nat -> Field) -> GQuot CircV CRelV -> Field := fun en => fun q => fold Field (fun c => evV en c) (fun c1 => fun c2 => fun r => r en) q
+def evVPoint : (en : Nat -> Field) -> (c : CircV) -> Path Field (evQV en (gcls CircV CRelV c)) (evV en c) := fun en => fun c => refl
+def evVSq : (y : Field) -> (x : Field) -> Path Field (evV (envSq y x) (vmul (vvar 1) (vvar 1))) (x * x) := fun y => fun x => refl
+def optV : CRelV (vmul (vvar 1) (vvar 1)) (vpow (vvar 1) 1) := fun en => refl
+def evVsq : Field := evV (envSq 9 3) (vmul (vvar 1) (vvar 1))
+def evVidx : Field := evV (envP 2 38 3) (vvar 2)

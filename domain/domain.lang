@@ -46,3 +46,7 @@ family Ty (tg : Ctx) := tbase | arrow (ta : Ty tg) (tb : Ty tg)
 -- private binder cpriv (the shape of square). The guest interpreter ev is an
 -- elim into Field (examples/circSyntax.glue). The indexed form is an M8 item.
 family Circ := cpub | cpriv | clit (clv : Field) | cadd (cal : Circ) (car : Circ) | cmul (cml : Circ) (cmr : Circ) | cpow (cpb : Circ) (cpn : Nat)
+-- M8 s1 (D3): the indexed binder form. vvar n is the binder at the index n
+-- of an environment Nat -> Field. The guest interpreter evV is an elim into
+-- Field (examples/circVar.lang). vpow is the cpow form of Circ.
+family CircV := vvar (vvn : Nat) | vlit (vlv : Field) | vadd (vaa : CircV) (vab : CircV) | vmul (vma : CircV) (vmb : CircV) | vpow (vpb : CircV) (vpn : Nat)

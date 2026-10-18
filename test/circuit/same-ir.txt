@@ -14,3 +14,5 @@ quotProof square square
 circSyntax square square
 circOpt square square
 circPow square square
+circVarSq square square
+circVarPoly poly poly
