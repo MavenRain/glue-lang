@@ -12,3 +12,4 @@
 1 WITNESS_FAIL witness intSq square y=10 x=3
 2 WITNESS_ARGS witness nonzero nonzero x=3 v=1
 1 WITNESS_FAIL witness nonzero nonzero x=0
+1 WITNESS_FAIL witness circOpt square y=10 x=3

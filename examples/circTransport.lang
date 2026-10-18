@@ -1,0 +1,18 @@
+-- M7 s4 (D9, D7): the transport smoke example of docs/M7-PLAN.md section 4.
+-- ev, CRel, evQ, Sat and SatP are as in examples/circRel.lang. opt relates
+-- the product term and the power term at exponent 1 by refl (optRefl), as
+-- in examples/circOpt.glue. SLine is the line of SatP along geqc .. opt.
+-- It is a def because a term <i> t needs a declared type (as Pline of
+-- examples/transportProp.lang). moveSat moves a satisfaction proof of
+-- x * x == y from the product term to the power term. moveSatRefl is the
+-- law at y = 9 and x = 3, and m3 is the eval row (test/eval/expect.txt).
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+def Sat : Circ -> Field -> Field -> Type 0 := fun c => fun y => fun x => Path Field (ev y x c) y
+def SatP : Field -> Field -> GQuot Circ CRel -> Type 0 := fun y => fun x => fun q => fold (Type 0) (fun c => Sat c y x) (fun c1 => fun c2 => fun r => <i> Path Field (r y x @ i) y) q
+def opt : CRel (cmul cpriv cpriv) (cpow cpriv 1) := fun y => fun x => refl
+def SLine : (y : Field) -> (x : Field) -> Path (Type 0) (SatP y x (gcls Circ CRel (cmul cpriv cpriv))) (SatP y x (gcls Circ CRel (cpow cpriv 1))) := fun y => fun x => <i> SatP y x (geqc Circ CRel (cmul cpriv cpriv) (cpow cpriv 1) opt @ i)
+def moveSat : (y : Field) -> (x : Field) -> Sat (cmul cpriv cpriv) y x -> Sat (cpow cpriv 1) y x := fun y => fun x => fun p => transport (SLine y x) p
+def moveSatRefl : Path (Path Field 9 9) (moveSat 9 3 refl) refl := refl
+def m3 : Path Field 9 9 := moveSat 9 3 refl

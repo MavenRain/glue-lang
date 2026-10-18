@@ -1,0 +1,15 @@
+-- M7 s4 (D5, D9): the transport smoke circuit through geqc. ev, CRel and
+-- evQ are as in examples/circSyntax.glue. opt relates the product term cmul
+-- and the power term cpow at exponent 1 by refl, because both terms
+-- normalize to x * x (the cpow case is the Nat fold of M6). The two terms
+-- are different representatives, thus geqc .. opt is a path between two
+-- points of the quotient. At i1 the boundary rule gives the point of the
+-- power term. Thus the IR must equal test/circuit/square.circuit.json
+-- (test/circuit/same-ir.txt), and the circuit name is square. The witness
+-- y=10 x=3 does not satisfy the constraint (test/circuit/refuse.txt).
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+def opt : CRel (cmul cpriv cpriv) (cpow cpriv 1) := fun y => fun x => refl
+
+circuit square public (y : Field) private (x : Field) := evQ y x (geqc Circ CRel (cmul cpriv cpriv) (cpow cpriv 1) opt @ i1) == y

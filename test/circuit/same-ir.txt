@@ -12,3 +12,5 @@ quotHcomp square square
 quotElimHcomp square square
 quotProof square square
 circSyntax square square
+circOpt square square
+circPow square square

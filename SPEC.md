@@ -984,6 +984,26 @@ normal forms (`fieldAdd (fieldMul x x) 0` and `fieldMul x x`). Thus
 from the program. M7 adds no ring conv rule (docs/M7-PLAN.md question
 (i)).
 
+**The transport smoke example.** (D5, D6, D7, D9) `opt : CRel (cmul
+cpriv cpriv) (cpow cpriv 1)` is `refl`, because both terms normalize to
+`fieldMul x x`. The `cpow` case of `ev` is the Nat fold of M6, and `cpow
+b n` is `b` to the power n + 1. The two terms are different
+representatives, thus `geqc Circ CRel (cmul cpriv cpriv) (cpow cpriv 1)
+opt` is a path between two points of the quotient. The circuit `square`
+of examples/circOpt.glue reads this path at `i1`. The circuit `square` of
+examples/circPow.glue reads the point `gcls Circ CRel (cpow cpriv 1)`.
+Each constraint reduces before the lowering, and each IR equals
+test/circuit/square.circuit.json (test/circuit/same-ir.txt). The witness
+`y=10 x=3` of circOpt gives WITNESS_FAIL through the quotient
+(test/circuit/refuse.txt). In examples/circTransport.lang, `SLine y x` is
+the def of the line `<i> SatP y x (geqc Circ CRel (cmul cpriv cpriv)
+(cpow cpriv 1) opt @ i)`, as `Pline` of examples/transportProp.lang.
+`moveSat y x p` is `transport (SLine y x) p`. It moves a proof of `Sat
+(cmul cpriv cpriv) y x` to a proof of `Sat (cpow cpriv 1) y x`. The law
+moveSatRefl, `Path (Path Field 9 9) (moveSat 9 3 refl) refl`, is `refl`.
+`langc eval` gives `<j> 9` for `m3`, the closed def `moveSat 9 3 refl`
+(test/eval/expect.txt). test/json/circTransport.json has no instance.
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.

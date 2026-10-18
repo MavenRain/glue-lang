@@ -3692,3 +3692,71 @@ commit includes the plan.
   Field, and `GQuot Circ CEqv` carries properties only.  The SPEC.md
   section 9 record is s5.  The indexed binder form of `Circ` stays an M8
   item (question (h)).  Next:  s4 (docs/M7-PLAN.md section 10).
+
+### s4: add the transport smoke example (2026-10-18)
+
+- Scope:  D5, D6, D7 and D9 of docs/M7-PLAN.md (rulings (d) and (e)):
+  `opt` by refl, the circuits through `geqc .. opt` and through `cpow`,
+  and `moveSat` through the `SLine` def.  No change in src/ and in
+  domain/domain.lang.
+- examples/circOpt.glue:  `ev`, `CRel` and `evQ` (as circSyntax.glue),
+  `opt : CRel (cmul cpriv cpriv) (cpow cpriv 1) := fun y => fun x =>
+  refl`, and the circuit `square` on `geqc Circ CRel (cmul cpriv cpriv)
+  (cpow cpriv 1) opt @ i1`.  `langc check` gives ok, and the IR equals
+  test/circuit/square.circuit.json.
+- examples/circPow.glue:  `ev`, `CRel` and `evQ`, and the circuit `square`
+  on `gcls Circ CRel (cpow cpriv 1)`.  It has no `opt`, because the
+  circuit does not use it.  `langc check` gives ok, and the IR equals the
+  square golden.
+- examples/circTransport.lang:  `ev`, `CRel`, `evQ`, `Sat` and `SatP` (as
+  circRel.lang), `opt`, `SLine`, `moveSat` (a declared Pi type), the law
+  moveSatRefl `Path (Path Field 9 9) (moveSat 9 3 refl) refl := refl`,
+  and the closed def `m3 : Path Field 9 9 := moveSat 9 3 refl`.  `langc
+  check` gives ok:  no TYPE_REFL at moveSatRefl.  `langc eval` gives `<j>
+  9` for m3 and `<i> <j> 9` for moveSatRefl.  No def name gave
+  REFUSE_NAME.  `langc build` exit 0 with 0 instances:
+  test/json/circTransport.json is `{"glue-lang":1,"instances":[]}`.
+  Difference from the prompt plan note (a closed def is an instance):
+  moveSatRefl and m3 are proofs, and src/json.c line 349 says that
+  functions, types, families and proofs are not instances.
+- Rows:  `circOpt square square` and `circPow square square` in
+  test/circuit/same-ir.txt;  `1 WITNESS_FAIL witness circOpt square y=10
+  x=3` in test/circuit/refuse.txt (`langc: WITNESS_FAIL: square: 15:58:
+  the constraint fails: the left side is 9, the right side is 10`, and no
+  file at -o);  `circTransport m3 => <j> 9` in test/eval/expect.txt.
+- Delta against section 10 (examples +3, same-ir +2, circuit refusals +1,
+  evals +1):  also json +1 (circTransport.lang is a .lang example, s1
+  trap).  The plan does not list it.
+- SPEC.md 2.9:  1 paragraph after **No ring normal form.**:  **The
+  transport smoke example.** (D5, D6, D7, D9).
+- Mutants:  scratch copies of the new files, run with the real
+  build/langc (no src mutant).  Each `sd -F` match count is as planned:
+  the header comments do not match.
+  1. Section 8:  `cpow cpriv 1` to `cpow cpriv 2` in a copy of
+     circOpt.glue (2 matches:  `opt` and the circuit).  `langc: TYPE_REFL:
+     opt: refl cannot prove the path: the start normalizes to fieldMul x
+     x, the end normalizes to fieldMul x (fieldMul x x)`.  KILLED by the
+     examples row and the same-ir row (`langc circuit` gives the same
+     TYPE_REFL).  The refuse row also kills it (TYPE_REFL, not
+     WITNESS_FAIL).
+  2. The circuit of a copy of circPow.glue at `cpow cpriv 0` (1 match):
+     check ok, IR DIFF.  KILLED by the same-ir row.
+  3. `def m3 : Path Field 9 9 := moveSat 9 3 refl` to `def m3 : Path
+     Field 4 4 := moveSat 4 2 refl` in a copy of circTransport.lang (1
+     match):  check ok, and `langc eval` gives `<j> 4`.  KILLED by the
+     eval row.
+  No mutant SURVIVED, thus no new row.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 54, parse refusals 18, check refusals 152, evals 276,
+  json 37 builds, build refusals 8, circuits 5, same-ir 16, circuit
+  refusals 15, satcheck refusals 6;  node regressions 6, printer 2.
+  Against s3:  examples +3, evals +1, json +1, same-ir +2, circuit
+  refusals +1.  `make check-clang` exit 0.  `forge build --root contracts
+  --sizes` exit 0.  `make e2e` exit 0.  Before e2e, the diff of
+  test/circuit and contracts/src/verifiers holds only the 3 new rows, and
+  after e2e it is the same.  contracts/src/verifiers did not change.
+  contracts/test/fixtures restored, then `forge test --root contracts` 44
+  passed, 0 failed.
+- Open items:  none new.  s5 records O19 and the O4 record in SPEC.md
+  section 9, and closes O17 (hintTrap.glue and the WITNESS_HINT row).
+  Next:  s5 (docs/M7-PLAN.md section 10).

@@ -272,3 +272,4 @@ circEval evLit => 5
 circEval evAdd => 12
 circEval evMul => 9
 circEval evPow => 27
+circTransport m3 => <j> 9

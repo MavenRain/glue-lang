@@ -1,0 +1,10 @@
+-- M7 s4 (D5, D6): the circuit through the power term of Circ. ev, CRel and
+-- evQ are as in examples/circSyntax.glue. The ev case of cpow is the Nat
+-- fold of M6, and at exponent 1 it gives x * x. Thus the IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt), and the
+-- circuit name is square.
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+
+circuit square public (y : Field) private (x : Field) := evQ y x (gcls Circ CRel (cpow cpriv 1)) == y
