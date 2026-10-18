@@ -3,3 +3,4 @@ range range next=256 b=255
 poly poly a=3 y=19 x=2
 quotSq square y=9 x=3
 nonzero nonzero x=3
+poseidon poseidon y=7853200120776062878684798364095072458815029376092732009249414926327459813530 a=1 b=2

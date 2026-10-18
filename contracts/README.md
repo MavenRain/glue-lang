@@ -3,7 +3,7 @@
 A Foundry project for the Solidity verifier that `glue-halo2 solidity`
 writes. There is one verifier for each example circuit of
 `test/circuit/expect.txt` in the repository root: `square`, `range`,
-`poly` and `nonzero`. `make e2e` writes them.
+`poly`, `nonzero` and `poseidon`. `make e2e` writes them.
 
 ## Files
 
@@ -22,7 +22,9 @@ writes. There is one verifier for each example circuit of
 - `test/Vm.sol`: the few Foundry cheat codes that the test and the script
   use. The project does not use forge-std.
 - `script/DeployVerifier.s.sol`: `--sig 'run(string)' NAME` deploys the
-  verifier of the circuit NAME and logs its address. Another NAME reverts.
+  verifier of the circuit NAME and logs its address. The script reads the
+  creation code from the build artifact (`getCode`) and does not import the
+  verifiers. A NAME with no artifact stops the script.
 
 ## Interface
 
@@ -42,10 +44,11 @@ layout emitted by the CLI and rejects redirected argument offsets.
 | range | 6,217 | 1,395,783 | 313,566 |
 | poly | 5,802 | 1,306,103 | 278,072 |
 | nonzero | 5,387 | 1,216,448 | 262,661 |
+| poseidon | 5,801 | 1,305,911 | 277,871 |
 
 The EIP-170 limit is 24,576 bytes. The gas is from `forge test
 --gas-report`. `forge build --sizes` shows one
-`Halo2Verifier` row for the four files.
+`Halo2Verifier` row for the five files.
 
 ## Regenerate
 
@@ -94,5 +97,5 @@ Then deploy:
     forge script contracts/script/DeployVerifier.s.sol --root contracts --sig 'run(string)' square \
         --rpc-url $TELCOIN_RPC_URL --account <keystore> --broadcast
 
-Replace `square` with `range`, `poly` or `nonzero` for the other verifiers. The bytecode targets EVM paris (no PUSH0), so it runs on chains that do
+Replace `square` with `range`, `poly`, `nonzero` or `poseidon` for the other verifiers. The bytecode targets EVM paris (no PUSH0), so it runs on chains that do
 not have Shanghai.

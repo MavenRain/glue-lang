@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Halo2Verifier as NonzeroVerifier} from "../src/verifiers/nonzero.sol";
 import {Halo2Verifier as PolyVerifier} from "../src/verifiers/poly.sol";
+import {Halo2Verifier as PoseidonVerifier} from "../src/verifiers/poseidon.sol";
 import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
 import {Vm, VM_ADDRESS} from "./Vm.sol";
@@ -206,5 +207,25 @@ contract NonzeroVerifierTest is VerifierCase {
 
     function testThereIsNoPublicInput() public view {
         require(instances.length == 0, "nonzero has a public input");
+    }
+}
+
+/// examples/poseidon.glue with a=1 b=2 (test/circuit/expect.txt). The public
+/// input y is the circomlib hash poseidon([1, 2]) (docs/M8-PLAN.md D6).
+contract PoseidonVerifierTest is VerifierCase {
+    function name() internal pure override returns (string memory) {
+        return "poseidon";
+    }
+
+    function deploy() internal override returns (address) {
+        return address(new PoseidonVerifier());
+    }
+
+    function testThePublicInputIsTheHash() public view {
+        require(
+            instances.length == 1
+                && instances[0] == 7853200120776062878684798364095072458815029376092732009249414926327459813530,
+            "the public input of poseidon is not poseidon([1, 2])"
+        );
     }
 }

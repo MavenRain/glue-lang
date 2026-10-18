@@ -4097,3 +4097,91 @@ test/circuit and contracts/src/verifiers is empty before and after e2e;
 Open items: s4 (examples/poseidon.glue, the circuit `poseidon` with 276
 hints of form (i), a golden, an e2e row, a verifier file and its Forge
 tests, a WITNESS_FAIL row with a wrong hash) measures the real rows and k.
+
+### s4
+
+The circuit `poseidon` (docs/M8-PLAN.md D4 to D6, section 10 row s4,
+ruling (d):  form (i), hints on the current arith rows).  No src/ change,
+no new IR form, no verifier generator change.  The IR and the verifier of
+each current circuit are byte-identical.
+
+What changed:
+- examples/poseidon.glue (new):  8 header comment lines, the 204 constant
+  defs and `sbox5` (copies from examples/poseidon.lang with
+  `rg -N '^def (rc|mds|sbox5)'`), then one circuit line
+  `circuit poseidon public (y : Field) private (a : Field) (b : Field)`
+  with 276 hints (`tRkJ` = the S-box outputs, `sRkI` = the state words;
+  8 x 6 + 57 x 4) and 277 constraints (one for each hint, then
+  `s64k0 == y`).  A runner wrote the circuit line (the round r takes
+  rc(3r), rc(3r+1) and rc(3r+2);  the rounds 0 to 3 and 61 to 64 are
+  full).
+- test/circuit/poseidon.circuit.json (538883 B) and
+  poseidon.witness.json (625627 B):  the new goldens.
+  test/circuit/expect.txt:  the row `poseidon poseidon` at y = the vector
+  of test/eval/expect.txt, a = 1, b = 2.  test/circuit/refuse.txt:  a
+  WITNESS_FAIL row at y + 1.
+- contracts/src/verifiers/poseidon.sol (new, the current generator) and
+  contracts/test/fixtures/poseidon.proof.json (new).
+- contracts/test/Verifiers.t.sol:  the poseidon verifier import and the
+  contract PoseidonVerifierTest (the pattern of the current tests, and
+  testThePublicInputIsTheHash):  11 tests.
+- contracts/script/DeployVerifier.s.sol (ruling below):  no verifier
+  imports.  `run(string)` gets the creation code with
+  `VM.getCode(string.concat(name, ".sol:Halo2Verifier"))` and deploys it
+  with a CREATE (`createFrom`) under `startBroadcast`;  a zero address
+  stops the script.  The interface does not change:  the e2e
+  `forge script` loop and the README deploy lines are the same.
+  contracts/test/Vm.sol:  `getCode`.  No foundry.toml change (`getCode`
+  needs no fs_permissions).
+- SPEC.md 2.10 (**The Poseidon hash.**):  the measured circuit line
+  replaces the estimate.
+- contracts/README.md:  the 3 circuit lists name poseidon ("five
+  files"), the numbers row `| poseidon | 5,801 | 1,305,911 | 277,871 |`
+  (runtime size = gas report Deployment Size 5833 - 32;  verifyProof =
+  the gas report Max) and the script line (getCode, no imports).
+
+Ruling (USER 2026-10-18, s4 turn 2):  getCode + create, option 1 of 4
+(getCode + create / one script for each verifier / change the size gate /
+stop).  Cause:  the first gate run gave `forge build --root contracts
+--sizes` exit 1:  DeployVerifier runtime 30,380 B, margin -5,804 against
+EIP-170 (24,576 B).  The old script imported each verifier and held its
+creation code (approximately 5.8 KB each);  with 4 verifiers it was
+approximately 29 B below the limit.  After the ruling:  DeployVerifier
+runtime 1,445 B.  A new verifier (s5) adds no size to the script.
+
+Probes ($TMPDIR, `-o`):  `langc check` ok;  `langc circuit`:  k 12, 3644
+rows (s3 estimate 3654), advice 3, fixed 7, instance 1, one gate arith;
+`langc witness` at the vector:  exit 0, `satcheck` ok;  at y + 1:
+WITNESS_FAIL at 215:34520.  Prover (debug glue-halo2, k 12, sandbox off
+for `/usr/bin/time -l`):  keygen 1.51 s, max RSS 25149440 B;  prove
+3.20 s, max RSS 35340288 B (the limit is 4 GB).  Two `solidity` runs give
+the same verifier file.
+
+Mutants (scratch copies, `sd -F` hit count 1 each):
+- m1a (the s64k2 constraint removed):  CIRCUIT_UNCONSTRAINED at check,
+  circuit and witness:  KILLED by the examples row and the circuits row.
+- m1b (the t31k0 S-box constraint removed):  check ok, 3630 rows, the IR
+  is not the golden, witness exit 0 (`langc witness` does not see a free
+  hint), satcheck of the golden witness gives SAT_IR:  KILLED by the
+  circuits row (the IR golden).
+- m2 (the last digit of rc100):  WITNESS_FAIL at `s64k0 == y`:  KILLED by
+  the circuits row.
+- m3 (`mds12 * t64k2 == s64k1` to `mds12 * t64k1 == s64k1`):
+  WITNESS_FAIL at 215:34406:  KILLED by the circuits row.
+
+Gates (after the ruling;  the slice files were staged before the gates):
+`make -B check` exit 0 (native circuit 9, path 46, face 35, HIT 44;
+examples 62, parse refusals 18, check refusals 154, evals 283, json 40
+builds, build refusals 8, circuits 6, same-ir 19, circuit refusals 17,
+satcheck refusals 6;  node regressions 6, printer 2);  `make check-clang`
+exit 0;  `forge build --root contracts --sizes` exit 0;  `make e2e` exit 0
+(6 rows, 27 s);  the IR diff of test/circuit and contracts/src/verifiers
+is empty before and after e2e;  `forge test` 55 passed (44 + 11).  The
+delta against s3 is the section 10 row s4:  examples +1, circuits +1,
+circuit refusals +1, e2e +1 row, forge tests +11.
+
+Open items:  s5 (`TransferSpec` in domain/domain.lang;  transfer.glue,
+the circuit `transfer`, its golden, e2e row, verifier file and Forge
+tests;  a WITNESS_FAIL row with a wrong nullifier).  The script reads each
+artifact by name, thus the transfer verifier changes only the doc comment
+list of DeployVerifier.

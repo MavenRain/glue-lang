@@ -14,3 +14,4 @@
 1 WITNESS_FAIL witness nonzero nonzero x=0
 1 WITNESS_FAIL witness circOpt square y=10 x=3
 1 WITNESS_HINT witness hintTrap hintTrap x=0
+1 WITNESS_FAIL witness poseidon poseidon y=7853200120776062878684798364095072458815029376092732009249414926327459813531 a=1 b=2

@@ -16,6 +16,8 @@ interface Vm {
 
     function parseJsonUintArray(string calldata json, string calldata key) external pure returns (uint256[] memory);
 
+    function getCode(string calldata artifactPath) external view returns (bytes memory creationBytecode);
+
     function startBroadcast() external;
 
     function stopBroadcast() external;

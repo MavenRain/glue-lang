@@ -1079,8 +1079,13 @@ column 0 of M. test/json/poseidon.json has 207 instances. The circuit
 form is form (i) (D4): one hint for each S-box output and each state
 word, and one constraint for each hint. A probe circuit gave 72 rows for
 a full round and 54 rows for a partial round (the D4 estimate was 48 and
-46). Thus the permutation needs approximately 8 x 72 + 57 x 54 = 3654
-rows, and k 12 (2^12 = 4096). The circuit `poseidon` is slice s4.
+46). The circuit `poseidon` of examples/poseidon.glue (slice s4) has the
+form (i): 276 hints and 277 constraints (one for each hint, then word 0
+== y). It has 3644 rows (the estimate was 8 x 72 + 57 x 54 = 3654) and
+k 12 (2^12 = 4096). Its witness at a = 1, b = 2 and the circomlib value
+y satisfies each constraint (`satcheck` gives ok); y + 1 gives
+WITNESS_FAIL (test/circuit/refuse.txt). The e2e row proves the circuit,
+and the verifier contracts/src/verifiers/poseidon.sol accepts the proof.
 
 ## 3. Type formers
 
