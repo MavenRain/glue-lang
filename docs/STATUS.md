@@ -3956,3 +3956,65 @@ specification HIT, the Poseidon hash and the transfer circuit.
 - Open items:  O20 closed (SPEC.md 9).  O19, O3, O12 (c), O13, O14, O15
   and O16 stay open.  Next:  s2 (the specification HIT in the SqSpec
   form).
+
+### s2
+
+- What changed:  the specification HIT (D2).  domain/domain.lang:  the
+  family `SqSpec := smul | spow | slaw <i> [ ~i -> smul, i -> spow ]`
+  after `family CircV`, with a comment line.  examples/spec.lang:  `ev`,
+  `CRel`, `evQ`, `Sat`, `SatP` and `opt` (as in
+  examples/circTransport.lang), the iso defs (as in examples/otp.lang),
+  `lawQ`, `interpS` (the fold of `SqSpec` into `GQuot Circ CRel`), the
+  laws interpEnd0 and interpEnd1 (each `refl`), `SpLine`, `moveSpec`,
+  `idSat` (`isoToEquiv`, both maps `fun p => p`), `SpecSat` (the fold into
+  `Type 0` with the law case `ua (idSat y x)`), `UaLine`, the law uaFwd
+  (`refl`, uaBeta) and the closed defs `m3s` and `m4s`.
+  examples/specSq.glue (circuit square with `evQ y x (interpS (slaw @
+  i1)) == y`).  test/json/spec.json (`{"glue-lang":1,"instances":[]}`:
+  the closed defs have Path types).  test/check/domain-slaw.lang
+  (REFUSE_NAME).  Rows:  1 in test/circuit/same-ir.txt, 2 in
+  test/eval/expect.txt, 1 in test/check/expect.txt.  SPEC.md:  section
+  2.10 **The specification HIT.** (new paragraph);  the section 4 bullet
+  **Circuit quotient** points to `SqSpec`;  section 9 O19 has an M8 s2
+  line.  No src/ change.
+- Probes (real build/langc after `make -B build/langc`):  the name guard
+  `rg -w 'SqSpec|smul|spow|slaw'` over domain, examples, test and src gave
+  no hit before the append.  `langc check` gives ok for spec.lang and
+  specSq.glue.  `langc eval` gives `<j> 9` for m3s and for m4s.  `langc
+  circuit .. -o` gives 3 rows and an IR byte-identical to
+  test/circuit/square.circuit.json.  domain-slaw.lang gives REFUSE_NAME
+  (rule R4).
+- Mutants (scratch copies, real build/langc;  each `sd -F` pattern had 1
+  hit):  (m1) the two point cases of interpS swapped:  KILLED.  HIT_CASE
+  at interpS (the case for slaw must match its boundary), before
+  interpEnd0;  by the examples gate, the json build and the 2 eval rows
+  of spec.  (m2) `slaw @ i1` to `slaw @ i0` in specSq.glue:  SURVIVED.
+  Both points normalize to `x * x` (the precondition of `opt` by refl),
+  thus check gives ok and the IR stays byte-identical.  The mutant is
+  equivalent:  no row can see it (the same-ir row compares the IR only).
+  (m3) first form, the idSat forward map to `<j> hcomp Field (j \/ ~j)
+  (fun k => [ ~j -> p @ i0, j -> p @ i1 ]) (p @ j)`:  check gives ok.
+  This mutant is also equivalent:  Field is a closed type, and the hcomp
+  rule (hcomp_constant) reduces a constant tube to the base `p @ j`.
+  (m3b) the uaFwd right side to the hcomp with the tube `j -> p @ (k \/
+  ~k)`:  KILLED.  TYPE_REFL at uaFwd (the end normalizes to the stuck
+  hcomp).  (m3c) the same hcomp as the idSat forward map:  KILLED.
+  TYPE_REFL at idSat (the iso law `fun q => refl`).  m3b and m3c are
+  killed by the examples gate, the json build and the 2 eval rows of
+  spec.  Two different terms of `Path Field (x * x) y` do not convert:  no
+  proof irrelevance.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35, HIT
+  44;  examples 60, parse refusals 18, check refusals 154, evals 280, json
+  39 builds, build refusals 8, circuits 5, same-ir 19, circuit refusals
+  16, satcheck refusals 6;  node regressions 6, printer 2.  Against s1:
+  examples +2, check refusals +1, evals +2, json +1, same-ir +1
+  (docs/M8-PLAN.md section 10, row s2).  `make check-clang` exit 0.
+  `forge build --root contracts --sizes` exit 0.  `make e2e` exit 0.  The
+  diff of test/circuit and contracts/src/verifiers is the same-ir.txt row
+  `specSq square square` only, the same before and after e2e.
+  contracts/test/fixtures restored, then `forge test --root contracts` 44
+  passed, 0 failed.
+- Open items:  O19, O3, O12 (c), O13, O14, O15 and O16 stay open.  Next:
+  s3 (poseidon.lang:  the constants, the round defs, wrap, poseidonVec).
+  s3 reads the circomlib t = 3 constants, the MDS matrix and the test
+  vector from the circomlib source first (ruling (e)).

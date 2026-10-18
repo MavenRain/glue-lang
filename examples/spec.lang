@@ -1,0 +1,34 @@
+-- M8 s2 (D2): the specification HIT. The domain family SqSpec has the
+-- points smul and spow and the law slaw between them. interpS is the fold
+-- of SqSpec into GQuot Circ CRel:  smul goes to the point cmul cpriv cpriv,
+-- spow goes to the point cpow cpriv 1, and slaw goes to lawQ, the geqc path
+-- of opt. The laws interpEnd0 and interpEnd1 hold by refl. moveSpec moves a
+-- proof of Sat along the line of SatP through interpS (form (a) of D2).
+-- SpecSat is the fold of SqSpec into Type 0 with the law case ua (idSat y
+-- x) (form (b) of D2). uaFwd holds by refl (uaBeta). m3s and m4s are the
+-- eval rows (test/eval/expect.txt). ev, CRel, evQ, Sat, SatP and opt are as
+-- in examples/circTransport.lang. The iso defs are as in examples/otp.lang.
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+def Sat : Circ -> Field -> Field -> Type 0 := fun c => fun y => fun x => Path Field (ev y x c) y
+def SatP : Field -> Field -> GQuot Circ CRel -> Type 0 := fun y => fun x => fun q => fold (Type 0) (fun c => Sat c y x) (fun c1 => fun c2 => fun r => <i> Path Field (r y x @ i) y) q
+def opt : CRel (cmul cpriv cpriv) (cpow cpriv 1) := fun y => fun x => refl
+def fill0 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (p0 : Path B (f x0) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun p0 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> t x0 @ (j /\ k), ~i -> g y, ~j -> g (p0 @ ~i) ]) (g (p0 @ ~i))
+def fill2 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 (j /\ k) i1, ~i -> fill0 A B f g t y x0 p0 (j /\ k) i1, ~j -> g y ]) (g y)
+def sq : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> A := fun A => fun B => fun f => fun g => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp A (i \/ ~i \/ j \/ ~j) (fun k => [ i -> fill0 A B f g t y x1 p1 j ~k, ~i -> fill0 A B f g t y x0 p0 j ~k, j -> t (fill2 A B f g t y x0 x1 p0 p1 i i1) @ ~k, ~j -> g y ]) (fill2 A B f g t y x0 x1 p0 p1 i j)
+def sq1 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> (i : I) -> (j : I) -> B := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => fun i => fun j => hcomp B (i \/ ~i \/ j \/ ~j) (fun k => [ i -> s (p1 @ ~j) @ k, ~i -> s (p0 @ ~j) @ k, j -> s (f (fill2 A B f g t y x0 x1 p0 p1 i i1)) @ k, ~j -> s y @ k ]) (f (sq A B f g t y x0 x1 p0 p1 i j))
+def lemIso : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> (y : B) -> (x0 : A) -> (x1 : A) -> (p0 : Path B (f x0) y) -> (p1 : Path B (f x1) y) -> Path (fiber f y) (pack x0 p0) (pack x1 p1) := fun A => fun B => fun f => fun g => fun s => fun t => fun y => fun x0 => fun x1 => fun p0 => fun p1 => <i> pack (fill2 A B f g t y x0 x1 p0 p1 i i1) (<j> sq1 A B f g s t y x0 x1 p0 p1 i ~j)
+def isoToEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> Equiv A B := fun A => fun B => fun f => fun g => fun s => fun t => pack f (fun y => pack (pack (g y) (s y)) (fun z => lemIso A B f g s t y (g y) (witness z) (s y) (payload z)))
+def lawQ : Path (GQuot Circ CRel) (gcls Circ CRel (cmul cpriv cpriv)) (gcls Circ CRel (cpow cpriv 1)) := <i> geqc Circ CRel (cmul cpriv cpriv) (cpow cpriv 1) opt @ i
+def interpS : SqSpec -> GQuot Circ CRel := fun s => fold (GQuot Circ CRel) (gcls Circ CRel (cmul cpriv cpriv)) (gcls Circ CRel (cpow cpriv 1)) lawQ s
+def interpEnd0 : Path (GQuot Circ CRel) (interpS (slaw @ i0)) (gcls Circ CRel (cmul cpriv cpriv)) := refl
+def interpEnd1 : Path (GQuot Circ CRel) (interpS (slaw @ i1)) (gcls Circ CRel (cpow cpriv 1)) := refl
+def SpLine : (y : Field) -> (x : Field) -> Path (Type 0) (Sat (cmul cpriv cpriv) y x) (Sat (cpow cpriv 1) y x) := fun y => fun x => <i> SatP y x (interpS (slaw @ i))
+def moveSpec : (y : Field) -> (x : Field) -> Sat (cmul cpriv cpriv) y x -> Sat (cpow cpriv 1) y x := fun y => fun x => fun p => transport (SpLine y x) p
+def m3s : Path Field 9 9 := moveSpec 9 3 refl
+def idSat : (y : Field) -> (x : Field) -> Equiv (Sat (cmul cpriv cpriv) y x) (Sat (cpow cpriv 1) y x) := fun y => fun x => isoToEquiv (Sat (cmul cpriv cpriv) y x) (Sat (cpow cpriv 1) y x) (fun p => p) (fun p => p) (fun q => refl) (fun p => refl)
+def SpecSat : Field -> Field -> SqSpec -> Type 0 := fun y => fun x => fun s => fold (Type 0) (Sat (cmul cpriv cpriv) y x) (Sat (cpow cpriv 1) y x) (ua (idSat y x)) s
+def UaLine : (y : Field) -> (x : Field) -> Path (Type 0) (Sat (cmul cpriv cpriv) y x) (Sat (cpow cpriv 1) y x) := fun y => fun x => <i> SpecSat y x (slaw @ i)
+def uaFwd : (y : Field) -> (x : Field) -> (p : Sat (cmul cpriv cpriv) y x) -> Path (Sat (cpow cpriv 1) y x) (transport (UaLine y x) p) (witness (idSat y x) p) := fun y => fun x => fun p => refl
+def m4s : Path Field 9 9 := transport (UaLine 9 3) refl

@@ -16,3 +16,4 @@ circOpt square square
 circPow square square
 circVarSq square square
 circVarPoly poly poly
+specSq square square

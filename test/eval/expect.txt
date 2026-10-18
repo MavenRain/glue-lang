@@ -275,3 +275,5 @@ circEval evPow => 27
 circTransport m3 => <j> 9
 circVar evVsq => 9
 circVar evVidx => 3
+spec m3s => <j> 9
+spec m4s => <j> 9

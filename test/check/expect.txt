@@ -151,3 +151,4 @@ isset-binder.glue CIRCUIT_BINDER
 domain-cpow.lang REFUSE_NAME
 ring-refl.lang TYPE_REFL
 domain-vvar.lang REFUSE_NAME
+domain-slaw.lang REFUSE_NAME

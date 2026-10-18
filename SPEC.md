@@ -1032,6 +1032,30 @@ because a `cvar` constructor in `Circ` changes 7 files: each fold over
 a constructor name of `CircV` gives REFUSE_NAME
 (test/check/domain-vvar.lang).
 
+**The specification HIT.** The domain family `SqSpec` has the points
+`smul` and `spow` and the law `slaw <i> [ ~i -> smul, i -> spow ]` (D2
+of docs/M8-PLAN.md). `smul` and `spow` are two representatives of square
+(`cmul cpriv cpriv` and `cpow cpriv 1`), and `slaw` is the law between
+them. `interpS` is the fold of `SqSpec` into `GQuot Circ CRel`: the point
+cases are the two `gcls` points, and the law case is `lawQ`, the `geqc`
+path of `opt`. The laws interpEnd0 and interpEnd1 hold by refl
+(examples/spec.lang): `interpS (slaw @ i0)` and `interpS (slaw @ i1)`
+convert with the two `gcls` points. The target of the law is the
+satisfaction type at a representative, not a fold into Field (O19). Two
+forms check. (a) `moveSpec y x p` moves a proof of `Sat` along the line
+`<i> SatP y x (interpS (slaw @ i))` (`SpLine`). (b) `SpecSat y x` is the
+fold of `SqSpec` into `Type 0` with the law case `ua (idSat y x)`. `idSat
+y x` is an `Equiv` of `Sat (cmul cpriv cpriv) y x` and `Sat (cpow cpriv
+1) y x` (`isoToEquiv`, both maps `fun p => p`). uaFwd holds by refl
+(uaBeta): `transport (UaLine y x) p` converts with `witness (idSat y x)
+p`, with `UaLine y x` the line `<i> SpecSat y x (slaw @ i)`. `langc eval`
+gives `<j> 9` for `m3s` (`moveSpec 9 3 refl`) and for `m4s` (`transport
+(UaLine 9 3) refl`) (test/eval/expect.txt). test/json/spec.json has no
+instance. The circuit square of examples/specSq.glue takes `interpS
+(slaw @ i1)`, and its IR equals test/circuit/square.circuit.json
+(test/circuit/same-ir.txt). A def with a constructor name of `SqSpec`
+gives REFUSE_NAME (test/check/domain-slaw.lang).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -1094,7 +1118,7 @@ the host form of each former.
   evHcomp.lang and circTransport.lang). There is no ring normal form (D8
   of docs/M7-PLAN.md): a relation between two different normal forms is a
   proof term. The indexed binder form is the family `CircV` (section
-  2.10).
+  2.10). The specification HIT is the family `SqSpec` (section 2.10).
 
 ## 5. Core types
 
@@ -1303,6 +1327,10 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   also an input of `ev`. Thus `GQuot Circ CEqv` has no fold into Field and
   carries properties only (`SatQ`). The lowering uses `GQuot Circ CRel`
   (RULED 2026-10-18 (USER), docs/M7-PLAN.md section 9).
+  M8 s2 (D2 of docs/M8-PLAN.md): the specification HIT `SqSpec` targets
+  the satisfaction types, not a fold into Field. Its law case in `Type 0`
+  is `ua` of an `Equiv` of the two `Sat` types (section 2.10). O19 stays
+  open.
 - O20. Closed in M8 (slice s1). The domain family `CircV` has the binder
   `vvar n`, the index `n` of an environment `Nat -> Field` (section 2.10).
   The text below is the record of M7.

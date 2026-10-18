@@ -1,0 +1,12 @@
+-- M8 s2 (D2, P4): the circuit square through the specification HIT. The
+-- constraint takes the end i1 of the law slaw, thus interpS gives the point
+-- cpow cpriv 1. ev, CRel, evQ and opt are as in examples/circTransport.lang,
+-- and lawQ and interpS are as in examples/spec.lang. Thus the IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt).
+def ev : Field -> Field -> Circ -> Field := fun y => fun x => fun c => elim (fun d => Field) y x (fun v => v) (fun l => fun hl => fun r => fun hr => hl + hr) (fun l => fun hl => fun r => fun hr => hl * hr) (fun b => fun hb => fun n => fold (fun (t : Field) => hb * t) hb n) c
+def CRel : Circ -> Circ -> Type 0 := fun c1 => fun c2 => (y : Field) -> (x : Field) -> Path Field (ev y x c1) (ev y x c2)
+def evQ : Field -> Field -> GQuot Circ CRel -> Field := fun y => fun x => fun q => fold Field (fun c => ev y x c) (fun c1 => fun c2 => fun r => r y x) q
+def opt : CRel (cmul cpriv cpriv) (cpow cpriv 1) := fun y => fun x => refl
+def lawQ : Path (GQuot Circ CRel) (gcls Circ CRel (cmul cpriv cpriv)) (gcls Circ CRel (cpow cpriv 1)) := <i> geqc Circ CRel (cmul cpriv cpriv) (cpow cpriv 1) opt @ i
+def interpS : SqSpec -> GQuot Circ CRel := fun s => fold (GQuot Circ CRel) (gcls Circ CRel (cmul cpriv cpriv)) (gcls Circ CRel (cpow cpriv 1)) lawQ s
+circuit square public (y : Field) private (x : Field) := evQ y x (interpS (slaw @ i1)) == y

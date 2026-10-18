@@ -50,3 +50,7 @@ family Circ := cpub | cpriv | clit (clv : Field) | cadd (cal : Circ) (car : Circ
 -- of an environment Nat -> Field. The guest interpreter evV is an elim into
 -- Field (examples/circVar.lang). vpow is the cpow form of Circ.
 family CircV := vvar (vvn : Nat) | vlit (vlv : Field) | vadd (vaa : CircV) (vab : CircV) | vmul (vma : CircV) (vmb : CircV) | vpow (vpb : CircV) (vpn : Nat)
+-- M8 s2 (D2): the specification HIT. smul and spow are two representatives
+-- of square, and slaw is the law between them. The guest interpreter
+-- interpS is a fold into GQuot Circ CRel (examples/spec.lang).
+family SqSpec := smul | spow | slaw <i> [ ~i -> smul, i -> spow ]
