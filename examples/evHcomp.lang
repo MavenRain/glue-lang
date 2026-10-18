@@ -1,0 +1,9 @@
+-- M7 s1: the law evHcomp of docs/M7-PLAN.md section 4. sq is the fold of
+-- examples/quotSq.glue. The hcomp rule of the eliminator and the
+-- closed-type hcomp rule at Field reduce sq of an hcomp at gcls x to x * x
+-- (evHcompLaw). evHcomp is the closed form at x = 3 (test/eval/expect.txt:
+-- 9). The circuit form is examples/quotHcomp.glue.
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) q
+def evHcompLaw : (x : Field) -> Path Field (sq (hcomp (GQuot Field SqRel) i0 (fun i => [ i0 -> gcls Field SqRel x ]) (gcls Field SqRel x))) (x * x) := fun x => refl
+def evHcomp : Field := sq (hcomp (GQuot Field SqRel) i0 (fun i => [ i0 -> gcls Field SqRel 3 ]) (gcls Field SqRel 3))

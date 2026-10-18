@@ -1,0 +1,7 @@
+-- M7 s1 (D1): the geqc case of a fold out of GQuot Field SqRel must be a
+-- path from a * a to b * b. refl is not such a path. Thus the checker
+-- refuses the case before the lowering (HIT_CASE).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => refl) q
+
+circuit square public (y : Field) private (x : Field) := sq (gcls Field SqRel x) == y

@@ -878,6 +878,51 @@ declared type), TYPE_INFER (`unfold` at a declared type that is not `List
 A` or Nat), HCOMP_BASE (two constructor heads at data), CIRCUIT_LOWER (a
 residual `inv` in a constraint), CIRCUIT_UNCONSTRAINED (an unused hint).
 
+### 2.9 Direction 2 (M7)
+
+M7 is Direction 2 of design/DESIGN.md: two circuits that define the same
+relation are equal, as a path in a quotient. The lowering runs on
+representatives. The path cases of a quotient eliminator are checker
+obligations, and they have no circuit cost (docs/M7-PLAN.md).
+
+**Obligation rules.** (D1) The `eqc`, `geqc` and `squashc` cases of `fold`
+and `elim` are checker obligations (sections 2.6 and 2.7). The checker
+refuses a wrong path case before the lowering: HIT_CASE for `fold`,
+ELIM_CASE for `elim`. These are the M4 and M5 rules; M7 adds guest tests
+only. test/check/geqc-case.glue has the `geqc` case `fun a => fun b => fun
+r => refl` in a fold into Field (HIT_CASE). test/check/elim-geqc-case.glue
+has the same case in `elim` (ELIM_CASE).
+
+**The lowering runs on representatives.** (D5) M7 adds no lowering code and
+does not change the IR. Each quotient value in a constraint reduces before
+the lowering: the point rule at `gcls`, the boundary rule at a constant
+interval, and the `hcomp` rule of the eliminator, then the closed-type
+`hcomp` rule at Field. The lowering sees only literals, binders and `+ -
+*`, as in M1. These circuits have the IR of test/circuit/square.circuit.json
+(test/circuit/same-ir.txt): examples/quotEnd0.glue (`geqc .. @ i0`),
+quotEnd1.glue (`geqc .. @ i1`), quotHcomp.glue (an `hcomp` in `GQuot Field
+SqRel`) and quotElimHcomp.glue (the same `hcomp` through `elim`).
+examples/evHcomp.lang has the law evHcomp: `sq` of the `hcomp` at `gcls
+Field SqRel x` converts with `x * x` by `refl`. Its closed form at x = 3
+evaluates to 9 (test/eval/expect.txt).
+
+**A proof stays a term.** (D6) The lowering reads the point case at a
+representative. A path case has no wire. Thus a large proof term in a path
+case does not change the IR. The `geqc` case of examples/quotProof.glue
+transports `r` two times along the line `Lk a b`, and the IR is the IR of
+`square`. `Lk` is a def, because a term `<k> ..` as an argument needs a
+declared type (PATH_EXPECTED).
+
+**Circuits keep GQuot.** (D7) A `squashc` case into Field needs a square in
+Field, and there is no core isSet Field. The case `fun u => fun v => fun p
+=> fun q => <i> <j> p @ j` gives HIT_CASE (test/check/squashc-field.glue).
+A circuit binder of type `isSet Field` is not a Field binder:
+CIRCUIT_BINDER (test/check/isset-binder.glue). A conv rule that makes two
+Field paths equal reads the type, and proof irrelevance is prohibited
+(ruling 2026-10-14). An axiom gives REFUSE_AXIOM (rule R2). Thus circuits
+use `GQuot` (no `squashc`), and quotRec of examples/quot.lang keeps its
+isSet argument.
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.

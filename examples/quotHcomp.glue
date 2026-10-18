@@ -1,0 +1,9 @@
+-- M7 s1 (D5): the square circuit through an hcomp in the quotient. An hcomp
+-- at a HIT is a canonical value (M4 D3). The hcomp rule of the eliminator
+-- moves the fold into the base and into each side. Then the closed-type
+-- hcomp rule at Field gives x * x, because each side is x * x. Thus the IR
+-- must equal test/circuit/square.circuit.json (test/circuit/same-ir.txt).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) q
+
+circuit square public (y : Field) private (x : Field) := sq (hcomp (GQuot Field SqRel) i0 (fun i => [ i0 -> gcls Field SqRel x ]) (gcls Field SqRel x)) == y

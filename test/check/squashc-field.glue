@@ -1,0 +1,8 @@
+-- M7 s1 (D7): a fold out of Quot into Field needs a squashc case: a square
+-- in Field with the boundary p, q and two refl sides. There is no core
+-- isSet Field. The case <i> <j> p @ j has the side p at i1, not q
+-- (HIT_CASE). Thus circuits use GQuot.
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sqQ : Field -> Field := fun x => fold Field (fun a => a * a) (fun a => fun b => fun r => r) (fun u => fun v => fun p => fun q => <i> <j> p @ j) (cls Field SqRel x)
+
+circuit square public (y : Field) private (x : Field) := sqQ x == y

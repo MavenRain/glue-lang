@@ -1,0 +1,8 @@
+-- M7 s1 (D1): the elim form of test/check/geqc-case.glue. The geqc case of
+-- elim must be a path from a * a to b * b over the geqc line. refl is not
+-- such a path. Thus the checker refuses the case before the lowering
+-- (ELIM_CASE).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sqE : GQuot Field SqRel -> Field := fun q => elim (fun d => Field) (fun a => a * a) (fun a => fun b => fun r => refl) q
+
+circuit square public (y : Field) private (x : Field) := sqE (hcomp (GQuot Field SqRel) i0 (fun i => [ i0 -> gcls Field SqRel x ]) (gcls Field SqRel x)) == y

@@ -3484,3 +3484,75 @@ Validation: a fresh TinyCC build from HEAD 4f0e083 and `make check` passed
 (including check-clang, all native and guest regressions, and printer
 checks). All probes above were rerun with that fresh binary. These fixes
 change documentation only; the counts in the s7 gates above are unchanged.
+
+## M7
+
+Plan:  docs/M7-PLAN.md (RULED 2026-10-18 (USER):  questions (a) to (i),
+each recommendation).  M7 is Direction 2 of design/DESIGN.md.  The s1
+commit includes the plan.
+
+### s1: add quotient circuits and obligation refusals (2026-10-18)
+
+- Scope:  D1, D5, D6 and D7 of docs/M7-PLAN.md.  No change in src/
+  (section 3:  none).
+- Table formats:  test/check/expect.txt is `FILE CODE`, and `langc check`
+  reads a .glue file there (circuit-binder.glue).  Thus CIRCUIT_BINDER is
+  a check refusal, and the s1 delta of section 10 keeps check refusals +4.
+  test/eval/expect.txt is `FILE NAME [ARGS] => OUTPUT`, and test/gate.sh
+  reads examples/FILE.lang only.  test/circuit/same-ir.txt is `PROG NAME
+  GOLDEN`.
+- Examples (D5, D6), each with one circuit `square` and the quotSq header
+  (`SqRel`, `sq`):  examples/quotEnd0.glue (A1), quotEnd1.glue (A2),
+  quotHcomp.glue (A3), quotElimHcomp.glue (A4, `sqE` by `elim`) and
+  quotProof.glue (A8, the `Lk` def form).  `langc circuit examples/F.glue
+  square -o $TMPDIR/F.json` of each:  exit 0, IR SAME (`cmp` against
+  test/circuit/square.circuit.json).  5 same-ir rows `F square square`.
+- Refusals (D1, D7):  test/check/geqc-case.glue (A5, HIT_CASE),
+  elim-geqc-case.glue (A4 with the `geqc` case `fun a => fun b => fun r
+  => refl`;  probe:  ELIM_CASE, as the plan expects), squashc-field.glue
+  (A7, HIT_CASE) and isset-binder.glue (A6, CIRCUIT_BINDER).  4 check
+  refusal rows.
+- evHcomp (section 4):  the eval table reads .lang files only.  Thus the
+  new file examples/evHcomp.lang has `SqRel`, `sq`, the law `evHcompLaw :
+  (x : Field) -> Path Field (sq (hcomp ..)) (x * x) := fun x => refl` and
+  the closed def `evHcomp` (x = 3).  Eval row `evHcomp evHcomp => 9`.  The
+  new .lang file also adds 1 json build:  test/json/evHcomp.json has one
+  instance, `evHcomp` with the value "9".  Delta change against section
+  10:  examples +6 (not +5), json +1 (not in the plan).
+- SPEC.md 2.9 (new):  Direction 2 (M7):  D1, D5, D6, D7 and the s1 files.
+  The later slices add to it.
+- Mutants:  a scratch runner did each mutant with `sd -F` (1 hit for each
+  pattern, checked first), `make -B build/langc`, the new rows probed
+  directly with `langc check`, then `sh test/gate.sh`, then `git restore
+  src/front/check.c`.  The path case type of fold_hit_rule comes from
+  hit_case_type (check.c line 972), and the path case type of rule_elim
+  comes from elim_case_type (check.c line 1480).  Each mutant is at one of
+  these two lines.
+  1. fold_hit_rule does not test a path case:  hit_case_type gives the i0
+     end at the two ends of a 1-dimensional path case (`.., i - 1u, 1)` to
+     `.., i - 1u, kb > 1u)`).  KILLED:  geqc-case.glue exit 0, so its row
+     fails.  Old rows also kill it (examples quot.lang, int.lang,
+     otp.lang, transportProp.lang, trunc.lang:  HIT_CASE).
+  2. rule_elim does not test a path case:  elim_case_type gives the i0 end
+     at the two ends (`.., i - 1u, 1)` to `.., i - 1u, 0)`).  KILLED:
+     elim-geqc-case.glue exit 0, so its row fails.  Old rows also kill it
+     (int.lang negNeg, otp.lang ret, transportProp.lang repElimG:
+     ELIM_CASE;  3 otp eval rows).
+  3. fold_hit_rule does not test the `squashc` case:  hit_case_type gives
+     the i0 end at the two ends of the outer binder of a 2-dimensional
+     case (`kb > 1u && i == 1u ? 0 : 1`).  KILLED:  squashc-field.glue
+     exit 0, so its row fails.  Old rows also kill it (quot.lang quotRec,
+     transportProp.lang repFold:  HIT_CASE;  4 quot eval rows).
+  No mutant SURVIVED, thus no new row.
+- Gates:  `make -B check` exit 0:  native circuit 9, path 46, face 35,
+  HIT 44;  examples 48, parse refusals 18, check refusals 150, evals 269,
+  json 34 builds, build refusals 8, circuits 5, same-ir 13, circuit
+  refusals 14, satcheck refusals 6;  node regressions 6, printer 2.
+  Against the M6 close:  examples +6, check refusals +4, evals +1, json
+  +1, same-ir +5.  `make check-clang` exit 0.  `forge build --root
+  contracts --sizes` exit 0.  `make e2e` exit 0.  The diff of
+  test/circuit and contracts/src/verifiers is the same before and after
+  e2e:  only the 5 new rows of test/circuit/same-ir.txt.  No IR change.
+  contracts/test/fixtures restored, then `forge test --root contracts`
+  44 passed, 0 failed.
+- Open items:  none new.  Next:  s2 (docs/M7-PLAN.md section 10).

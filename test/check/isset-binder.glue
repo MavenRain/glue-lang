@@ -1,0 +1,7 @@
+-- M7 s1 (D7): a circuit binder must have type Field. A binder of type
+-- isSet Field is not a Field binder (CIRCUIT_BINDER). Thus a Quot fold in a
+-- circuit cannot get its squashc case from a binder.
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sqQ : isSet Field -> Field -> Field := fun s => fun x => fold Field (fun a => a * a) (fun a => fun b => fun r => r) (fun u => fun v => fun p => fun q => s u v p q) (cls Field SqRel x)
+
+circuit square public (y : Field) private (x : Field) (s : isSet Field) := sqQ s x == y

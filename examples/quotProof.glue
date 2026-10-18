@@ -1,0 +1,11 @@
+-- M7 s1 (D6): a proof stays a term. The geqc case of sq transports r along
+-- the line Lk a b two times. The lowering reads only the point case at a
+-- representative, and a path case has no wire. Thus the IR must equal
+-- test/circuit/square.circuit.json (test/circuit/same-ir.txt). Lk is a def,
+-- because a term <k> .. as an argument needs a declared type
+-- (PATH_EXPECTED).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def Lk : (a : Field) -> (b : Field) -> Path (Type 0) (SqRel a b) (SqRel a b) := fun a => fun b => <k> SqRel a b
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => transport (Lk a b) (transport (Lk a b) r)) q
+
+circuit square public (y : Field) private (x : Field) := sq (gcls Field SqRel x) == y

@@ -1,0 +1,9 @@
+-- M7 s1 (D5): the circuit of examples/quotHcomp.glue, with elim in place of
+-- fold. sqE is the dependent eliminator with the constant motive Field. The
+-- hcomp rule of the eliminator and the closed-type hcomp rule at Field give
+-- x * x. Thus the IR must equal test/circuit/square.circuit.json
+-- (test/circuit/same-ir.txt).
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sqE : GQuot Field SqRel -> Field := fun q => elim (fun d => Field) (fun a => a * a) (fun a => fun b => fun r => r) q
+
+circuit square public (y : Field) private (x : Field) := sqE (hcomp (GQuot Field SqRel) i0 (fun i => [ i0 -> gcls Field SqRel x ]) (gcls Field SqRel x)) == y

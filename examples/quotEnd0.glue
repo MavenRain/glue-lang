@@ -1,0 +1,8 @@
+-- M7 s1 (D5): the square circuit through the start of a geqc path. At the
+-- constant interval i0 the boundary rule gives gcls x. Then the point rule
+-- gives x * x. Thus the IR must equal test/circuit/square.circuit.json
+-- (test/circuit/same-ir.txt), and the circuit name is square.
+def SqRel : Field -> Field -> Type 0 := fun a => fun b => Path Field (a * a) (b * b)
+def sq : GQuot Field SqRel -> Field := fun q => fold Field (fun a => a * a) (fun a => fun b => fun r => r) q
+
+circuit square public (y : Field) private (x : Field) := sq (geqc Field SqRel x x refl @ i0) == y

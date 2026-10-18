@@ -6,3 +6,8 @@ foldPow poly poly
 foldPow nonzero nonzero
 unfoldPow square square
 unfoldPow poly poly
+quotEnd0 square square
+quotEnd1 square square
+quotHcomp square square
+quotElimHcomp square square
+quotProof square square

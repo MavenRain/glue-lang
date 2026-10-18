@@ -144,3 +144,7 @@ hint-residual.glue CIRCUIT_LOWER
 inv-helper.glue CIRCUIT_LOWER
 hint-unused.glue CIRCUIT_UNCONSTRAINED
 hint-type.glue TYPE_MISMATCH
+geqc-case.glue HIT_CASE
+elim-geqc-case.glue ELIM_CASE
+squashc-field.glue HIT_CASE
+isset-binder.glue CIRCUIT_BINDER
