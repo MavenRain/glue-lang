@@ -4185,3 +4185,121 @@ the circuit `transfer`, its golden, e2e row, verifier file and Forge
 tests;  a WITNESS_FAIL row with a wrong nullifier).  The script reads each
 artifact by name, thus the transfer verifier changes only the doc comment
 list of DeployVerifier.
+
+### s5
+
+The circuit `transfer` and the family `TransferSpec` (docs/M8-PLAN.md
+D7 and D8, section 10 row s5), and ruling (a):  a JSON input limit for
+`langc satcheck`.  No new IR form, no verifier generator change.  The IR
+and the verifier of each current circuit are byte-identical.
+
+Ruling (a) (USER 2026-10-18, s5 turn 2):  `langc satcheck` reads its 2
+JSON files (the circuit and the witness) with a separate limit
+JSON_MAX_BYTES (16 MiB);  SOURCE_MAX_BYTES (1 MiB) stays the limit for
+each source file.  Cause:  the s5 turn 1 probe gave IO_SIZE at
+satcheck:  the transfer circuit JSON is 1,080,055 B and its witness is
+1,251,199 B (larger than 1 MiB).  The circuits gate row (test/gate.sh
+line 168) and e2e (Makefile line 75) run satcheck on each row, thus both
+gates would fail.  The value 16 MiB:  a later Merkle circuit of about 21
+permutations gives about 13 MB of witness.  IO_SIZE stays the code above
+the limit (no new check code).
+
+What changed:
+- src/front/front.h:  `#define JSON_MAX_BYTES ((size_t)1 << 24)` after
+  SOURCE_MAX_BYTES, with a 2-line comment.  src/main.c:  `read_source`
+  takes `size_t max_bytes`;  run_satcheck passes JSON_MAX_BYTES for the
+  circuit and the witness;  the program read passes SOURCE_MAX_BYTES.
+  11 insertions, 7 deletions;  `make -B build/langc` exit 0, 0 warnings.
+  This is the only src/ change of s5.
+- domain/domain.lang:  after SqSpec, a blank line, 4 comment lines and
+  the family `TransferSpec`:  the points note, nullifier and commitment;
+  the law `noDoubleSpend` from nullifier (i0) to note (i1) and the law
+  `balanceCons` from note (i0) to commitment (i1).
+- test/check/domain-noDoubleSpend.lang (new) and test/check/expect.txt
+  line 155:  `def noDoubleSpend` gives REFUSE_NAME (rule R4).
+- examples/transfer.glue (new, 217 lines, 93,792 B):  10 header comment
+  lines, the 206 defs of examples/poseidon.glue (an rg copy, identical),
+  then one circuit line `circuit transfer public (nf : Field) (cm :
+  Field) private (v : Field) (sk : Field) (rho : Field) (rho2 : Field)`
+  with 552 hints (the prefix n for the nullifier hash, c for the
+  commitment hash) and 554 constraints (one for each hint, then
+  `ns64k0 == nf` and `cs64k0 == cm`).  The nullifier hash takes
+  (0, sk, rho) and the commitment hash takes (0, v, rho2):  D7
+  `nf == H(sk, rho)` and `cm == H(v, rho2)`.
+- test/circuit/transfer.circuit.json (1,080,055 B) and
+  transfer.witness.json (1,251,199 B):  the new goldens.
+  test/circuit/expect.txt:  the row `transfer transfer` at sk 1, rho 2,
+  v 3, rho2 4 (nf = the s3 vector of test/eval/expect.txt;  cm =
+  14763215145315200506921711489642608356394854266165572616578112107564877678998).
+  test/circuit/refuse.txt:  a WITNESS_FAIL row at nf + 1.
+- contracts/src/verifiers/transfer.sol (new, the current generator, 923
+  lines) and contracts/test/fixtures/transfer.proof.json (new, 6928 B,
+  from `make e2e`).
+- contracts/test/Verifiers.t.sol:  the transfer verifier import after
+  the square import and the contract TransferVerifierTest (the pattern
+  of the current tests, and testThePublicInputsAreTheHashes:  2
+  instances, instances[0] = nf, instances[1] = cm):  11 tests.
+- contracts/script/DeployVerifier.s.sol:  the doc comment list names
+  transfer.  No code change (the script reads each artifact by name).
+- SPEC.md:  **The transfer circuit.** (line 1090), a paragraph on the
+  input limits (1 MiB for a source file, 16 MiB for each JSON file of
+  satcheck, IO_SIZE above the limit) and **The transfer specification.**
+  (line 1116, the family in a code block).
+- contracts/README.md:  the 3 circuit lists name transfer ("six files")
+  and the numbers row `| transfer | 5,802 | 1,306,127 | 278,592 |`
+  (runtime size = gas report Deployment Size 5834 - 32;  verifyProof =
+  the gas report Max).
+
+Probes ($TMPDIR, `-o`):  name guard (examples, test, src, domain):
+TransferSpec, note, nullifier, commitment, noDoubleSpend, balanceCons,
+transfer, nf, cm, sk, rho, rho2 and the hint names `[nc][ts]Rk J`:  0
+files each.  The family on a scratch copy:  build ok, `noDoubleSpend @
+i1` gives note, 0 examples with a different check result.  `langc
+check` ok;  `langc circuit`:  k 13, 7288 rows (D7 estimate:  about 6000
+rows), advice 3, fixed 7, instance 1, public 2, one gate arith;  `langc
+witness` exit 0, satcheck ok;  at nf + 1:  WITNESS_FAIL at 217:72780.
+Limit probes (after the src change):  a source file of 1,100,027 B gives
+IO_SIZE at `check` and `eval` (larger than 1048576 bytes);  a JSON file
+of 17,000,000 B gives IO_SIZE at satcheck as the circuit and as the
+witness (larger than 16777216 bytes);  satcheck of transfer and of the
+5 current goldens:  ok.  Prover (debug glue-halo2, k 13, sandbox off for
+`/usr/bin/time -l`):  probe keygen 3.21 s, max RSS 43,368,448 B;  prove
+4.52 s, max RSS 59,736,064 B;  verify ok (3.26 s);  gate run:  keygen
+2.61 s, max RSS 44,630,016 B;  prove 4.88 s, max RSS 62,980,096 B (the
+limit is 4 GB).  Two `solidity` runs give the same verifier file.
+
+Mutants (scratch copies;  `make -B` for each rebuild):
+- m1 (the constraint of the commitment hint cs30k1 removed, 553
+  constraints):  check ok, circuit exit 0, the IR is not the golden,
+  witness exit 0 (a free hint):  KILLED by the circuits row (the IR
+  golden).
+- m2 (`sbox5 (sk + rc1)` to `sbox5 (rho + rc1)`, 2 hits:  the hint
+  nt0k1 and its constraint):  CIRCUIT_UNCONSTRAINED at check, circuit
+  and witness (sk is in no constraint):  KILLED by the examples row (and
+  the circuits row).
+- m2b (`sbox5 (sk + rc1)` to `sbox5 (sk + rc2)`, 2 hits):  check ok, the
+  IR is not the golden, WITNESS_FAIL at 217:72780 at the D7 inputs:
+  KILLED by the circuits row (the IR golden and the witness).
+- m3 (`| noDoubleSpend <i>` to `| noDoubleSpent <i>` in
+  domain/domain.lang, 1 hit, build ok):  `def noDoubleSpend` gives ok:
+  KILLED by the check refusal row domain-noDoubleSpend.lang.
+- m4 (`JSON_MAX_BYTES, &` to `SOURCE_MAX_BYTES, &` in src/main.c, 2
+  hits, build ok):  the circuits row gives `FAIL satcheck transfer`
+  (IO_SIZE, larger than 1048576 bytes);  the poseidon row ok:  KILLED by
+  the circuits row.
+
+Gates (the slice files were staged before the gates):  `make -B check`
+exit 0 (native circuit 9, path 46, face 35, HIT 44;  examples 63, parse
+refusals 18, check refusals 155, evals 283, json 40 builds, build
+refusals 8, circuits 7, same-ir 19, circuit refusals 18, satcheck
+refusals 6;  node regressions 6, printer 2);  `make check-clang` exit 0;
+`forge build --root contracts --sizes` exit 0 (DeployVerifier 1,445 B);
+`make e2e` exit 0 (7 rows, 30 s);  the IR diff of test/circuit and
+contracts/src/verifiers is the same before and after e2e (empty);
+`forge test` 66 passed (55 + 11).  The delta against s4 is the section
+10 row s5:  examples +1, circuits +1, circuit refusals +1, check
+refusals +1, e2e +1 row, forge tests +11.
+
+Open items:  s6 (examples/transferSpec.lang:  transferLaw, the transport
+of one TransferSpec law along `ua` to a `Sat` proof of the transfer
+circuit (D8);  the eval row;  the s1 to s5 mutant review).

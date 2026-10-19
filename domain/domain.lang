@@ -54,3 +54,9 @@ family CircV := vvar (vvn : Nat) | vlit (vlv : Field) | vadd (vaa : CircV) (vab 
 -- of square, and slaw is the law between them. The guest interpreter
 -- interpS is a fold into GQuot Circ CRel (examples/spec.lang).
 family SqSpec := smul | spow | slaw <i> [ ~i -> smul, i -> spow ]
+
+-- M8 s5 (D8): the transfer specification HIT. note, nullifier and
+-- commitment name the representatives of the transfer circuit
+-- (examples/transfer.glue). noDoubleSpend is the law between the nullifier
+-- and the note, balanceCons is the law between the note and the commitment.
+family TransferSpec := note | nullifier | commitment | noDoubleSpend <i> [ ~i -> nullifier, i -> note ] | balanceCons <i> [ ~i -> note, i -> commitment ]

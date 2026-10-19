@@ -6,6 +6,7 @@ import {Halo2Verifier as PolyVerifier} from "../src/verifiers/poly.sol";
 import {Halo2Verifier as PoseidonVerifier} from "../src/verifiers/poseidon.sol";
 import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
+import {Halo2Verifier as TransferVerifier} from "../src/verifiers/transfer.sol";
 import {Vm, VM_ADDRESS} from "./Vm.sol";
 
 /// The interface of docs/IR.md section 5. Each generated verifier has it.
@@ -226,6 +227,28 @@ contract PoseidonVerifierTest is VerifierCase {
             instances.length == 1
                 && instances[0] == 7853200120776062878684798364095072458815029376092732009249414926327459813530,
             "the public input of poseidon is not poseidon([1, 2])"
+        );
+    }
+}
+
+/// examples/transfer.glue with v=3 sk=1 rho=2 rho2=4 (test/circuit/expect.txt).
+/// The public inputs are nf = poseidon([sk, rho]) and cm = poseidon([v, rho2])
+/// (docs/M8-PLAN.md D7).
+contract TransferVerifierTest is VerifierCase {
+    function name() internal pure override returns (string memory) {
+        return "transfer";
+    }
+
+    function deploy() internal override returns (address) {
+        return address(new TransferVerifier());
+    }
+
+    function testThePublicInputsAreTheHashes() public view {
+        require(
+            instances.length == 2
+                && instances[0] == 7853200120776062878684798364095072458815029376092732009249414926327459813530
+                && instances[1] == 14763215145315200506921711489642608356394854266165572616578112107564877678998,
+            "the public inputs of transfer are not poseidon([1, 2]) and poseidon([3, 4])"
         );
     }
 }

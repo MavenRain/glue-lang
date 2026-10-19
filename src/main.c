@@ -113,16 +113,17 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
   return 0;
 }
 
-static int read_source(Arena *arena, const char *path, char **out, size_t *len, Diag *diag) {
+/* A file larger than MAX_BYTES gives IO_SIZE. */
+static int read_source(Arena *arena, const char *path, size_t max_bytes, char **out, size_t *len, Diag *diag) {
   FILE *file = fopen(path, "rb");
   if (file == NULL) return diag_fail(diag, "IO", NULL, "cannot open %s", path);
-  char *buf = arena_alloc(arena, SOURCE_MAX_BYTES + 1);
-  size_t count = buf == NULL ? 0 : fread(buf, 1, SOURCE_MAX_BYTES + 1, file);
+  char *buf = arena_alloc(arena, max_bytes + 1);
+  size_t count = buf == NULL ? 0 : fread(buf, 1, max_bytes + 1, file);
   int read_error = ferror(file);
   fclose(file);
   if (buf == NULL) return diag_fail(diag, "OOM", NULL, "no memory for %s", path);
   if (read_error) return diag_fail(diag, "IO", NULL, "cannot read %s", path);
-  if (count > SOURCE_MAX_BYTES) return diag_fail(diag, "IO_SIZE", NULL, "%s is larger than %zu bytes", path, SOURCE_MAX_BYTES);
+  if (count > max_bytes) return diag_fail(diag, "IO_SIZE", NULL, "%s is larger than %zu bytes", path, max_bytes);
   *out = buf;
   *len = count;
   return 1;
@@ -163,8 +164,8 @@ static int run_satcheck(const Options *opt, Arena *arena, Diag *diag) {
   char *witness = NULL;
   size_t circuit_len = 0;
   size_t witness_len = 0;
-  if (!read_source(arena, opt->prog_path, &circuit, &circuit_len, diag)) return 2;
-  if (!read_source(arena, opt->witness_path, &witness, &witness_len, diag)) return 2;
+  if (!read_source(arena, opt->prog_path, JSON_MAX_BYTES, &circuit, &circuit_len, diag)) return 2;
+  if (!read_source(arena, opt->witness_path, JSON_MAX_BYTES, &witness, &witness_len, diag)) return 2;
   if (!circuit_satcheck(arena, diag, circuit, circuit_len, witness, witness_len)) return 1;
   puts("ok");
   return 0;
@@ -174,7 +175,7 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
   char *text = NULL;
   size_t len = 0;
   if (opt->command == CMD_SATCHECK) return run_satcheck(opt, arena, diag);
-  if (!read_source(arena, opt->prog_path, &text, &len, diag)) return 2;
+  if (!read_source(arena, opt->prog_path, SOURCE_MAX_BYTES, &text, &len, diag)) return 2;
   DeclList decls;
   if (!front_load(arena, opt->prog_path, text, len, &decls, diag)) return 1;
   Machine machine;

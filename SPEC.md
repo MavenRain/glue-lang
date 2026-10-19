@@ -1087,6 +1087,48 @@ y satisfies each constraint (`satcheck` gives ok); y + 1 gives
 WITNESS_FAIL (test/circuit/refuse.txt). The e2e row proves the circuit,
 and the verifier contracts/src/verifiers/poseidon.sol accepts the proof.
 
+**The transfer circuit.** The circuit `transfer` of
+examples/transfer.glue (slice s5, D7) has one input note and one output
+note. Its public binders are the nullifier `nf` and the output
+commitment `cm`. Its private binders are the value `v`, the spend key
+`sk`, the input randomness `rho` and the output randomness `rho2`. The
+constraints are `nf == H(sk, rho)` and `cm == H(v, rho2)`, where H is
+the hash of the circuit `poseidon` (word 0 of the permutation of the
+state (0, x, y)). The shared `v` is the value conservation for one
+input and one output. Each hash has the form (i):  the circuit has 552
+hints (276 for each hash;  the prefix n for the nullifier, the prefix c
+for the commitment) and 554 constraints (one for each hint, then
+`ns64k0 == nf` and `cs64k0 == cm`). It has 7288 rows and k 13
+(2^13 = 8192;  the D7 estimate was about 6000 rows and k 13). Its
+witness at sk = 1, rho = 2, v = 3 and rho2 = 4 satisfies each
+constraint (`satcheck` gives ok);  nf + 1 gives WITNESS_FAIL
+(test/circuit/refuse.txt). At these inputs nf is the vector
+poseidon([1, 2]) of the circuit `poseidon`. The e2e row proves the
+circuit, and the verifier contracts/src/verifiers/transfer.sol accepts
+the proof.
+
+The input limits:  each source file can have 1 MiB (1048576 bytes) at
+most.  Each JSON file of `langc satcheck` (the circuit and the witness)
+can have 16 MiB (16777216 bytes) at most (USER ruling (a), M8 s5).  A
+larger file gives IO_SIZE.  The circuit JSON of `transfer` has 1080055
+bytes and its witness JSON has 1251199 bytes.
+
+**The transfer specification.** `TransferSpec` is a domain family of
+domain/domain.lang in the D1 form (D8):
+
+```
+family TransferSpec := note | nullifier | commitment | noDoubleSpend <i> [ ~i -> nullifier, i -> note ] | balanceCons <i> [ ~i -> note, i -> commitment ]
+```
+
+Its 3 points name the representatives of the transfer circuit (the
+note, the nullifier and the commitment). Its 2 laws are paths between
+them:  `noDoubleSpend` goes from `nullifier` to `note`, and
+`balanceCons` goes from `note` to `commitment`. A def with a
+TransferSpec name gives REFUSE_NAME (rule R4,
+test/check/domain-noDoubleSpend.lang). The fold of TransferSpec into
+`Type 0` (D2 (b)) sends each law to `ua` of an `Equiv` of satisfaction
+types (slice s6).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.

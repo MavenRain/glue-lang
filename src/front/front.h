@@ -5,6 +5,9 @@
 #include "front/parser.h"
 
 #define SOURCE_MAX_BYTES ((size_t)1 << 20)
+/* The limit for each JSON document of `langc satcheck` (USER ruling, M8 s5):
+   a circuit of two Poseidon permutations is about 1.1 MB of JSON. */
+#define JSON_MAX_BYTES ((size_t)1 << 24)
 
 /* build/domain.c holds the bytes of domain/domain.lang (gen/embed.c). */
 extern const unsigned char domain_source[];

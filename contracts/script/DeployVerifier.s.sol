@@ -5,7 +5,7 @@ import {Console, Vm, VM_ADDRESS} from "../test/Vm.sol";
 
 /// Deploy the verifier of one example circuit: `--sig 'run(string)' NAME`,
 /// with NAME the file name of src/verifiers/NAME.sol (square, range, poly,
-/// nonzero, poseidon). The key comes from the forge flags (`--account NAME`
+/// nonzero, poseidon, transfer). The key comes from the forge flags (`--account NAME`
 /// or `--private-key KEY`) and the chain from `--rpc-url`. The verifying key
 /// is in the contract, so there is one contract for each circuit.
 /// The script gets the creation code from the build artifact (`getCode`)
