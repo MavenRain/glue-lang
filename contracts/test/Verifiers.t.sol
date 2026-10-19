@@ -8,6 +8,7 @@ import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
 import {Halo2Verifier as TransferVerifier} from "../src/verifiers/transfer.sol";
 import {Halo2Verifier as KycVerifier} from "../src/verifiers/kyc.sol";
+import {Halo2Verifier as KycMerkleVerifier} from "../src/verifiers/kycMerkle.sol";
 import {Vm, VM_ADDRESS} from "./Vm.sol";
 
 /// The interface of docs/IR.md section 5. Each generated verifier has it.
@@ -274,6 +275,32 @@ contract KycVerifierTest is VerifierCase {
                 && instances[2] == 9
                 && instances[3] == 18,
             "the public inputs of kyc are not poseidon([30, 5]), poseidon([5, 9]), 9 and 18"
+        );
+    }
+}
+
+/// examples/kycMerkle.glue with attr=30 sk=5 d=12 at scope=9 min=18, the
+/// path bits b0=0 b1=1 b2=1 b3=0 and the siblings s0=11 s1=22 s2=33 s3=44
+/// (test/circuit/expect.txt). The public inputs are the root of the depth 4
+/// Merkle tree over the leaf cm = poseidon([attr, sk]), nf = poseidon([sk,
+/// scope]), then scope and min (docs/M9-PLAN.md D2).
+contract KycMerkleVerifierTest is VerifierCase {
+    function name() internal pure override returns (string memory) {
+        return "kycMerkle";
+    }
+
+    function deploy() internal override returns (address) {
+        return address(new KycMerkleVerifier());
+    }
+
+    function testThePublicInputsAreTheRootAndTheNullifier() public view {
+        require(
+            instances.length == 4
+                && instances[0] == 2073838814982733625467528882884732980574637884548700319820113673768149909053
+                && instances[1] == 2046061026757605145648934375530781408765546393983200800628234446163090055163
+                && instances[2] == 9
+                && instances[3] == 18,
+            "the public inputs of kycMerkle are not the root of the depth 4 tree, poseidon([5, 9]), 9 and 18"
         );
     }
 }

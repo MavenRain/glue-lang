@@ -4953,3 +4953,110 @@ Merkle credential circuit kycMerkle, D2, depth 4).  The USER facts of
 questions (c) and (e) stay open (ask before s5 and s6).
 
 Staged:  the 8 slice paths.  Next:  M9 s4.
+
+### s4
+
+The Merkle credential circuit `kycMerkle` (docs/M9-PLAN.md D2, ruling
+(f) of M8, depth 4 (question (b));  section 10 row s4).  No src/
+change, no domain change, no new IR form and no verifier generator
+change.  The IR and the verifier of each current circuit are
+byte-identical.
+
+What changed:
+- examples/kycMerkle.glue (new, 225 lines, 248,048 B):  18 header
+  comment lines, the 206 defs of examples/kyc.glue (its lines 15 to
+  220, byte-identical:  the Poseidon constants and sbox5), then one
+  circuit line `circuit kycMerkle public (root : Field) (nf : Field)
+  (scope : Field) (min : Field) private (attr : Field) (sk : Field)
+  (d : Field) (b0 : Field) .. (b3 : Field) (s0 : Field) .. (s3 :
+  Field)` with 1664 hints and 1672 constraints.  The hints:  the n
+  block (the nullifier hash) and the c block (the commitment hash) of
+  kyc, then for each level i the selects `li := cur + bi * (si -
+  cur)` and `ri := si + bi * (cur - si)` and the cm permutation block
+  of kyc with the binders renamed (ct and cs to mit and mis;  the
+  inputs li and ri;  cur is cs64k0 at level 0 and m(i-1)s64k0 above).
+  The constraints:  the n and c constraints, for each level `bi * bi
+  == bi`, the two select equalities and the renamed block, then the
+  tail `ns64k0 == nf`, `m3s64k0 == root`, `d + min == attr` and
+  `range8 d`.  There is no `cs64k0 == cm`:  the leaf cm is private (a
+  public cm links each proof of one holder, D2).
+- test/circuit/kycMerkle.circuit.json (3,279,740 B) and
+  kycMerkle.witness.json (3,758,915 B):  the new goldens (k 15,
+  21,898 rows, advice 3, fixed 7, instance 1, public 4, 1 lookup).
+  test/circuit/expect.txt row 9:  `kycMerkle kycMerkle` at the kyc
+  values scope 9, min 18, attr 30, sk 5, d 12 with the path bits b0
+  0, b1 1, b2 1, b3 0 and the siblings s0 11, s1 22, s2 33, s3 44;
+  nf is the kyc value (pos2 5 9, `### s2`) and root is the depth 4
+  root over the leaf cm = pos2 30 5
+  (~/Documents/glue-lang-M9-s4-probe/vals.txt).  This row is also the
+  e2e row.  test/circuit/refuse.txt row 20:  a WITNESS_FAIL row at
+  root + 1 with the same private values (the root equality fails at
+  225:226406).
+- contracts/src/verifiers/kycMerkle.sol (new, the current generator,
+  988 lines, 49,890 B:  the size of kyc.sol, the verifier size depends
+  on the column count and not on k) and
+  contracts/test/fixtures/kycMerkle.proof.json (new, 8,252 B, from
+  `make e2e`;  4 instances in the order root, nf, scope 0x9, min
+  0x12).
+- contracts/test/Verifiers.t.sol:  the kycMerkle verifier import
+  after the kyc import and the contract KycMerkleVerifierTest (the
+  pattern of the current tests, and
+  testThePublicInputsAreTheRootAndTheNullifier:  4 instances, root,
+  nf, 9, 18):  11 tests (279 to 306 lines;  8 test contracts).
+- contracts/script/DeployVerifier.s.sol:  the doc comment list names
+  kycMerkle.  No code change (the script reads each artifact by name).
+- contracts/README.md:  the 3 circuit lists name kycMerkle ("eight
+  files") and the numbers row `| kycMerkle | 6,222 | 1,396,947 |
+  315,922 |` (runtime size = gas report Deployment Size 6254 - 32;
+  verifyProof = the gas report Max of 20 calls).
+
+Probes (~/Documents/glue-lang-M9-s4-probe/probe.sh and probe.out, the
+real build/langc, `-o` for each output):  name guard (`rg -w -l
+kycMerkle` over domain/, examples/, test/, contracts/src,
+contracts/test and the Makefile, and the binder names root, b0, s0,
+l0, r0 and m0t0k0 against domain/domain.lang):  0 hits.  `langc check`
+ok (2.48 s);  `langc circuit`:  k 15, 21,898 rows (D2 estimate:  about
+21,903), advice 3, fixed 7, instance 1, 1 lookup (range8), 1.08 s;
+the root by `langc eval rootvals.lang h3M` (a closed chain of 5
+Poseidon hashes:  the leaf pos2 30 5, then one hash for each level
+with the sibling in bit order), 0.98 s;  `langc witness` at the
+circuits row 1.58 s;  `langc satcheck` ok (4.97 s);  the wrong root
+gives WITNESS_FAIL at 225:226406 (the refuse row).  The sizes are
+under the limits:  the source 248,048 B (SOURCE_MAX_BYTES 1 MiB), the
+circuit JSON 3,279,740 B and the witness 3,758,915 B (JSON_MAX_BYTES
+16 MiB), k 15 (the satchecker accepts k <= 16).
+
+Mutants (~/Documents/glue-lang-M9-s4-probe/m1.glue to m3.glue and the
+refuse row;  scratch copies, `sd -F` at the circuit site, no binary
+change;  the IR against kycMerkle.circuit.json, the witness at the
+circuits row):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | the level 0 select l0 with cur and s0 swapped (2 hits:  the hint and its constraint) | IR DIFF;  WITNESS_FAIL at 225:226398 | KILLED (circuits row:  the IR golden and the witness golden) |
+| m2 | ` ; b0 * b0 == b0` removed (1 hit) | IR DIFF (21,897 rows);  the circuits row exit 0 | KILLED (circuits row:  the IR golden) |
+| m3 | ` ; m3s64k0 == root` removed (1 hit) | CIRCUIT_UNUSED_PUBLIC at `langc check` (`the public binder root is in no constraint`), not CIRCUIT_UNCONSTRAINED | KILLED (examples gate) |
+| m4 | the refuse row:  a wrong public root (root + 1) at the circuits row values | WITNESS_FAIL at 225:226406 | KILLED (circuit refusals row 20) |
+
+Gates (~/Documents/glue-lang-M9-s4-probe/s4gates.sh and gates.out,
+sandbox off, on the staged slice files):  `make -B check` exit 0:
+native circuit 9, path 46, face 35, HIT 44;  examples 67, parse
+refusals 18, check refusals 157, evals 290, json 42 builds, build
+refusals 8, circuits 9, same-ir 19, circuit refusals 20, satcheck
+refusals 6, `gate: 0 failures`;  node regressions 6, printer 2.  `make
+check-clang` exit 0.  `forge build --root contracts --sizes` exit 0
+(DeployVerifier 1,445 B).  `make e2e` exit 0 (9 rows;  62 s at the
+gate;  the first e2e 78 s under `/usr/bin/time -l` with a cold forge
+cache, max RSS 274,350,080 B:  the kycMerkle proof at k 15 is about
+48 s of the run).  The IR diff of test/circuit and
+contracts/src/verifiers:  0 B before and after e2e (the kycMerkle
+golden and verifier are staged before the gates).  `git restore
+contracts/test/fixtures`, then `forge test --root contracts`:  88
+passed (77 + 11).
+
+Open items:  s5 (the ceremony SRS, D5):  the USER fact of question
+(c), the ceremony file and its source, comes before s5.  The USER
+fact of question (e) stays open (ask before s6).  The point name
+kycNullifier (`### s3`) stays until the USER rules.
+
+Staged:  the 11 slice paths.  Next:  M9 s5.
