@@ -153,3 +153,4 @@ ring-refl.lang TYPE_REFL
 domain-vvar.lang REFUSE_NAME
 domain-slaw.lang REFUSE_NAME
 domain-noDoubleSpend.lang REFUSE_NAME
+bal-orientation.lang PATH_BOUNDARY

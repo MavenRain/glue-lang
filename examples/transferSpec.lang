@@ -257,3 +257,10 @@ def cmD7 : Field := pos2 3 4
 def nfD7Vec : Path Field nfD7 7853200120776062878684798364095072458815029376092732009249414926327459813530 := refl
 def cmD7Vec : Path Field cmD7 14763215145315200506921711489642608356394854266165572616578112107564877678998 := refl
 def transferD7 : TSat nfD7 cmD7 3 1 2 4 := transferLaw (pos2 1 2) (pos2 3 4) nfD7 cmD7 (pair refl refl)
+-- M9 s1 (D4, O21):  the hash h as an argument;  the transport of balanceCons.
+def TSatH : (h : Field -> Field -> Field) -> Field -> Field -> Field -> Field -> Field -> Field -> Type 0 := fun h => fun nf => fun cm => fun v => fun sk => fun rho => fun rho2 => Sat2 (h sk rho) (h v rho2) nf cm
+def transferSatH : (h : Field -> Field -> Field) -> (nf : Field) -> (cm : Field) -> (v : Field) -> (sk : Field) -> (rho : Field) -> (rho2 : Field) -> NullSat (h sk rho) (h v rho2) nf cm -> TSatH h nf cm v sk rho rho2 := fun h => fun nf => fun cm => fun v => fun sk => fun rho => fun rho2 => fun p => transferLaw (h sk rho) (h v rho2) nf cm p
+def transferD7H : TSatH pos2 nfD7 cmD7 3 1 2 4 := transferSatH pos2 nfD7 cmD7 3 1 2 4 (pair refl refl)
+def BalLine : (a : Field) -> (b : Field) -> (nf : Field) -> (cm : Field) -> Path (Type 0) (Sat2 a b nf cm) (CommSat a b nf cm) := fun a => fun b => fun nf => fun cm => <i> TransferSat a b nf cm (balanceCons @ i)
+def balLaw : (a : Field) -> (b : Field) -> (nf : Field) -> (cm : Field) -> Sat2 a b nf cm -> CommSat a b nf cm := fun a => fun b => fun nf => fun cm => fun p => transport (BalLine a b nf cm) p
+def balD7 : CommSat (pos2 1 2) (pos2 3 4) nfD7 cmD7 := balLaw (pos2 1 2) (pos2 3 4) nfD7 cmD7 (pair refl refl)

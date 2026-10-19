@@ -1131,6 +1131,8 @@ types (slice s6).
 
 examples/transferSpec.lang (slice s6) moves the law `noDoubleSpend` to a satisfaction proof of the transfer circuit. `Sat2 a b nf cm` is the satisfaction type of the 2 constraints of the circuit (`a` is the nullifier hash and `b` is the commitment hash), and `TSat` binds `a` and `b` to the hash `pos2` of the circuit. At the nullifier point the nullifier path starts at the public `nf` (`NullSat`), and at the commitment point the commitment path starts at the public `cm` (`CommSat`). The two representatives of each law have different normal forms, thus each `Equiv` is an iso with a proof term (the path inverse on one component). `transferLaw` is `transport` along `<i> TransferSat a b nf cm (noDoubleSpend @ i)`, and it is the forward map of `idNull` by uaBeta (`transferFwd`, refl). The eval row `transferD7` is a proof of `TSat` at the D7 inputs. The hash values are arguments of the law:  a hash in the types is computed again at each step of the Glue transport (s6 probe:  31.7 s for one eval, 0.36 s with the hash values as arguments). A law for all inputs with `pos2` in its type gives EVAL_FUEL.
 
+examples/transferSpec.lang (slice s1 of M9, D4) also gives the law for all inputs (O21). `TSatH h nf cm v sk rho rho2` is `Sat2 (h sk rho) (h v rho2) nf cm`, with the hash `h : Field -> Field -> Field` as an argument. `transferSatH` is the law of `noDoubleSpend` for all `h` and all inputs (through `transferLaw`);  `transferD7H` is its instance at `pos2` with the D7 inputs, and it gives the pair of `transferD7`. A neutral `h` stops the hash in the Glue transport, thus the law gives no EVAL_FUEL. `BalLine a b nf cm` is `<i> TransferSat a b nf cm (balanceCons @ i)`, a path from `Sat2` to `CommSat`;  `balLaw` is `transport` along `BalLine`, and `balD7` gives the pair `nf`, `cm` at the D7 inputs. The other orientation of `BalLine` (from `CommSat` to `Sat2`) gives PATH_BOUNDARY (test/check/bal-orientation.lang).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -1207,7 +1209,8 @@ the host form of each former.
   9`), wrap, poseidonVec and transferD7 are eval rows
   (test/eval/expect.txt); transferFwd holds by refl (uaBeta). transferLaw
   takes the hash values as arguments: a law for all inputs with the hash
-  in its type is O21. M8 adds no IR form and no conv rule. The lowering
+  in its type is O21 (closed in M9, slice s1). M8 adds no IR form and no
+  conv rule. The lowering
   has no subterm sharing, thus a Poseidon round has one hint for each
   S-box output and state word (form (i) of docs/M8-PLAN.md D4).
 
@@ -1430,7 +1433,15 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   (the shape of square). A circuit with more binders (poly has two public
   binders) needs an indexed binder form (`cvar (n : Nat)` with an
   environment). RULED 2026-10-18 (USER): this form is M8 work.
-- O21. New in M8 (slice s6). The hash of open inputs. Probe-forced
+- O21. Closed in M9 (slice s1). The law for all inputs takes the hash as
+  an argument `h : Field -> Field -> Field` (docs/M9-PLAN.md D4).
+  `transferSatH` of examples/transferSpec.lang is the law of
+  `noDoubleSpend` for all `h` and all inputs (through `transferLaw`), and
+  `transferD7H` is its instance at `pos2` (one instance, the D7 inputs).
+  A neutral `h` stops the hash in the Glue transport: no EVAL_FUEL.
+  `balLaw` is the transport of `balanceCons` along `BalLine`, from `Sat2`
+  to `CommSat` (`balD7`). The text below is the record of M8.
+  New in M8 (slice s6). The hash of open inputs. Probe-forced
   (slice s6): a law for all inputs with the Poseidon hash in its type
   (`transferSat : .. -> NullSat (pos2 sk rho) (pos2 v rho2) nf cm -> TSat
   nf cm v sk rho rho2`) gives EVAL_FUEL (20,000,000 steps, 2.1 s). A hash

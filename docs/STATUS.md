@@ -4550,3 +4550,189 @@ are in the `### s6` Mutants item.
   forms (ii) and (iii) (ruling (d)) go to M9 or later.  O19, O3, O12
   (c), O13, O14 and O15 stay open (ruling (g));  O16 stays open.  Next:
   the M9 kickoff (docs/PLAN.md, the M9 row).
+
+## M9
+
+Plan:  docs/M9-PLAN.md (RULED 2026-10-18 (USER):  each recommendation of
+section 9, (a) to (j)).  The M9 row of
+docs/PLAN.md:  a ZK-KYC credential circuit, ceremony SRS ingestion and
+deployment to a Telcoin network (the USER runs the broadcast).  From M8:
+O21 (SPEC.md 9), Merkle membership (ruling (f) of M8) and the Poseidon
+forms (ii) and (iii) (ruling (d) of M8).
+
+### kickoff (2026-10-18)
+
+- What changed:  docs/M9-PLAN.md (new, untracked) and this `## M9`
+  section.  No src/, domain/, examples/, test/, halo2/ or contracts/
+  change.  Nothing is staged:  docs/M9-PLAN.md and this section go into
+  the M9 s1 commit, after the USER rulings (as docs/M8-PLAN.md went into
+  the M8 s1 commit).
+- Start:  HEAD fa38310 (`M8 s7: close M8`, USER), tree d8ad7f30.  The
+  USER reworded 3 lines of `#### Rulings` of the M8 `### s7` before the
+  commit, thus the tree is not the staged s7 tree dc57ff1c.  The kickoff
+  accepted it.
+- Probes:  ~/Documents/glue-lang-M9-kickoff-probe/run.sh and run.out
+  (the real build/langc, no new family;  each `langc circuit FILE NAME -o
+  OUT` takes 0.05 to 0.11 s).
+
+| Probe | Shape | Result |
+|---|---|---|
+| (a) kyc1 | 1 Poseidon permutation, `a == want` | 3645 rows, k 12 |
+| (a) kyc2 | 2 permutations (the transfer shape), `v == want` | 7289 rows, k 13, public 3 |
+| (a) kyc2r | kyc2, `d + want == v`, `range8 d` | 7291 rows, k 13, lookups 1 |
+| (b) merkle1 | 1 permutation, 1 bit, 2 selects | 3654 rows, k 12 |
+| (b) merkle2 | 2 levels | 7307 rows, k 13 (3653 rows for each level) |
+| (c) O21 | the hash as an opaque argument `h` | check 0.41 s;  eval 0.38 to 0.43 s;  no EVAL_FUEL |
+| (d) SRS | the setup path (read only) | `keygen --srs FILE` or `--dev-srs`;  largest e2e k 13 |
+
+- (c) O21, the probe-proven form (docs/M9-PLAN.md D4):  `TSatH h nf cm v
+  sk rho rho2 = Sat2 (h sk rho) (h v rho2) nf cm` with `h : Field ->
+  Field -> Field` opaque, and `transferSatH` (for all `h` and all inputs,
+  through `transferLaw`).  `langc check` of o21.lang:  0.41 s
+  (examples/transferSpec.lang alone:  0.23 s).  `langc eval transferD7H`
+  (h := pos2, the D7 inputs) gives the pair of `transferD7` in 0.42 s
+  (transferD7:  0.47 s).  `langc eval transferSatH` gives `fun h => .. =>
+  fun p => pair (<j> (first p) @ ~j) (<j> (second p) @ j)` in 0.38 s.  No
+  EVAL_FUEL:  a neutral `h` stops the hash in the Glue transport.  The
+  transport of `balanceCons`:  `BalLine a b nf cm = <i> TransferSat a b
+  nf cm (balanceCons @ i)` from `Sat2` to `CommSat`, then `balLaw` and
+  `balD7`:  check 0.36 s, and `balD7` gives the pair `nf`, `cm` in 0.43
+  s.  The other orientation (from `CommSat` to `Sat2`) gives
+  PATH_BOUNDARY.  Thus both parts of O21 have a form.
+- (d) The SRS:  `glue-halo2 keygen --srs FILE` reads a halo2 KZG params
+  file (ParamsKZG::read) and downsizes it to the circuit k;  a smaller k
+  is refused (halo2/tests/backend.rs, srs_smaller_than_k_is_refused).
+  `--dev-srs` is a fixed seed (DEV_SEED, INSECURE).  `make e2e` uses
+  `--dev-srs` for each of its 7 rows (Makefile line 76);  the largest k is
+  13 (transfer).  prove, verify and solidity read srs.bin from the keys
+  dir (halo2/src/backend.rs lines 367 and 438).
+  SolidityGenerator::new(&srs, vk, Bdfg21, public) (backend.rs line 349):
+  the verifier holds G2 points of the SRS, thus another SRS changes each
+  verifier file (D5:  `make e2e` stays on the development SRS).
+- Questions for the USER (docs/M9-PLAN.md section 9;  each has a
+  recommendation):  (a) the credential format and the attribute check
+  (D1:  `cm = pos2 attr sk`, `nf = pos2 sk scope`, `range8 d` with `d +
+  min == attr`);  (b) Merkle membership and its depth (kycMerkle in s4,
+  depth 4, k 15);  (c) the ceremony and its file (a halo2 KZG params file
+  from the Perpetual Powers of Tau ceremony, k >= 15, pinned by SHA-256;
+  the USER names the file and its source);  (d) the consumer contract
+  (KycGate, D7, in s6);  (e) the deployment target (USER facts:  the
+  network, the chain id, the RPC URL, the explorer, the keystore account
+  name, the circuits;  the testnet first);  (f) O21 (closed in s1 with
+  D4);  (g) the specification HIT `KycSpec` (D3, in s3);  (h) the
+  Poseidon forms (ii) and (iii) (not in M9, D8);  (i) O3, O12 (c), O13,
+  O14, O15, O16 and O19 (they stay open);  (j) the slices s1 to s7 of
+  section 10.
+- Gates:  none (no code change).  The M8 close counts stay the baseline
+  (~/Documents/glue-lang-M9-COMMON.md).
+- Rulings (USER, 2026-10-18):  each recommendation of section 9, (a) to
+  (j).  The USER facts of (c) (the ceremony file and its source) and of
+  (e) (the network, the chain id, the RPC URL, the explorer and the
+  keystore account name) stay open:  s5 and s6 ask for them first.
+- Staged:  nothing.  Next:  M9 s1 (this plan;  O21 closed by D4).
+
+### s1
+
+The M9 plan commit and O21 closed (docs/M9-PLAN.md D4, ruling (f);
+section 10 row s1).  No src/ change, no domain change, no new IR form,
+no new golden and no verifier change.
+
+What changed:
+- docs/M9-PLAN.md (new, RULED 2026-10-18) and this `## M9`
+  section go into this commit.
+- examples/transferSpec.lang (266 lines, 31,881 B, 243 defs):  one
+  comment line and the 6 defs of D4, copied from the kickoff probes
+  (o21.lang and balF.lang lines 260 to 262).  `TSatH h nf cm v sk rho
+  rho2` is `Sat2 (h sk rho) (h v rho2) nf cm`, with the hash `h : Field
+  -> Field -> Field` as an argument.  transferSatH is the law of
+  noDoubleSpend for all `h` and all inputs (through transferLaw).
+  transferD7H is its instance at pos2 with the D7 inputs (3 1 2 4).
+  BalLine is `<i> TransferSat a b nf cm (balanceCons @ i)`, a path from
+  Sat2 to CommSat.  balLaw is `transport` along BalLine.  balD7 is
+  `balLaw (pos2 1 2) (pos2 3 4) nfD7 cmD7 (pair refl refl)`.
+- test/eval/expect.txt rows 284 and 285:  `transferSpec transferD7H`
+  and `transferSpec balD7`.  Each gives the pair of row 283
+  (transferD7).  The output of transferD7H is byte-identical to the
+  right side of row 283 (cmp).
+- test/check/bal-orientation.lang (new, 18 lines:  the 6 iso defs,
+  Sat2, NullSat, CommSat, the 2 isos and their Equiv, TransferSat, and
+  BalLine from CommSat to Sat2) and its row 156 `bal-orientation.lang
+  PATH_BOUNDARY`.  The first diagnostic:  `PATH_BOUNDARY: BalLine: ..
+  at i0 it normalizes to Prod (Path Field a nf) (Path Field b cm), the
+  type needs Prod (Path Field a nf) (Path Field cm b)`.  A control file
+  with the other orientation (from Sat2 to CommSat) in the same defs
+  checks (`ok`).
+- test/json/transferSpec.json:  rebuilt, 207 to 209 instances (+2:
+  transferD7H and balD7, closed defs of a Prod of Path types).  TSatH,
+  transferSatH, BalLine and balLaw are Pi defs, thus not instances.
+  The json builds stay 41.
+- SPEC.md:  9 O21 is `Closed in M9 (slice s1)` with the D4 form (the M8
+  text stays as the record).  One paragraph after the slice s6
+  paragraph of **The transfer specification.** (line 1134).  The M8
+  milestone text (line 1212) says that O21 is closed in M9 s1.
+
+Probes:  ~/Documents/glue-lang-M9-s1-probe/probe.sh and probe.out (the
+real build/langc after `make -B build/langc`).  The name guard (`rg -w`
+of the 6 names over domain/, examples/, test/ and SPEC.md, and of the
+file name bal-orientation over test/check):  no hit.  The draft:
+`langc check` ok (1.17 s);  `langc eval` transferD7H 0.91 s, balD7
+0.79 s, transferD7 0.80 s (each time includes the check of the whole
+file);  no EVAL_FUEL.
+
+Mutants (~/Documents/glue-lang-M9-s1-probe/install.sh and install.out;
+scratch copies, `sd -F` 1 hit each, no binary change):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | `Sat2 (h sk rho)` to `Sat2 (h rho sk)` (TSatH only) | TYPE_MISMATCH at transferSatH | KILLED (examples gate, `langc check`) |
+| m2 | `TSatH pos2 nfD7 cmD7 3 1 2 4` to `.. 3 1 4 2` | TYPE_MISMATCH at transferD7H | KILLED (examples gate) |
+| m3 | `CommSat (pos2 1 2) ..` to `CommSat (pos2 2 1) ..` (balD7) | TYPE_MISMATCH at balD7 | KILLED (examples gate) |
+| m4 | the last digit of the balD7 eval row value | the eval loop of test/gate.sh on a scratch expect:  1 failure (the base:  0) | KILLED (eval row 285) |
+
+The prompt expected TYPE_REFL for m2 and m3.  The real code is
+TYPE_MISMATCH (the declared type of the def and the type of its body
+do not convert).  KILLED all the same.
+
+Gates (~/Documents/glue-lang-M9-s1-probe/s1gates.sh and gates.out,
+sandbox off, on the staged slice files):  `make -B check` exit 0:
+native circuit 9, path 46, face 35, HIT 44;  examples 64, parse
+refusals 18, check refusals 156, evals 286, json 41 builds, build
+refusals 8, circuits 7, same-ir 19, circuit refusals 18, satcheck
+refusals 6, `gate: 0 failures`;  node regressions 6, printer 2.  `make
+check-clang` exit 0.  `forge build --root contracts --sizes` exit 0
+(DeployVerifier 1,445 B).  `make e2e` exit 0 (7 rows, 16 s).  The IR
+diff of test/circuit and contracts/src/verifiers:  0 B before and after
+e2e.  `git restore contracts/test/fixtures`, then `forge test --root
+contracts`:  66 passed.
+
+Open items:  s2 (the credential circuit kyc, D1).  The USER facts of
+questions (c) and (e) stay open (ask before s5 and s6).
+
+Staged:  the 8 slice paths.  Next:  M9 s2.
+
+#### Review corrections
+
+- HIGH, D7:  KycGate must authenticate the issuer commitment or root and
+  bind the public scope and threshold to its configured policy.  Merely
+  verifying a proof and remembering its nullifier accepts a caller's
+  self-issued credential and permits a fresh nullifier for each chosen
+  scope.  The plan now requires those checks and negative Forge tests.
+- MEDIUM, D1:  `range8 d; d + min == attr` is modular.  The guest
+  counterexample `min = r - 1`, `attr = 0`, `d = 1` witnesses and
+  satchecks successfully.  The claimed integer inequality requires
+  `min <= r - 256`;  the consumer configuration must enforce that bound.
+  The plan now states the precondition and requires boundary tests.
+- MEDIUM, D2 and D8:  depth 16 and depth 20 need k 17, above the
+  satchecker's SAT_K_MAX 16.  A circuit document with k 17 gives SAT_IR
+  at `k` even with a valid witness.  The plan now separates the file
+  estimates from supported gate sizes;  the selected depth stays 4.
+
+No language implementation change was needed.  The six new definitions
+check, the open forms of transferSatH and balLaw evaluate, and the JSON
+output matches its staged golden.
+
+Review validation used a temporary snapshot of the index:  `make -B
+check` (including check-clang), `forge build --root contracts --sizes`,
+`make e2e` (all 7 rows), and all 66 Forge tests passed.  The unchanged
+Rust backend binary was reused.  The circuit goldens and regenerated
+verifiers remain byte-identical.  No CI or validation weakening found.
