@@ -4839,3 +4839,117 @@ Open items:  s3 (the specification HIT KycSpec, D3).  The USER facts of
 questions (c) and (e) stay open (ask before s5 and s6).
 
 Staged:  the 11 slice paths.  Next:  M9 s3.
+
+### s3
+
+The credential specification HIT KycSpec (docs/M9-PLAN.md D3, ruling
+(g);  section 10 row s3).  One domain change (the family KycSpec) and
+one rebuild of build/langc.  No src/ change, no new IR form, no new
+golden and no verifier change.
+
+What changed:
+- domain/domain.lang:  the family KycSpec after TransferSpec, with 4
+  comment lines.  The points credential, kycNullifier and predicate name
+  the representatives of the credential circuit (examples/kyc.glue).
+  noReplay is the law from kycNullifier to credential (`<i> [ ~i ->
+  kycNullifier, i -> credential ]`), disclosure is the law from
+  credential to predicate.  build/langc is rebuilt (`make -B
+  build/langc`;  domain/domain.lang is compiled into langc).
+- examples/kycSpec.lang (new, 256 lines, 32,640 B, 238 defs):  18 header
+  comment lines, the 218 Poseidon and iso defs of
+  examples/transferSpec.lang (its lines 23 to 240), and 20 new defs.
+  The satisfaction types CredSat, NfSat and PredSat take the hash values
+  as arguments (`a` for `h attr sk`, `b` for `h sk scope`) with nf, cm,
+  min, attr and d:  CredSat is the triple of `Path Field a cm`, `Path
+  Field b nf` and `Path Field (d + min) attr`;  NfSat and PredSat are
+  the same triple in another order.  The isos nfTo, toNf, predTo and
+  toPred and their Equiv idNf and idPred;  the fold KycSat into Type 0
+  through ua (credential to CredSat, kycNullifier to NfSat, predicate to
+  PredSat, each law to the ua path);  NrLine is `<i> KycSat a b nf cm
+  min attr d (noReplay @ i)`, a path from NfSat to CredSat, and kycLaw
+  is `transport` along it;  DiscLine and discLaw are the same for
+  disclosure.  CredSatH and kycLawH take the hash `h : Field -> Field ->
+  Field` as an argument (D4):  `CredSatH h cm nf scope min attr sk d` is
+  `CredSat (h attr sk) (h sk scope) nf cm min attr d`, and kycLawH is the
+  law of noReplay for all h and all inputs.  The instances cmK (`pos2 30
+  5`), nfK (`pos2 5 9`), kycDH (`CredSatH pos2 cmK nfK 9 18 30 5 12`)
+  and discD (`PredSat (pos2 30 5) (pos2 5 9) nfK cmK 18 30 12`) are at
+  the values of the circuits row kyc (scope 9, min 18, attr 30, sk 5, d
+  12).
+- test/eval/expect.txt rows 286 to 289:  `kycSpec cmK`, `kycSpec nfK`,
+  `kycSpec kycDH` and `kycSpec discD`.  cmK and nfK are the cm and nf
+  values of the circuits row kyc (test/circuit/expect.txt row 8).  kycDH
+  and discD each give a pair of constant paths:  `<j> cm`, then the pair
+  of `<j> nf` and `<j> 30`.
+- test/json/kycSpec.json (new, 25,427 B):  208 instances (the 206
+  Poseidon and iso instances of transferSpec.json, then cmK, nfK, kycDH
+  and discD;  a closed def of a Prod of Path types is an instance, the Pi
+  defs and the Path defs are not).  The json builds go 41 to 42.
+- test/check/domain-noReplay.lang (new, 3 lines, as
+  domain-noDoubleSpend.lang) and its row 157 `domain-noReplay.lang
+  REFUSE_NAME`.  The diagnostic:  `REFUSE_NAME: noReplay: noReplay is a
+  domain constructor (rule R4)`.
+- SPEC.md:  one paragraph **The credential specification.** after the
+  O21 paragraph of **The transfer specification.** (after line 1134,
+  before `## 3. Type formers`), with the family in a code block.
+
+#### Deviation
+
+The D3 text names the point `nullifier`.  The domain constructor
+namespace is flat:  src/front/check.c name_owner scans the constructors
+of each family by name (rule R4).  With `family KycSpec := credential |
+nullifier | ..` the build passes, but every langc run gives
+`REFUSE_NAME: KycSpec: nullifier is a domain constructor (rule R4)`
+(transferSpec.lang, transfer.glue, kyc.glue and the draft are all
+refused), because `nullifier` is a constructor of TransferSpec.  The
+point is `kycNullifier`.  The USER rules:  keep kycNullifier or name the
+point.  The rename cost is the domain line and its comment, the SPEC.md
+paragraph, the kycSpec.lang header comment and this section.
+
+Probes:  ~/Documents/glue-lang-M9-s3-probe/probe.sh, probe.out and
+baseline.out (the baseline `make -B check` on HEAD, exit 0, the s2
+counts;  a scratch copy of the repository with the family appended,
+`make -B -C <copy> build/langc` 0.14 s with tcc;  two trials, nullifier
+and then kycNullifier, with domain.orig restored before each append).
+The name guard (`rg -w` of KycSpec, credential, predicate, noReplay,
+disclosure, KycSat, kycLaw and kycSpec over domain/, examples/, test/
+and SPEC.md):  only the word credential in the comment of
+examples/kyc.glue line 1.  The draft with the copy's langc:  `langc
+check` ok (0.54 s);  `langc eval` cmK 0.29 s, nfK 0.29 s, kycDH 1.30 s,
+discD 1.12 s (each a check of the whole file and two Poseidon hashes in
+the refl checks), kycLawH with open h and inputs 1.91 s, no EVAL_FUEL.
+The normal form of kycLawH:  `fun h => fun cm => fun nf => fun scope =>
+fun min => fun attr => fun sk => fun d => fun p => pair (<j> (first p) @
+j) (pair (<j> (first (second p)) @ ~j) (<j> (second (second p)) @ j))`.
+The install (install.sh and install.out):  the real build/langc after
+`make -B build/langc`;  test/json/kycSpec.json from the real langc is
+byte-identical to the probe json (cmp).
+
+Mutants (install.sh and install.out;  scratch copies of
+examples/kycSpec.lang, `sd -F` 1 hit each, the real build/langc, no
+binary change):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | `Path (Type 0) (NfSat ..) (CredSat ..)` to `Path (Type 0) (CredSat ..) (NfSat ..)` (NrLine only) | PATH_BOUNDARY at NrLine (`at i0 it normalizes to Prod (Path Field a cm) (Prod (Path Field nf b) (Path Field (fieldAdd d min) attr))`, as bal-orientation.lang) | KILLED (examples gate, `langc check`) |
+| m2 | `CredSat (h attr sk)` to `CredSat (h sk attr)` (CredSatH only) | TYPE_MISMATCH at kycLawH (`expected a term of type Prod (Path Field (h sk attr) cm) ..`, found the type with `h attr sk`) | KILLED (examples gate) |
+| m3 | `kycDH : CredSatH pos2 cmK nfK ..` to `.. pos2 nfK cmK ..` | TYPE_MISMATCH at kycDH (the expected type holds the two hash values in the swapped order) | KILLED (examples gate) |
+| m4 | the last digit of the kycDH eval row 288 (`30))` to `31))`) | the eval loop of test/gate.sh (lines 58 to 75) on a scratch expect:  the base 0 failures (289 evals, 32.2 s), the mutant 1 failure (`FAIL eval kycSpec kycDH`, 25.1 s) | KILLED (eval row 288) |
+
+Gates (~/Documents/glue-lang-M9-s3-probe/s3gates.sh and gates.out,
+sandbox off, on the staged slice files):  `make -B check` exit 0:
+native circuit 9, path 46, face 35, HIT 44;  examples 66, parse
+refusals 18, check refusals 157, evals 290, json 42 builds, build
+refusals 8, circuits 8, same-ir 19, circuit refusals 19, satcheck
+refusals 6, `gate: 0 failures`;  node regressions 6, printer 2.  `make
+check-clang` exit 0.  `forge build --root contracts --sizes` exit 0
+(DeployVerifier 1,445 B).  `make e2e` exit 0 (8 rows, 30 s).  The IR
+diff of test/circuit and contracts/src/verifiers:  0 B before and after
+e2e.  `git restore contracts/test/fixtures`, then `forge test --root
+contracts`:  77 passed.
+
+Open items:  the point name (kycNullifier, or a USER name);  s4 (the
+Merkle credential circuit kycMerkle, D2, depth 4).  The USER facts of
+questions (c) and (e) stay open (ask before s5 and s6).
+
+Staged:  the 8 slice paths.  Next:  M9 s4.

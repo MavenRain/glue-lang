@@ -1133,6 +1133,12 @@ examples/transferSpec.lang (slice s6) moves the law `noDoubleSpend` to a satisfa
 
 examples/transferSpec.lang (slice s1 of M9, D4) also gives the law for all inputs (O21). `TSatH h nf cm v sk rho rho2` is `Sat2 (h sk rho) (h v rho2) nf cm`, with the hash `h : Field -> Field -> Field` as an argument. `transferSatH` is the law of `noDoubleSpend` for all `h` and all inputs (through `transferLaw`);  `transferD7H` is its instance at `pos2` with the D7 inputs, and it gives the pair of `transferD7`. A neutral `h` stops the hash in the Glue transport, thus the law gives no EVAL_FUEL. `BalLine a b nf cm` is `<i> TransferSat a b nf cm (balanceCons @ i)`, a path from `Sat2` to `CommSat`;  `balLaw` is `transport` along `BalLine`, and `balD7` gives the pair `nf`, `cm` at the D7 inputs. The other orientation of `BalLine` (from `CommSat` to `Sat2`) gives PATH_BOUNDARY (test/check/bal-orientation.lang).
 
+**The credential specification.** `KycSpec` is a domain family of the form of `TransferSpec` (docs/M9-PLAN.md D3, slice s3 of M9):  the points `credential`, `kycNullifier` and `predicate` name the representatives of the credential circuit (examples/kyc.glue), `noReplay` is the law from the nullifier point to the credential point and `disclosure` is the law from the credential point to the predicate point. examples/kycSpec.lang gives the satisfaction types with the hash as an argument (D4):  `CredSat a b nf cm min attr d` is `Prod (Path Field a cm) (Prod (Path Field b nf) (Path Field (d + min) attr))`, `NfSat` turns the nullifier path and `PredSat` turns the predicate path. `KycSat` is the fold of `KycSpec` into `Type 0`:  each law goes to `ua` of an `Equiv` (an iso with the path inverse on one component). `kycLaw` is `transport` along `<i> KycSat a b nf cm min attr d (noReplay @ i)`, `discLaw` is `transport` along the `disclosure` line, and `kycLawH h cm nf scope min attr sk d` applies `kycLaw` at `a = h attr sk` and `b = h sk scope`. The instances `kycDH` and `discD` at `h = pos2` and the values of the circuits row `kyc` evaluate to pairs of constant paths (test/eval/expect.txt). A def with a constructor name of `KycSpec` gives REFUSE_NAME (rule R4;  test/check/domain-noReplay.lang).
+
+```
+family KycSpec := credential | kycNullifier | predicate | noReplay <i> [ ~i -> kycNullifier, i -> credential ] | disclosure <i> [ ~i -> credential, i -> predicate ]
+```
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.

@@ -60,3 +60,9 @@ family SqSpec := smul | spow | slaw <i> [ ~i -> smul, i -> spow ]
 -- (examples/transfer.glue). noDoubleSpend is the law between the nullifier
 -- and the note, balanceCons is the law between the note and the commitment.
 family TransferSpec := note | nullifier | commitment | noDoubleSpend <i> [ ~i -> nullifier, i -> note ] | balanceCons <i> [ ~i -> note, i -> commitment ]
+
+-- M9 s3 (D3): the credential specification HIT. credential, kycNullifier and
+-- predicate name the representatives of the credential circuit
+-- (examples/kyc.glue). noReplay is the law between the kycNullifier and the
+-- credential, disclosure is the law between the credential and the predicate.
+family KycSpec := credential | kycNullifier | predicate | noReplay <i> [ ~i -> kycNullifier, i -> credential ] | disclosure <i> [ ~i -> credential, i -> predicate ]
