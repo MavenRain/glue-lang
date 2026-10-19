@@ -4303,3 +4303,128 @@ refusals +1, e2e +1 row, forge tests +11.
 Open items:  s6 (examples/transferSpec.lang:  transferLaw, the transport
 of one TransferSpec law along `ua` to a `Sat` proof of the transfer
 circuit (D8);  the eval row;  the s1 to s5 mutant review).
+
+### s6
+
+The example examples/transferSpec.lang (docs/M8-PLAN.md section 4 row
+transferLaw, D8 and section 10 row s6):  the transport of the
+TransferSpec law `noDoubleSpend` along `ua` to a satisfaction proof of
+the transfer circuit, its eval row, and the s1 to s5 mutant review.  No
+src/ change, no domain change, no new IR form, no new golden and no
+verifier change.
+
+What changed:
+- examples/transferSpec.lang (new, 259 lines, 30,628 B):  the Poseidon
+  defs of examples/poseidon.lang without wrap, poseidonVec and fullOne
+  (211 defs, an `rg -N '^def '` copy), the 6 iso defs of
+  examples/spec.lang (fill0, fill2, sq, sq1, lemIso, isoToEquiv), then
+  20 new defs (237 defs in all).  pos2 is the hash of the circuit
+  (`first (perm3 (pair 0 (pair a b)))`).  `Sat2 a b nf cm` is `Prod
+  (Path Field a nf) (Path Field b cm)`:  the satisfaction type of the 2
+  hash constraints (`a` is the nullifier hash, `b` is the commitment
+  hash).  In NullSat the nullifier path starts at nf;  in CommSat the
+  commitment path starts at cm.  `TSat nf cm v sk rho rho2` is `Sat2
+  (pos2 sk rho) (pos2 v rho2) nf cm`.  nullTo, toNull, idNull and
+  commTo, toComm, idComm are the 2 isos (the path inverse on one
+  component, the 2 laws by refl) and their `Equiv` (isoToEquiv).
+  TransferSat is the fold of TransferSpec into `Type 0` (the cases in
+  declaration order:  note, nullifier, commitment, `ua (idNull ..)`,
+  `ua (idComm ..)`).  NdsLine is `<i> TransferSat a b nf cm
+  (noDoubleSpend @ i)`, a path from NullSat to Sat2;  transferLaw is
+  `transport` along NdsLine;  transferFwd:  transferLaw is the forward
+  map of idNull (uaBeta, refl).  nfD7 and cmD7 are `pos2 1 2` and `pos2
+  3 4`;  nfD7Vec and cmD7Vec are refl against the 2 values of
+  test/circuit/expect.txt line 7;  transferD7 is a proof of `TSat nfD7
+  cmD7 3 1 2 4`:  `transferLaw (pos2 1 2) (pos2 3 4) nfD7 cmD7 (pair
+  refl refl)`.
+- test/eval/expect.txt line 283:  the row `transferSpec transferD7`
+  (a pair of 2 constant paths at nf and cm of the D7 inputs, the values
+  of test/circuit/expect.txt line 7).
+- test/json/transferSpec.json (new, 24,935 B, from `langc build`):  207
+  instances:  rc0 to rc194, mds00 to mds22, nfD7 and cmD7 (Field), and
+  transferD7 (a closed def of a Prod of Path types is an instance;  the
+  Path defs nfD7Vec and cmD7Vec are not).
+- SPEC.md:  one paragraph at the end of section 2 (after `types (slice
+  s6).`, before `## 3. Type formers`):  the example, Sat2, TSat, NullSat
+  and CommSat, the isos, transferLaw, the eval row, the hash values as
+  arguments and the EVAL_FUEL limit.
+
+Probes (s6 turn 1, ~/Documents/glue-lang-M8-s6-probe/, the real
+build/langc, no domain change):  the name guard of the new def names:
+ok (no domain name).  v1 (s6probe.sh:  the hash is an argument `h` of
+the Sat types, `h sk rho` in the types):  check 0.57 s, but `eval
+transferD7` 31.7 s and `build` 42.2 s (the same output):  a hash in a
+type family is computed again at each step of the Glue transport.  v2
+(s6probe2.sh, the installed design:  the hash values are arguments):
+check 0.27 s, eval 0.36 s, build 0.36 s (calibration:  eval
+poseidonVec 0.07 s).  A law for all inputs with pos2 in its type
+(`transferSat : .. -> NullSat (pos2 sk rho) (pos2 v rho2) nf cm -> TSat
+nf cm v sk rho rho2`) gives EVAL_FUEL (20,000,000 steps, 2.1 s):  it is
+not in the example (open item).  Install (s6-b):  `langc check` ok,
+`langc eval transferD7` gives the probe output and `langc build` gives
+the probe bytes (cmp).
+
+Mutants (scratch copies of the v2 draft, `sd -F` 1 hit each, the real
+build/langc):  each mutant stops `langc check`, thus the examples row,
+the json row and the eval row `transferSpec transferD7` kill it.
+- m1 (`(noDoubleSpend @ i)` to `(balanceCons @ i)` in NdsLine):
+  PATH_BOUNDARY at NdsLine:  KILLED.
+- m1b (the 2 path cases of TransferSat swapped):  HIT_CASE at
+  TransferSat:  KILLED.
+- m1c (the point cases note and nullifier swapped):  HIT_CASE at
+  TransferSat:  KILLED.
+- m2 (cmD7 `pos2 3 4` to `pos2 4 3`):  TYPE_REFL at cmD7Vec:  KILLED.
+- m2b (`(pos2 1 2)` to `(pos2 2 1)` in transferD7):  TYPE_REFL at
+  transferD7:  KILLED.
+- m3 (the path inverse of nullTo removed, `@ ~i` to `@ i`):
+  PATH_BOUNDARY at nullTo:  KILLED.
+
+The s1 to s5 mutant review (`### s1` to `### s5` of `## M8`):  20
+mutants, 18 KILLED, 2 EQUIVALENT;  no new gate row, thus the delta does
+not change.
+
+| slice | mutant | result | gate row |
+|---|---|---|---|
+| s1 | m1 envSq index swap | KILLED (TYPE_REFL at evVSq) | examples, eval circVar evVsq |
+| s1 | m2 `vvar 2` to `vvar 0` (circVarPoly.glue) | KILLED (CIRCUIT_UNCONSTRAINED) | same-ir circVarPoly only |
+| s1 | m3 vpow `hb * t` to `hb + t` | KILLED (TYPE_REFL at optV) | examples, json circVar |
+| s2 | m1 interpS point cases swapped | KILLED (HIT_CASE at interpS) | examples, json, 2 spec eval rows |
+| s2 | m2 `slaw @ i1` to `slaw @ i0` (specSq.glue) | SURVIVED, EQUIVALENT:  both points normalize to x * x, one IR | none can see it |
+| s2 | m3 idSat forward map to a hcomp with constant tubes | EQUIVALENT:  hcomp_constant reduces it to `p @ j` (Field is a closed type) | none can see it |
+| s2 | m3b uaFwd tube `j -> p @ (k \/ ~k)` | KILLED (TYPE_REFL at uaFwd) | examples, json, 2 spec eval rows |
+| s2 | m3c the m3 hcomp in idSat | KILLED (TYPE_REFL at idSat) | examples, json, 2 spec eval rows |
+| s3 | m1 one digit of rc100 | KILLED | eval poseidon poseidonVec only |
+| s3 | m2 one digit of mds12 | KILLED | eval poseidonVec only |
+| s3 | m3 partial round S-box on word 1 | KILLED | eval poseidonVec only |
+| s4 | m1a s64k2 constraint removed | KILLED (CIRCUIT_UNCONSTRAINED) | examples, circuits |
+| s4 | m1b t31k0 S-box constraint removed | KILLED (IR golden;  witness exit 0, satcheck SAT_IR) | circuits only |
+| s4 | m2 last digit of rc100 | KILLED (WITNESS_FAIL) | circuits |
+| s4 | m3 `mds12 * t64k2` to `mds12 * t64k1` | KILLED (WITNESS_FAIL at 215:34406) | circuits |
+| s5 | m1 cs30k1 constraint removed | KILLED (IR golden;  a free hint) | circuits only |
+| s5 | m2 `sbox5 (sk + rc1)` to `sbox5 (rho + rc1)` | KILLED (CIRCUIT_UNCONSTRAINED) | examples, circuits |
+| s5 | m2b `sk + rc1` to `sk + rc2` | KILLED (IR golden, WITNESS_FAIL at 217:72780) | circuits |
+| s5 | m3 domain `noDoubleSpend` to `noDoubleSpent` | KILLED (`def noDoubleSpend` gives ok) | check refusal domain-noDoubleSpend.lang |
+| s5 | m4 `JSON_MAX_BYTES, &` to `SOURCE_MAX_BYTES, &` (src/main.c) | KILLED (IO_SIZE at satcheck transfer) | circuits |
+
+Review notes:  the 2 EQUIVALENT mutants change no normal form and no
+IR, thus no gate row can kill them (a reason, not a new row).  6
+mutants have one killing row only (s1 m2, s3 m1 to m3, s4 m1b, s5 m1):
+the free-hint rows (s4 m1b, s5 m1) depend on the IR golden, because
+`langc witness` does not see a free hint.
+
+Gates (the slice files were staged before the gates):  `make -B check`
+exit 0 (native circuit 9, path 46, face 35, HIT 44;  examples 64, parse
+refusals 18, check refusals 155, evals 284, json 41 builds, build
+refusals 8, circuits 7, same-ir 19, circuit refusals 18, satcheck
+refusals 6;  node regressions 6, printer 2);  `make check-clang` exit 0;
+`forge build --root contracts --sizes` exit 0;  `make e2e` exit 0 (7
+rows, 66 s);  the IR diff of test/circuit and
+contracts/src/verifiers is empty before and after e2e;  `forge test` 66
+passed.  The delta against s5 is the section 10 row s6:  examples +1,
+evals +1, json +1.
+
+Open items:  s7 (the M8 close:  `### s7: close`, the PLAN M8 row DONE,
+SPEC.md 4 and 9, the mutant roll-up, the M9 kickoff prompt).  The hash
+of open inputs:  a law for all inputs with pos2 in its type gives
+EVAL_FUEL (20,000,000 steps);  the s6 law takes the hash values as
+arguments.
