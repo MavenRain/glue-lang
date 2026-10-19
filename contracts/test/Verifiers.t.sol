@@ -7,6 +7,7 @@ import {Halo2Verifier as PoseidonVerifier} from "../src/verifiers/poseidon.sol";
 import {Halo2Verifier as RangeVerifier} from "../src/verifiers/range.sol";
 import {Halo2Verifier as SquareVerifier} from "../src/verifiers/square.sol";
 import {Halo2Verifier as TransferVerifier} from "../src/verifiers/transfer.sol";
+import {Halo2Verifier as KycVerifier} from "../src/verifiers/kyc.sol";
 import {Vm, VM_ADDRESS} from "./Vm.sol";
 
 /// The interface of docs/IR.md section 5. Each generated verifier has it.
@@ -249,6 +250,30 @@ contract TransferVerifierTest is VerifierCase {
                 && instances[0] == 7853200120776062878684798364095072458815029376092732009249414926327459813530
                 && instances[1] == 14763215145315200506921711489642608356394854266165572616578112107564877678998,
             "the public inputs of transfer are not poseidon([1, 2]) and poseidon([3, 4])"
+        );
+    }
+}
+
+/// examples/kyc.glue with attr=30 sk=5 d=12 at scope=9 min=18
+/// (test/circuit/expect.txt). The public inputs are cm = poseidon([attr, sk]),
+/// nf = poseidon([sk, scope]), then scope and min (docs/M9-PLAN.md D1).
+contract KycVerifierTest is VerifierCase {
+    function name() internal pure override returns (string memory) {
+        return "kyc";
+    }
+
+    function deploy() internal override returns (address) {
+        return address(new KycVerifier());
+    }
+
+    function testThePublicInputsAreTheCredential() public view {
+        require(
+            instances.length == 4
+                && instances[0] == 5967774456880520545986641262024216432454924249289189870195314151569515620696
+                && instances[1] == 2046061026757605145648934375530781408765546393983200800628234446163090055163
+                && instances[2] == 9
+                && instances[3] == 18,
+            "the public inputs of kyc are not poseidon([30, 5]), poseidon([5, 9]), 9 and 18"
         );
     }
 }

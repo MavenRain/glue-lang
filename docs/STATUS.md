@@ -4736,3 +4736,106 @@ check` (including check-clang), `forge build --root contracts --sizes`,
 `make e2e` (all 7 rows), and all 66 Forge tests passed.  The unchanged
 Rust backend binary was reused.  The circuit goldens and regenerated
 verifiers remain byte-identical.  No CI or validation weakening found.
+
+### s2
+
+The credential circuit `kyc` (docs/M9-PLAN.md D1, ruling (a);  section
+10 row s2).  No src/ change, no domain change, no new IR form and no
+verifier generator change.  The IR and the verifier of each current
+circuit are byte-identical.
+
+What changed:
+- examples/kyc.glue (new, 221 lines, 94,128 B):  14 header comment
+  lines (D1, the modular caveat, the hint names), the 206 defs of the
+  kickoff probe kyc2r.glue (byte-identical:  the Poseidon constants and
+  sbox5 of examples/poseidon.lang), then one circuit line `circuit kyc
+  public (cm : Field) (nf : Field) (scope : Field) (min : Field)
+  private (attr : Field) (sk : Field) (d : Field)` with 552 hints
+  (the prefix n for the nullifier hash, c for the commitment hash) and
+  556 constraints (one for each hint, then `ns64k0 == nf`,
+  `cs64k0 == cm`, `d + min == attr` and `range8 d`).  The nullifier
+  hash takes (0, sk, scope) and the commitment hash takes (0, attr,
+  sk):  D1 `nf = pos2 sk scope` and `cm = pos2 attr sk`.
+- test/circuit/kyc.circuit.json (1,080,977 B) and kyc.witness.json
+  (1,251,701 B):  the new goldens (k 13, 7290 rows, advice 3, fixed 7,
+  instance 1, public 4).  test/circuit/expect.txt row 8:  `kyc kyc` at
+  scope 9, min 18, attr 30, sk 5, d 12 (cm = pos2 30 5 =
+  5967774456880520545986641262024216432454924249289189870195314151569515620696,
+  nf = pos2 5 9 =
+  2046061026757605145648934375530781408765546393983200800628234446163090055163).
+  This row is also the e2e row (Makefile:  `done <$(E2E_TABLE)`).
+  test/circuit/refuse.txt row 19:  a WITNESS_FAIL row at attr 17 (cm =
+  pos2 17 5) with d = r - 1 (the only d with d + 18 == 17):  `range8
+  fails`.
+- contracts/src/verifiers/kyc.sol (new, the current generator, 988
+  lines, 49,890 B) and contracts/test/fixtures/kyc.proof.json (new,
+  8,252 B, from `make e2e`;  4 instances in the order cm, nf, scope
+  0x9, min 0x12).
+- contracts/test/Verifiers.t.sol:  the kyc verifier import after the
+  transfer import and the contract KycVerifierTest (the pattern of the
+  current tests, and testThePublicInputsAreTheCredential:  4
+  instances, cm, nf, 9, 18):  11 tests (254 to 279 lines).
+- contracts/script/DeployVerifier.s.sol:  the doc comment list names
+  kyc.  No code change (the script reads each artifact by name).
+- contracts/README.md:  the 3 circuit lists name kyc ("seven files")
+  and the numbers row `| kyc | 6,280 | 1,409,428 | 315,797 |` (runtime
+  size = gas report Deployment Size 6312 - 32;  verifyProof = the gas
+  report Max of 20 calls).
+
+Probes (~/Documents/glue-lang-M9-s2-probe/probe.sh and probe.out, the
+real build/langc, `-o` for each output):  name guard (`rg -w kyc` over
+domain/, examples/, test/, contracts/src, contracts/test and the
+Makefile):  0 hits;  attr, scope and min are not in domain/domain.lang;
+`min` is not a reserved name (a probe file with `def min` checks).
+`langc check` ok;  `langc circuit`:  k 13, 7290 rows (section 6
+estimate:  about 7291;  the kickoff probe kyc2r had 7291 with a
+separate binder for the second hash input:  the shared private binder
+sk saves one row), 0.23 s;  `langc witness` at the circuits row 0.31 s,
+satcheck ok.  Refuse probes at attr 17, min 18:  d = r - 1 gives
+WITNESS_FAIL at 221:72843 (`range8 fails`, the refuse row);  d = 0
+gives WITNESS_FAIL at 221:72826 (`the left side is 18, the right side
+is 17`).
+
+The modular counterexample (D1, section 8 row s2):  the relation `d +
+min == attr` with `range8 d` holds in the field.  It gives the integer
+bound `min <= attr <= min + 255` only when `min <= r - 256`.  The
+witness at min = r - 1, attr = 0, d = 1 (cm = pos2 0 5) gives exit 0
+and satcheck ok:  the circuit accepts it.  The boundary min = r - 256,
+attr = 0, d = 256 gives WITNESS_FAIL (`range8 fails: the value is
+256`):  the bound holds at r - 256.  The integer predicate is a
+precondition of the consumer:  KycGate must refuse a policy with min >
+r - 256 (D7, s6).  r is the BN254 scalar modulus of src/front/fr.h
+(`rg -o -N '[0-9]{76,78}' src/front/fr.h`;  r - 1 and r - 256 by bc).
+
+Mutants (~/Documents/glue-lang-M9-s2-probe/m1.glue to m4.glue;
+scratch copies, `sd -F` at the circuit site, no binary change;  the IR
+against kyc.circuit.json, the witness at the circuits row):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | `d + min == attr` to `d + attr == min` (2 hits:  the header comment and the circuit) | IR DIFF;  WITNESS_FAIL (`the left side is 42, the right side is 18`) | KILLED (circuits row:  the IR golden and the witness golden) |
+| m2 | `; range8 d` removed (1 hit) | IR DIFF (no lookup);  the circuits row exit 0;  the refuse row inputs exit 0 | KILLED (circuits row:  the IR golden;  refuse row:  WITNESS_FAIL expected, exit 0) |
+| m3 | `pos2 sk scope` to `pos2 scope sk` (the nt0k1 and nt0k2 inputs swapped, 1 hit each) | IR SAME (both inputs are private advice:  the IR is symmetric);  WITNESS_FAIL at 221:37317 | KILLED (circuits row:  the witness golden only) |
+| m4 | the min binder private (1 hit) | IR DIFF (`"public":3`);  the circuits row exit 0 | KILLED (circuits row:  the IR golden) |
+
+Gates (~/Documents/glue-lang-M9-s2-probe/s2gates.sh and gates.out,
+sandbox off, on the staged slice files):  `make -B check` exit 0:
+native circuit 9, path 46, face 35, HIT 44;  examples 65, parse
+refusals 18, check refusals 156, evals 286, json 41 builds, build
+refusals 8, circuits 8, same-ir 19, circuit refusals 19, satcheck
+refusals 6, `gate: 0 failures`;  node regressions 6, printer 2.  `make
+check-clang` exit 0.  `forge build --root contracts --sizes` exit 0
+(one Halo2Verifier row, 5,802 B, the last compiled file, COMMON M8
+s4;  the kyc runtime 6,280 B of the gas report is under EIP-170;
+DeployVerifier 1,445 B).  `make
+e2e` exit 0 (8 rows;  30 s at the first run, 26 s at the gate).  The
+IR diff of test/circuit and contracts/src/verifiers:  0 B before and
+after e2e (the kyc golden and verifier are staged before the gates;
+the verifier is deterministic, the proof is random).  `git restore
+contracts/test/fixtures`, then `forge test --root contracts`:  77
+passed (66 + 11).
+
+Open items:  s3 (the specification HIT KycSpec, D3).  The USER facts of
+questions (c) and (e) stay open (ask before s5 and s6).
+
+Staged:  the 11 slice paths.  Next:  M9 s3.
