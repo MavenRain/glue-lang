@@ -1194,6 +1194,22 @@ the host form of each former.
   of docs/M7-PLAN.md): a relation between two different normal forms is a
   proof term. The indexed binder form is the family `CircV` (section
   2.10). The specification HIT is the family `SqSpec` (section 2.10).
+- **Direction 4** (M8, section 2.10): the family `CircV` (the binder
+  `vvar n`, an environment `Nat -> Field`) and its quotient `GQuot CircV
+  CRelV`; the specification HIT `SqSpec` and its fold `interpS` into
+  `GQuot Circ CRel`; the Poseidon permutation (examples/poseidon.lang,
+  circomlib BN254, t = 3) and the circuits `poseidon` (3644 rows, k 12)
+  and `transfer` (7288 rows, k 13); the specification HIT `TransferSpec`
+  and the transport of its law `noDoubleSpend`. The laws of
+  docs/M8-PLAN.md section 4: evVPoint, evVSq, optV, interpEnd0,
+  interpEnd1 and uaFwd hold by refl (examples/circVar.lang and
+  spec.lang); specMove (the eval rows `spec m3s` and `spec m4s`, `<j>
+  9`), wrap, poseidonVec and transferD7 are eval rows
+  (test/eval/expect.txt); transferFwd holds by refl (uaBeta). transferLaw
+  takes the hash values as arguments: a law for all inputs with the hash
+  in its type is O21. M8 adds no IR form and no conv rule. The lowering
+  has no subterm sharing, thus a Poseidon round has one hint for each
+  S-box output and state word (form (i) of docs/M8-PLAN.md D4).
 
 ## 5. Core types
 
@@ -1414,6 +1430,16 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   (the shape of square). A circuit with more binders (poly has two public
   binders) needs an indexed binder form (`cvar (n : Nat)` with an
   environment). RULED 2026-10-18 (USER): this form is M8 work.
+- O21. New in M8 (slice s6). The hash of open inputs. Probe-forced
+  (slice s6): a law for all inputs with the Poseidon hash in its type
+  (`transferSat : .. -> NullSat (pos2 sk rho) (pos2 v rho2) nf cm -> TSat
+  nf cm v sk rho rho2`) gives EVAL_FUEL (20,000,000 steps, 2.1 s). A hash
+  in a type family is computed again at each step of the Glue transport
+  (the s6 probe v1 at closed inputs: 31.7 s). Thus `transferLaw` of
+  examples/transferSpec.lang takes the hash values as arguments, and the
+  eval row `transferSpec transferD7` is at the D7 inputs. The transport of
+  `balanceCons` is also open: its iso (`idComm`) and its fold case (`ua
+  (idComm ..)`) are in the example, but no def moves it. Open for M9.
 
 ## 10. Milestones
 

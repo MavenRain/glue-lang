@@ -4428,3 +4428,125 @@ SPEC.md 4 and 9, the mutant roll-up, the M9 kickoff prompt).  The hash
 of open inputs:  a law for all inputs with pos2 in its type gives
 EVAL_FUEL (20,000,000 steps);  the s6 law takes the hash values as
 arguments.
+
+### s7: close (2026-10-18)
+
+- Commits:  s1 0b82a04 (with the plan docs/M8-PLAN.md:  0b82a04);  s2
+  c6d952f;  s3 5062dda;  s4 cded21d;  s5 0224aee;  s6 dcbac52.  s7
+  changes docs only:  no change in src/, in domain/domain.lang, in test/
+  and in examples/.
+- The slices:
+  - s1 0b82a04:  O20 closed:  the family `CircV` (the binder `vvar n`,
+    an environment `Nat -> Field`), circVar.lang, circVarSq.glue and
+    circVarPoly.glue (same-ir against square and poly), the REFUSE_NAME
+    row.
+  - s2 c6d952f:  the specification HIT `SqSpec`, its fold `interpS` into
+    `GQuot Circ CRel`, the fold into `Type 0` with `ua (idSat y x)`
+    (uaFwd by refl), spec.lang and specSq.glue.
+  - s3 5062dda:  examples/poseidon.lang:  circomlib BN254 Poseidon (t =
+    3, 8 full and 57 partial rounds), the constants and the test vector
+    from the circomlib source, the row count of form (i).
+  - s4 cded21d:  the circuit `poseidon` (3644 rows, k 12), its golden,
+    e2e row, verifier and 11 Forge tests, the WITNESS_FAIL row;  the
+    USER ruling on contracts/script/DeployVerifier.s.sol (getCode and
+    CREATE, no imports, 1,445 B).
+  - s5 0224aee:  the family `TransferSpec`, the circuit `transfer` (7288
+    rows, k 13), its golden, e2e row, verifier and 11 Forge tests, the
+    WITNESS_FAIL row and the REFUSE_NAME row;  ruling (a) of s5 (USER):
+    `langc satcheck` reads its JSON files with JSON_MAX_BYTES (16 MiB).
+  - s6 dcbac52:  examples/transferSpec.lang:  the transport of the law
+    `noDoubleSpend` along `ua` to a satisfaction proof of `transfer`;
+    the s1 to s5 mutant review.
+- What M8 added outside the examples, the guest tables and the docs:
+  domain/domain.lang +14 lines (`CircV` s1, `SqSpec` s2, `TransferSpec`
+  s5);  src/main.c and src/front/front.h (s5, the satcheck input limit
+  only);  contracts/src/verifiers/poseidon.sol (s4) and transfer.sol
+  (s5);  contracts/script/DeployVerifier.s.sol (s4).  No new IR form, no
+  verifier generator change and no conv rule.
+- Docs:  SPEC.md 2.10 (new in s1;  s2 to s6 add to it), 4 (s7:
+  Direction 4) and 9 (s1:  O20 closed;  s2:  the O19 note;  s7:  O21
+  new).  docs/PLAN.md:  the M8 row DONE 2026-10-18 with the slice
+  commits.  docs/STATUS.md:  this section.
+
+#### Rulings
+
+The USER ruled each recommendation of docs/M8-PLAN.md section 9 on
+2026-10-18.
+
+| Ruling | Content | Where it landed |
+|---|---|---|
+| (a) | the OTPSpec form (points, path constructors between points) | s2 `SqSpec`, s5 `TransferSpec`;  no law needed a field at a path constructor |
+| (b) | the satisfaction type at a representative:  D2 (b) with `ua`, D2 (a) for the circuit side | s2 (`ua (idSat y x)`, uaFwd), s6 (`ua (idNull ..)`, `ua (idComm ..)`, transferLaw) |
+| (c) | the new family `CircV` | s1 (O20 closed) |
+| (d) | Poseidon form (i):  hints on the current arith rows | s3 (the round defs), s4 and s5 (no IR form, no verifier generator change);  forms (ii) and (iii) go to M9 or later |
+| (e) | circomlib BN254 Poseidon, t = 3, 8 full and 57 partial rounds, the D6 vector | s3 (checked against the circomlib source;  the URL is in `### s3`) |
+| (f) | D7:  one input note, one output note, `nf` and `cm` | s5;  Merkle membership goes to M9 or later |
+| (g) | D10:  O20 closes in s1;  O19, O3, O12 (c), O13, O14 and O15 stay open | s1 (O20), SPEC.md 9;  s7 adds O21 |
+| (h) | slices s1 to s7 | s1 to s7 (s4, s5 and s6 each used more than one session) |
+
+Two more USER rulings came from the slices:  the s4 ruling
+(DeployVerifier by getCode and CREATE:  importing 5 verifiers made the
+old script exceed EIP-170) and ruling (a) of s5 (JSON_MAX_BYTES for
+satcheck:  the transfer circuit JSON is 1,080,055 B, over SOURCE_MAX_BYTES).
+
+#### Mutant roll-up
+
+The mutants of the `Mutants` items of s1 to s6.  The table of each
+mutant of s1 to s5 is in `### s6` (the s1 to s5 review);  the s6 mutants
+are in the `### s6` Mutants item.
+
+| Slice | Mutants | KILLED | EQUIVALENT | SURVIVED |
+|---|---|---|---|---|
+| s1 | 3 | 3 | 0 | 0 |
+| s2 | 5 | 3 | 2 | 0 |
+| s3 | 3 | 3 | 0 | 0 |
+| s4 | 4 | 4 | 0 | 0 |
+| s5 | 5 | 5 | 0 | 0 |
+| s6 | 6 | 6 | 0 | 0 |
+| M8 | 26 | 24 | 2 | 0 |
+
+- Totals:  26 mutants:  24 KILLED, 2 EQUIVALENT (s2 m2 and s2 m3:  they
+  change no normal form and no IR, thus no gate row can see them), 0
+  SURVIVED that a gate row can see.  1 mutant is in src/ (s5 m4,
+  src/main.c), 1 is in domain/domain.lang (s5 m3), 24 are in guest
+  files.  6 mutants have one killing row only (s1 m2, s3 m1 to m3, s4
+  m1b, s5 m1).  No mutant added a row.
+
+#### Review
+
+- (i) No conv rule reads a type.  The only src/ change of M8 is the
+  satcheck input limit (s5):  no change in the checker, the evaluator or
+  the conv rules, thus the M7 close review (i) holds.
+- (ii) No rule `hcomp A i0 u u0 = u0` (D8 of M3):  no change in the
+  evaluator, and the hcomp-i0-int.lang and hcomp-i0-circle.lang rows
+  stay.  s2 m3 shows the closed-type rule hcomp_constant at Field (a
+  hcomp with constant tubes), not an i0 rule.
+- (iii) `hcomp` at a HIT stays a canonical value (D3 of M4):  no change
+  in the evaluator.
+- (iv) No IR change:  M8 adds no IR form (ruling (d)).  The IR and the
+  verifier of each M7 circuit stayed byte-identical (the IR check after
+  each e2e).  The new circuits `poseidon` and `transfer` each added a
+  golden and a verifier file.  3 new same-ir rows (circVarSq,
+  circVarPoly, specSq).
+- Gates (s7, the s7 files staged first):  `make -B check` exit 0:
+  native circuit 9, path 46, face 35, HIT 44;  examples 64, parse
+  refusals 18, check refusals 155, evals 284, json 41 builds, build
+  refusals 8, circuits 7, same-ir 19, circuit refusals 18, satcheck
+  refusals 6;  node regressions 6, printer 2.  Against s6:  no change
+  (section 10:  none).  Against the M7 close:  examples +9, check
+  refusals +3, evals +8, json +4, circuits +2, same-ir +3, circuit
+  refusals +2.  `make check-clang` exit 0.  `forge build --root
+  contracts --sizes` exit 0 (DeployVerifier 1,445 B).  `make e2e` exit 0
+  (7 rows;  5 at the M7 close).  The diff of test/circuit and
+  contracts/src/verifiers is empty before and after e2e.
+  contracts/test/fixtures restored, then `forge test --root contracts`
+  66 passed (44 at the M7 close), 0 failed.
+- Open items at the M8 close (SPEC.md 9):  O21 (new in M8:  the hash of
+  open inputs;  a law for all inputs with pos2 in its type gives
+  EVAL_FUEL, 20,000,000 steps;  the s6 law takes the hash values as
+  arguments).  The transport of `balanceCons`:  its iso (idComm) and its
+  fold case (`ua (idComm ..)`) are in examples/transferSpec.lang, but no
+  def moves it (O21).  Merkle membership (ruling (f)) and the Poseidon
+  forms (ii) and (iii) (ruling (d)) go to M9 or later.  O19, O3, O12
+  (c), O13, O14 and O15 stay open (ruling (g));  O16 stays open.  Next:
+  the M9 kickoff (docs/PLAN.md, the M9 row).
