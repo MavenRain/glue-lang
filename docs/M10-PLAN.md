@@ -1,6 +1,6 @@
 # M10 plan: the sender binding (O22), the `kycNullifier` name, the Poseidon estimates
 
-Status:  RULED 2026-10-20 (the USER took each recommendation of section 9,
+Status:  CLOSED 2026-10-20 (s5);  RULED 2026-10-20 (the USER took each recommendation of section 9,
 the message `(a) .. (j) ..` of the s1 session);  s1 BUILT 2026-10-20 (the
 circuits, the goldens, the gate, the tests, the verifiers and the fixtures;
 docs/STATUS.md `### s1`);  s2 BUILT 2026-10-20 (the operations side of O22, O22 CLOSED;  docs/STATUS.md `### s2`);  s3 DONE 2026-10-20 (ruling (f) option (i), docs only;  docs/STATUS.md `### s3`);  s4 DONE 2026-10-20 (the Poseidon estimate, D7:  the hypothesis fails for kycMerkle, SPEC.md 9 O24;  docs/STATUS.md `### s4`).  docs/PLAN.md has the M10 row (PLANNED

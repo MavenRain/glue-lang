@@ -1249,6 +1249,23 @@ the host form of each former.
   (contracts/README.md); the USER runs the broadcast. M9 adds no IR
   form, no conv rule and no src/ change. The sender binding is O22 and
   the deployment target is O23.
+- **The sender binding** (M10, section 2.10):  the fifth public binder
+  `sender` of `kyc` and `kycMerkle` (ruling (b):  the raw address as a
+  Field;  ruling (c):  the row `sender == sender`, form B;  `public` 4
+  to 5, one arith row and one copy:  kyc 7291 rows, k 13;  kycMerkle
+  21899 rows, k 15) and the gate check:  `KycGate.admit` takes five
+  instances and refuses with `WrongSender` if the fifth instance is not
+  `msg.sender` (contracts/src/KycGate.sol).  The operations side (slice
+  s2):  the read-only check derives the `--from` address of the
+  admission call from the fifth instance of the proof and names it, the
+  rehearsal and the deployment regression name the sender, and the
+  runbook has the admission step (contracts/README.md).  A relayer
+  cannot admit the proof of another holder (O22, closed).  Ruling (f):
+  the domain name `kycNullifier` stays.  The Poseidon forms (ii) and
+  (iii) are an estimate only (D7 of docs/M10-PLAN.md, ruling (g)):  the
+  hypothesis that neither form changes k fails for `kycMerkle` (k 15 to
+  14);  the forms are O24.  M10 adds no IR form, no conv rule and no
+  src/ change.  The deployment target stays O23.
 
 ## 5. Core types
 
@@ -1539,7 +1556,9 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   `poseidon` and k 12 for `kyc` and `transfer`.  The forms stay open as
   a milestone candidate:  each changes the IR of each Poseidon circuit
   or the verifier generator (M9 ruling (h)) and needs a USER ruling
-  first.  The pinned SRS (k <= 15) covers each k of the table.
+  first.  The pinned SRS (k <= 15) covers each k of the table.  The M10
+  close (slice s5, USER answer (i) of 2026-10-20) keeps O24 open:  no
+  milestone takes the forms yet.
 
 ## 10. Milestones
 
