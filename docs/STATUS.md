@@ -5505,3 +5505,31 @@ is in its section).
 - Docs:  SPEC.md 9 (O22 CLOSED in M10, slices s1 and s2);  docs/M10-PLAN.md Status line (s2 BUILT 2026-10-20);  contracts/README.md (step 7, the two table rows).
 - Open items:  O22 CLOSED.  O23 (the deployment target) stays with the USER.
 - Next:  s3, the `kycNullifier` ruling (f), option (i), docs only (~/Documents/glue-lang-M10-s3-PROMPT.md).
+
+### s3 (2026-10-20)
+
+- Rulings:  none new (M10 (a) to (j) RULED 2026-10-20;  (f) = option (i) of D6:  keep `kycNullifier`).
+- Start condition MET:  HEAD 6a17d6f `M10 s2: document sender-bound admission` (USER;  the subject of the commit message file was `M10 s2: bind the sender in the scripts`, the USER reworded it), tree a81b9151 = the s2 index tree (`git diff a81b9151 HEAD --stat` empty), status empty.  No USER staged-change review this time:  the slice is as planned.
+- The question of the s3 prompt ((i) two commits, or (ii) one docs commit for s3 and s4) came back without an answer a second time (the slot of the first message held the question text);  the session took the recommendation (ii):  s3 and s4 are one docs commit, this file gets both sections, and no s4 prompt exists.
+- Ruling (f), option (i):  the point name `kycNullifier` stays.  The three sites of domain/domain.lang are unchanged:  line 64 and line 66 (the comment of M9 s3) and line 68 (the family line of `KycSpec`).  SPEC.md 2.10 states the rule in one sentence (lines 1149 to 1153, written in s1):  the constructor namespace of the domain families is flat (src/front/check.c name_owner, rule R4), thus `TransferSpec` has `nullifier` and `KycSpec` has `kycNullifier`;  no edit.  No code, no rebuild, no guest row.
+- Control (~/Documents/glue-lang-M10-s4-probe/control.sh, the log control.out):  `make -B check` exit 0 (native circuit 9, path 46, face 35, HIT 44;  examples 67, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 21, satcheck refusals 6;  node regressions 6, printer 2;  the s2 counts).  No install, no gate delta.
+- Docs:  docs/M10-PLAN.md Status line (s3 DONE 2026-10-20).
+
+### s4 (2026-10-20)
+
+- Rulings:  none new ((g) = the Poseidon estimate only, no Poseidon code;  D7).  No D7 input is missing.
+- Method:  the lowering rules of SPEC.md 7.1 (one row for each `+`, `-` and `*`, one constant row for each Field literal, one input row for each binder and hint, a copy for `==`) applied to form (i) (examples/poseidon.glue:  `hint tRkJ := sbox5 (s + rc)` with `sbox5 x = x * x * x * x * x`, `hint sRkI := mds * t + mds * t + mds * t`), then checked against the golden test/circuit/poseidon.circuit.json with jq (the selector pattern ql qr qo qm qc of the rows 279 to 345:  the hint `t0k1` is `c + c + * c + * c + * c + *`, 14 rows;  a mix hint is `c * c * + c * +`, 8 rows).  The lowering has no sharing:  each occurrence of a subterm gets its own rows.
+- Form (i) counts:  an S-box on a binder is 14 rows (the sum `s + rc` 5 times = 5 constant rows + 5 add rows, then 4 mul rows);  a full round is 72 rows = 6 hint rows + 3 x 14 + 3 x 8;  a partial round is 54 rows = 4 hint rows + 14 + 3 x 12 (each mix hint repeats the two sums `s + rc` of the words without an S-box, 2 rows each).  The model gives each golden exactly:  poseidon 279 input rows + 53 (round 0:  the S-box of word 0 is closed, `sbox5 (0 + rc0)`, one constant row) + 3 x 66 + 57 x 50 + 4 x 66 = 3644;  transfer 558 + 2 x 3365 = 7288;  kyc 560 + 6730 + 1 = 7291;  kycMerkle 1680 + 20190 + 4 x 7 + 1 = 21899.  Each hash has 80 S-boxes on binders and 57 partial rounds.
+- The savings for each hash:  form (ii), the degree-5 gate, 11 rows for each S-box on a binder (14 to 3:  the sum once, then the gate row), or 13 if the gate holds the round constant in a fixed column (14 to 1);  form (iii), the memo table, 8 rows for each S-box on a binder (the sum once:  14 to 6) and 8 rows for each partial round (the two repeated sums:  3 uses to 1, 2 words), and 585 x hashes - 9 more rows if the memo also shares literal rows (the 9 MDS constants of each of the 65 rounds), plus 195 x (hashes - 1) for the round constants across hashes.
+- The table (rows, then k by the rule rows + 16 <= 2^k):
+
+| circuit | hashes | form (i) | (ii) wire | (ii) constant | (iii) binders | (iii) + literals |
+|---|---|---|---|---|---|---|
+| poseidon | 1 | 3644, k 12 | 2764, k 12 | 2604, k 12 | 2548, k 12 | 1972, k 11 |
+| transfer | 2 | 7288, k 13 | 5528, k 13 | 5208, k 13 | 5096, k 13 | 3740, k 12 |
+| kyc | 2 | 7291, k 13 | 5531, k 13 | 5211, k 13 | 5099, k 13 | 3743, k 12 |
+| kycMerkle | 6 | 21899, k 15 | 16619, k 15 | 15659, k 14 | 15323, k 14 | 10847, k 14 |
+
+- Result:  the D7 hypothesis (neither form changes k) holds for poseidon, transfer and kyc under form (ii) and under form (iii) over binder subterms, and fails for kycMerkle:  form (iii) gives k 14 under each memo scope, form (ii) gives k 14 only with the constant in the gate.  The literal memo gives k 11 for poseidon and k 12 for transfer and kyc.  Both forms together (the gate on the wire, the binder memo) give poseidon 2308 (k 12), kyc 4619 (k 13) and kycMerkle 13883 (k 14).  The forms stay OPEN as a milestone candidate:  SPEC.md 9 O24 (new).  The pinned SRS (k <= 15) covers each k of the table.  No code, no gate delta, no guest row.
+- Docs:  SPEC.md 9 (O24);  docs/M10-PLAN.md Status line (s4 DONE 2026-10-20);  this file (`### s3`, `### s4`).
+- Next:  s5, the M10 close (~/Documents/glue-lang-M10-s5-PROMPT.md).

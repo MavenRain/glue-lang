@@ -1514,6 +1514,32 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   file against the Perpetual Powers of Tau response (a USER item).
   The pinned SRS supports circuits with k <= 15. A circuit requiring
   k > 15 needs a larger SRS file and a new pin (halo2/ceremony.sha256).
+- O24. New in M10 (slice s4).  The Poseidon forms (ii) and (iii) of
+  docs/M8-PLAN.md D4 (M10 ruling (g):  an estimate, no code).  The
+  count (docs/STATUS.md M10 `### s4`, from the lowering rules of
+  section 7.1 and the golden test/circuit/poseidon.circuit.json):  the
+  S-box `sbox5 (s + rc)` of form (i) is 14 rows, because the lowering
+  has no sharing and `s + rc` is lowered 5 times (5 constant rows, 5
+  add rows, 4 mul rows);  a full round is 72 rows and a partial round
+  is 54 rows.  Form (ii) (a degree-5 gate) saves 11 rows for each S-box
+  on a binder, or 13 if the gate holds the round constant.  Form (iii)
+  (a memo table) saves 8 rows for each such S-box and 8 rows for each
+  partial round (the two sums `s + rc` that its three mix hints
+  repeat).  If the memo spans all H hashes and also shares literal rows,
+  it saves a further `585 * H - 9 + 195 * (H - 1)` rows:  the 9 MDS
+  constants reused over 65 rounds per hash, plus the 195 other literal
+  values (194 round constants and the closed first S-box output) reused
+  across hashes.  This is 576 rows for one hash, 1356 for two and 4476
+  for six, as in the table.  The hypothesis of
+  docs/M10-PLAN.md D7 (neither form changes k) holds for `poseidon`
+  (k 12), `kyc` and `transfer` (k 13) under form (ii) and under form
+  (iii) over binder subterms, and fails for `kycMerkle`:  form (iii)
+  gives k 14 (15323 rows), and form (ii) gives k 14 only with the
+  constant in the gate (15659 rows).  The literal memo gives k 11 for
+  `poseidon` and k 12 for `kyc` and `transfer`.  The forms stay open as
+  a milestone candidate:  each changes the IR of each Poseidon circuit
+  or the verifier generator (M9 ruling (h)) and needs a USER ruling
+  first.  The pinned SRS (k <= 15) covers each k of the table.
 
 ## 10. Milestones
 
