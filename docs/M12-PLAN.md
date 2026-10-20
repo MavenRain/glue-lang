@@ -1,6 +1,9 @@
 # M12 plan: the literal fold (O24 form (iv))
 
-Status:  RULED 2026-10-20:  the USER took each recommendation (DRAFT at the kickoff).  The USER ruled on section 9,
+Status:  CLOSED 2026-10-20 (s3);  s1 152c6d4 (USER);  s2 54cda59 (USER);
+s3 the close, DONE 2026-10-20 (docs only;  docs/STATUS.md `### s3:
+close`).
+RULED 2026-10-20:  the USER took each recommendation (DRAFT at the kickoff).  The USER ruled on section 9,
 (a) to (h), before s1.  The plan file, the docs/PLAN.md M12 row and the
 docs/STATUS.md `### kickoff` section of `## M12` go with the M12 s1
 commit.  The topic slot of the kickoff prompt named form (iv) ("Topic:

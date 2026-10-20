@@ -1277,6 +1277,20 @@ the host form of each former.
   code.  examples/memoKey.glue and the circuit refusal row 22 of
   test/circuit/refuse.txt test the op in the memo key.  Forms (ii) and
   (iv) stay O24.  The deployment target stays O23.
+- **The literal fold** (M12, section 7.1):  form (iv) of O24 (rulings
+  (a) to (h) of docs/M12-PLAN.md section 9).  T1 (slice s1):  the
+  lowering puts a literal operand into the coefficients ql, qr, qm and
+  qc of its arith row;  a literal that is a constraint side keeps its
+  CONST row.  T2 (slice s2), the affine fold:  an arith row whose uses
+  are all operands of arith rows goes into each consumer when the form
+  of the consumer still fits the gate.  The rows and k under T2 (the D3
+  T2 column of docs/M12-PLAN.md):  `poseidon` 990 rows, k 10;
+  `kycMerkle` 5970 rows, k 13.  Section 9 O24 has the counts of each
+  circuit.  M12 adds no IR form, no conv rule and no new check code:
+  the fold is a lowering change.  examples/foldKey.glue and the circuit
+  refusal row 23 of test/circuit/refuse.txt (slice s1) test the
+  coefficients in the memo key.  Form (ii) stays O24.  The deployment
+  target stays O23.
 
 ## 5. Core types
 
@@ -1669,9 +1683,21 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   only operand uses (the 204th is also a constraint side), so k does not
   change.  T2 removes the arith rows that go into their consumers:  k
   goes down by 1 for each Poseidon circuit.  `square` and `nonzero` do
-  not change under T1 and T2;  `range` does not change under T2.  The
-  depth table of the fold (docs/M12-PLAN.md D4) comes with the M12 close
-  (slice s3).  Form (ii) (the degree-5 gate) stays open (M12 ruling (g)).
+  not change under T1 and T2;  `range` does not change under T2.  Form
+  (iv) is DONE (T1 and T2).  The depth table of the fold
+  (docs/M12-PLAN.md D4, the M12 close;  the model of the M11 table):
+
+  | Form | rows a level | kycMerkle (depth 4) | max depth at k 15 | depth 20 |
+  |---|---|---|---|---|
+  | structural memo (M11) | 1776 | 10847, k 14 | 16 | 39263, k 16 |
+  | memo + T1 | 1776 | 10644, k 14 | 16 | 39060, k 16 |
+  | memo + T2 | 997 | 5970, k 13 | 30 | 21922, k 15 |
+
+  T1 removes only the CONST rows that the memo shares over all hashes,
+  so the rows of a level do not change.  Under T2 a depth-20 tree fits
+  the pinned SRS (k 15), but the Merkle depth stays 4 (M12 ruling (e)).
+  At the M12 close O24 stays OPEN for form (ii) only (the degree-5 gate,
+  M12 ruling (g)).
 
 ## 10. Milestones
 
