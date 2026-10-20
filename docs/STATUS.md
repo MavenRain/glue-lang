@@ -5199,3 +5199,87 @@ powers of tau response is a USER item.  The point name kycNullifier
 (`### s3`) stays until the USER rules.
 
 Staged:  the 12 slice paths and docs/STATUS.md.  Next:  M9 s6.
+
+### s6
+
+- The deployment slice of D6 and D7 (~/Documents/glue-lang-M9-s6-b-PROMPT.md;
+  the route probe and the runners in ~/Documents/glue-lang-M9-s6-probe/).
+  No change in src/, in the IR, in the verifier generator or in
+  test/circuit:  the 88 forge tests of s4 and `make e2e` are unchanged.
+- The (e) record:  the five target fields (network, chain id, RPC URL,
+  explorer with its verify endpoint, keystore account name) came as the
+  literal word VALUE.  s6 takes the target as parameters:  the make
+  variables NAME, CHAIN_ID, SCOPE, MIN, PORT, RPC_URL, VERIFIER, GATE and
+  the shell variables of the runbook.  No value is in a repository file.
+- New files:  contracts/src/KycGate.sol (D7), contracts/test/KycGate.t.sol
+  (11 tests), contracts/script/DeployKycGate.s.sol,
+  contracts/script/rehearsal.sh, contracts/script/check.sh.  Changed:
+  contracts/foundry.toml (the `ceremony` profile), contracts/test/Vm.sol
+  (expectRevert, prank), Makefile (rehearsal, deploy-check),
+  contracts/README.md (`## KycGate`;  `## The deployment runbook`
+  replaces `## Deploy on Telcoin`), README.md (`## Deploy`).
+- KycGate:  verifier, scope and min are immutable;  the issuer approves
+  an anchor (cm for kyc, the root for kycMerkle);  admit(proof, instances)
+  checks the count 4, the anchor, scope, min and the nullifier in that
+  order, then staticcall verifyProof;  a bad proof makes the generated
+  verifier revert with empty data, so the gate reverts with ProofRejected;
+  an accepted proof records nf and emits Admitted(nf, anchor, sender).
+  The D1 bound in the constructor:  scope < r, min <= r - 256.
+- The route (ii) facts:  the ceremony profile sets src, test (a dir that
+  does not exist), out, cache_path and broadcast under build/e2e-ceremony/
+  and inherits solc, the optimizer, evm_version paris and fs_permissions;
+  contracts/out stays the development build.  The --sizes rows:  the
+  ceremony kycMerkle runtime 5,802 B, KycGate 2,176 B, DeployKycGate
+  3,702 B.
+- Rehearsal (`make rehearsal`:  anvil chain id 31337, port 8577, anvil
+  account 0 unlocked in the node, no key anywhere):  the kycMerkle
+  verifier at 0x5FbDB2315678afecb367f032d93F642f64180aa3, 1815422 gas;
+  KycGate with the approve at 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512,
+  785056 gas;  check.sh:  the chain id, the verifier code against the
+  ceremony artifact, the verifier on the ceremony proof, the gate
+  verifier, scope, min, the nullifier unused, admit as an eth_call:
+  9 ok lines, exit 0, 1 s.
+- Mutants (KycGate.sol;  ~/Documents/glue-lang-M9-s6-probe/install.sh and
+  install.out):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | `used[nf] = true;` removed | 3 failed:  testRefusesTheSameNullifierTwice, testAdmitsTheKycMerkleFixture, testAdmitsTheKycFixtureWithAnApprovedCommitment | KILLED |
+| m2 | the scope compare removed | testRefusesAnotherScope failed | KILLED |
+| m3 | the record moved above the staticcall | 11 passed | EQUIVALENT:  the ProofRejected revert rolls the record back |
+| m3b | the ProofRejected revert removed | testRefusesATamperedProofAndRecordsNothing failed | KILLED |
+| m4 | `R - 256` to `R - 255` | testRefusesMinAboveTheBound failed | KILLED |
+
+- Gates (~/Documents/glue-lang-M9-s6-probe/s6gates.sh, gates.out):
+  `make -B check`:  native 9/46/35/44, examples 67, parse refusals 18,
+  check refusals 157, evals 290, json 42, build refusals 8, circuits 9,
+  same-ir 19, circuit refusals 20, satcheck refusals 6, gate 0 failures,
+  node regressions 6, printer 2;  check-clang 0;  forge build 0
+  warnings;  forge test 99 (88 + 11);  `make e2e` 9 rows (38 s);  IR
+  diff 0 B before and after;  `make e2e-ceremony` 9 rows (34 s), IR
+  diff 0 B, 8 verifiers;  the ceremony build;  `make rehearsal` exit 0.
+- Open items:  the five (e) VALUE fields (the USER fills them at the
+  broadcast);  msg.sender is not bound by the proof (a relayer can
+  spend the nf first;  a binding needs a public input, not M9);  k 15,
+  the Axiom file check and kycNullifier stay open from s4 and s5.
+- The next slice:  s7, the close (STATUS, SPEC.md 4 and 9, the PLAN M9
+  row, the mutant roll-up).
+- Staged-change review fixes (2026-10-19):
+  - MEDIUM: the rehearsal could use an existing RPC on PORT while its own
+    anvil failed to bind. Reproduced with an existing chain 31338 and a
+    requested chain 31337: the existing sender nonce advanced from 0 to 3
+    before the final chain check failed. All rehearsal RPC now uses a
+    unique IPC socket owned by the spawned anvil, with the chain checked
+    before deployment and the process and socket cleaned up on exit.
+  - MEDIUM: check.sh accepted a gate whose issuer had changed to 0xBEEF.
+    Gate checks now require ISSUER and compare it with issuer(); the make
+    target, rehearsal and runbook pass the expected issuer.
+  - contracts/test/deployment.sh and make deployment-test exercise the
+    occupied port, a correct issuer, a missing issuer, an unexpected
+    issuer and read-only checks. The original scripts failed three
+    assertions; the fixed scripts pass all checks.
+  - Validation: make check (including check-clang), forge test (99 passed),
+    ceremony forge build --sizes, the kyc and kycMerkle rehearsals on
+    fresh local anvils, shellcheck and git diff --check all passed.
+    No compiler, IR, generated verifier or proof fixture was changed.
+    No default test or CI check was weakened. Twelve paths are staged.

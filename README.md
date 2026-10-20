@@ -69,17 +69,10 @@ use `--srs FILE --sha256 HEX` with a KZG params file from a trusted setup
 and its SHA-256 pin, and run `keygen`, `prove` and `solidity` with the
 same keys (`make e2e-ceremony SRS=FILE`, see contracts/README.md).
 
-## Deploy on Telcoin
+## Deploy
 
-The deploy script reads the chain from the RPC and the key from a keystore.
-Import the deploy key one time (`cast wallet import <keystore>
---interactive`). Simulate first, without `--broadcast`:
-
-```
-forge script contracts/script/DeployVerifier.s.sol --root contracts \
-    --sig 'run(string)' square --rpc-url $TELCOIN_RPC_URL --account <keystore>
-```
-
-Then add `--broadcast` to deploy. Replace `square` with `range` or `poly`
-for the other verifiers. `contracts/README.md` gives the local anvil
-deploy.
+The deployment is a runbook: contracts/README.md `## The deployment
+runbook`. `make e2e-ceremony SRS=FILE` builds the ceremony verifiers,
+`make rehearsal` deploys one with a KycGate on a local anvil and checks
+it, and you run the two broadcast commands with a keystore account.
+Nothing in the repository names a chain, a URL or a key.

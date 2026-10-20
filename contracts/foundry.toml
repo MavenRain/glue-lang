@@ -13,3 +13,18 @@ fs_permissions = [{ access = "read", path = "./test/fixtures" }]
 # The generated verifiers read their arguments in assembly, by calldata
 # offset, so solc reports their named parameters as unused.
 ignored_warnings_from = ["src/verifiers"]
+
+# The ceremony verifiers of `make e2e-ceremony` (docs/M9-PLAN.md D5, D6):
+# `FOUNDRY_PROFILE=ceremony forge ...` compiles build/e2e-ceremony/verifiers
+# and script/ into build/e2e-ceremony/out, and contracts/out stays the
+# development build. The profile inherits the default keys (solc, the
+# optimizer, evm_version, fs_permissions). The test dir does not exist, so
+# no test compiles under this profile. The rehearsal broadcasts go to
+# build/e2e-ceremony/broadcast.
+[profile.ceremony]
+src = "../build/e2e-ceremony/verifiers"
+test = "../build/e2e-ceremony/no-tests"
+out = "../build/e2e-ceremony/out"
+cache_path = "../build/e2e-ceremony/cache"
+broadcast = "../build/e2e-ceremony/broadcast"
+ignored_warnings_from = ["../build/e2e-ceremony/verifiers"]

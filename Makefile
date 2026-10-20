@@ -22,7 +22,7 @@ FIXTURES = contracts/test/fixtures
 CEREMONY = build/e2e-ceremony
 CEREMONY_PIN = halo2/ceremony.sha256
 
-.PHONY: build check check-clang clean e2e e2e-ceremony
+.PHONY: build check check-clang clean e2e e2e-ceremony rehearsal deploy-check deployment-test
 
 build: build/langc
 
@@ -111,6 +111,30 @@ e2e-ceremony: build/langc $(HALO2)
 	  && $(HALO2) solidity --circuit $$out.circuit.json --keys $$out-keys --out $(CEREMONY)/verifiers/$$name.sol \
 	  || exit 1; \
 	done <$(E2E_TABLE)
+
+# The deployment of docs/M9-PLAN.md D6 and D7. `make rehearsal` deploys the
+# ceremony verifier NAME and a KycGate on a local anvil with CHAIN_ID and
+# runs the checks: the only broadcast is to that anvil, from an anvil
+# account that is unlocked in the node. `make deploy-check` runs the same
+# read-only checks against a deployment (cast call and cast code only). The
+# USER broadcast is the two forge script commands of contracts/README.md
+# `## The deployment runbook`; nothing here sends to a live chain.
+NAME ?= kycMerkle
+CHAIN_ID ?= 31337
+SCOPE ?= 9
+MIN ?= 18
+PORT ?= 8577
+
+rehearsal:
+	sh contracts/script/rehearsal.sh $(NAME) $(CHAIN_ID) $(SCOPE) $(MIN) $(PORT)
+
+deploy-check:
+	@test -n "$(RPC_URL)" || { echo "deploy-check: give RPC_URL=URL VERIFIER=0x.. [GATE=0x.. ISSUER=0x.. SCOPE=N MIN=N] [CHAIN_ID=N] [NAME=kycMerkle]" >&2; exit 2; }
+	@test -n "$(VERIFIER)" || { echo "deploy-check: give VERIFIER=0x.. (the address of the DeployVerifier run)" >&2; exit 2; }
+	RPC_URL="$(RPC_URL)" CHAIN_ID="$(CHAIN_ID)" NAME="$(NAME)" VERIFIER="$(VERIFIER)" GATE="$(GATE)" ISSUER="$(ISSUER)" SCOPE="$(SCOPE)" MIN="$(MIN)" sh contracts/script/check.sh
+
+deployment-test:
+	sh contracts/test/deployment.sh
 
 clean:
 	rm -rf build

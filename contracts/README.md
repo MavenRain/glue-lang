@@ -25,6 +25,14 @@ writes. There is one verifier for each example circuit of
   verifier of the circuit NAME and logs its address. The script reads the
   creation code from the build artifact (`getCode`) and does not import the
   verifiers. A NAME with no artifact stops the script.
+- `src/KycGate.sol`: the admission policy of docs/M9-PLAN.md D7 in front
+  of one kyc or kycMerkle verifier (`## KycGate` below).
+- `test/KycGate.t.sol`: the tests of the gate against the kyc and
+  kycMerkle fixtures.
+- `script/DeployKycGate.s.sol`: deploys a gate in front of a deployed
+  verifier.
+- `script/rehearsal.sh`: the anvil rehearsal of the deployment (D6).
+- `script/check.sh`: the read-only checks of a deployment (D6).
 
 ## Interface
 
@@ -109,22 +117,107 @@ Call the verifier with the CLI calldata. The result is 1 (true):
     cast call $VERIFIER $(jq -r .calldata contracts/test/fixtures/square.proof.json) \
         --rpc-url http://127.0.0.1:8545
 
-## Deploy on Telcoin
+## KycGate
 
-The script reads the chain id from the RPC. Nothing in it names a chain
-or a key. Import the deploy key into a keystore one time:
+`src/KycGate.sol` is the admission policy of docs/M9-PLAN.md D7 in front
+of one kyc or kycMerkle verifier. The verifier, the scope and the minimum
+are fixed at the deploy. The issuer approves an anchor: the commitment cm
+of a credential (kyc) or the root of a credential tree (kycMerkle). A
+revoked anchor is refused. `admit(proof, instances)` takes the four public
+inputs in the circuit order: anchor, nf, scope, min. A wrong count, an
+anchor that is not approved, another scope or min and a used nullifier are
+refused before the verifier runs. A rejected proof reverts with
+ProofRejected and records nothing. An accepted proof records nf, so the
+same credential is admitted one time at this scope (the replay guard). The
+caller chooses no anchor, scope or min. The constructor refuses a scope at
+or above r and a min above r - 256 (the D1 range bound). Open item:
+msg.sender is not bound by the proof, so a relayer can send a proof it has
+seen before the owner does. A binding needs a public input of the circuit
+(not M9).
 
-    cast wallet import <keystore> --interactive
+`test/KycGate.t.sol` tests the gate against the kyc and kycMerkle fixtures
+(11 tests). `script/DeployKycGate.s.sol` deploys a gate. `script/rehearsal.sh`
+and `script/check.sh` are the D6 rehearsal and the read-only checks of the
+runbook below. After building the ceremony artifacts, `make deployment-test`
+checks that an occupied rehearsal port receives no transactions and that
+deployment checks reject a missing or unexpected issuer.
 
-Simulate first (no `--broadcast`):
+## The deployment runbook
 
-    forge script contracts/script/DeployVerifier.s.sol --root contracts --sig 'run(string)' square \
-        --rpc-url $TELCOIN_RPC_URL --account <keystore>
+The target network is a parameter: nothing in the repository names a
+chain, a URL or a key. Set the five values in your shell. They stay
+outside the repository.
 
-Then deploy:
+    NETWORK=<the network name>
+    CHAIN_ID=<the chain id>
+    RPC_URL=<the RPC URL>
+    EXPLORER=<the explorer URL>          # VERIFY_URL=<its verify-source endpoint>, or none
+    ACCOUNT=<the keystore account name>  # cast wallet import $ACCOUNT --interactive, one time
 
-    forge script contracts/script/DeployVerifier.s.sol --root contracts --sig 'run(string)' square \
-        --rpc-url $TELCOIN_RPC_URL --account <keystore> --broadcast
+1. Build the ceremony verifiers with the pinned SRS file (docs/M9-PLAN.md
+   D5):
 
-Replace `square` with `range`, `poly`, `nonzero`, `poseidon`, `transfer`, `kyc` or `kycMerkle` for the other verifiers. The bytecode targets EVM paris (no PUSH0), so it runs on chains that do
-not have Shanghai.
+       make e2e-ceremony SRS=FILE
+
+   The verifiers are in build/e2e-ceremony/verifiers/ and the proofs in
+   build/e2e-ceremony/NAME-proof/. The `ceremony` profile of foundry.toml
+   compiles them: `FOUNDRY_PROFILE=ceremony forge build --root contracts`.
+   contracts/out stays the development build.
+
+2. Rehearse on a local anvil with the chain id of the target (D6):
+
+       make rehearsal CHAIN_ID=$CHAIN_ID
+
+   It deploys the kycMerkle verifier and a KycGate (scope 9, min 18, the
+   fixture root approved) from an anvil account that is unlocked in the
+   node, then runs the checks of step 5. `NAME=kyc` rehearses the kyc
+   verifier. RPC requests use a unique IPC socket belonging to that anvil;
+   an existing server on PORT receives no calls. Exit 0 is the go.
+
+3. Deploy the verifier. Simulate first (no `--broadcast`), then broadcast:
+
+       FOUNDRY_PROFILE=ceremony forge script contracts/script/DeployVerifier.s.sol --root contracts \
+           --sig 'run(string)' kycMerkle --rpc-url $RPC_URL --account $ACCOUNT
+       FOUNDRY_PROFILE=ceremony forge script contracts/script/DeployVerifier.s.sol --root contracts \
+           --sig 'run(string)' kycMerkle --rpc-url $RPC_URL --account $ACCOUNT --broadcast
+
+   The log line `kycMerkle verifier 0x..` gives VERIFIER.
+
+4. Deploy the gate. ISSUER is the address that approves anchors, SCOPE and
+   MIN are the credential policy, ANCHOR is the first public input of the
+   credential proof (or 0: approve later with `approve(anchor, true)` from
+   ISSUER). The approve in the script needs ISSUER = the broadcaster.
+   Simulate first, then broadcast:
+
+       FOUNDRY_PROFILE=ceremony forge script contracts/script/DeployKycGate.s.sol --root contracts \
+           --sig 'run(address,address,uint256,uint256,uint256)' $VERIFIER $ISSUER $SCOPE $MIN $ANCHOR \
+           --rpc-url $RPC_URL --account $ACCOUNT
+       FOUNDRY_PROFILE=ceremony forge script contracts/script/DeployKycGate.s.sol --root contracts \
+           --sig 'run(address,address,uint256,uint256,uint256)' $VERIFIER $ISSUER $SCOPE $MIN $ANCHOR \
+           --rpc-url $RPC_URL --account $ACCOUNT --broadcast
+
+   The log line `KycGate 0x..` gives GATE.
+
+5. Check the deployment. The checks are read-only (`cast call` and
+   `cast code`):
+
+       make deploy-check RPC_URL=$RPC_URL CHAIN_ID=$CHAIN_ID VERIFIER=$VERIFIER GATE=$GATE ISSUER=$ISSUER SCOPE=$SCOPE MIN=$MIN
+
+   It compares the verifier code with the ceremony artifact, calls the
+   verifier on the ceremony proof, checks the gate's issuer and policy
+   parameters, and runs the admission as an eth_call. ISSUER is required
+   when GATE is supplied.
+
+6. Publish the source on the explorer when it has a verify endpoint (add
+   `--verifier blockscout` for a Blockscout explorer; the default is the
+   Etherscan form):
+
+       FOUNDRY_PROFILE=ceremony forge verify-contract --root contracts --chain $CHAIN_ID \
+           --verifier-url $VERIFY_URL $VERIFIER ../build/e2e-ceremony/verifiers/kycMerkle.sol:Halo2Verifier
+       FOUNDRY_PROFILE=ceremony forge verify-contract --root contracts --chain $CHAIN_ID \
+           --verifier-url $VERIFY_URL $GATE src/KycGate.sol:KycGate \
+           --constructor-args $(cast abi-encode 'constructor(address,address,uint256,uint256)' $VERIFIER $ISSUER $SCOPE $MIN)
+
+The bytecode targets EVM paris (no PUSH0), so it runs on chains that do
+not have Shanghai. `## Deploy on a local anvil` above is the development
+verifier; this runbook is the ceremony verifier.

@@ -18,6 +18,10 @@ interface Vm {
 
     function getCode(string calldata artifactPath) external view returns (bytes memory creationBytecode);
 
+    function expectRevert(bytes calldata revertData) external;
+
+    function prank(address msgSender) external;
+
     function startBroadcast() external;
 
     function stopBroadcast() external;
