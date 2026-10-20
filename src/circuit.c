@@ -76,6 +76,9 @@ typedef struct {
   unsigned char *used;
   int ranged;
   unsigned depth;
+  uint32_t *memo; /* M11 D2: a row index + 1 in each slot, or 0 */
+  uint32_t memo_cap;
+  uint32_t memo_count;
 } Lower;
 
 typedef struct {
@@ -140,6 +143,89 @@ static int add_row(Lower *l, const Row *row, Cell *out) {
   return 1;
 }
 
+/* M11 D2: the structural row memo. The key of a CONST row is its value; the
+   key of an ARITH row is the op and the cells of the two operands, in this
+   order (no commutative normal form). The arith gate fixes the output cell
+   of a row from the op and the operand cells, so two rows with one key hold
+   one value in each satisfying witness. INPUT and RANGE rows have no key. */
+#define MEMO_KEY_WORDS (FR_LIMBS + 1u)
+
+static void memo_key(const Row *r, uint32_t *key) {
+  memset(key, 0, MEMO_KEY_WORDS * sizeof *key);
+  key[0] = (uint32_t)r->kind;
+  switch (r->kind) {
+    case ROW_CONST:
+      memcpy(&key[1], r->k.w, sizeof r->k.w);
+      break;
+    case ROW_ARITH:
+      key[1] = (uint32_t)r->op;
+      key[2] = r->x.col;
+      key[3] = r->x.row;
+      key[4] = r->y.col;
+      key[5] = r->y.row;
+      break;
+    case ROW_INPUT:
+    case ROW_RANGE:
+      break;
+  }
+}
+
+static uint32_t memo_hash(const uint32_t *key) {
+  uint32_t h = 2166136261u;
+  uint32_t i;
+  for (i = 0; i < MEMO_KEY_WORDS; i++) h = (h ^ key[i]) * 16777619u;
+  return h ^ (h >> 16);
+}
+
+/* The slot of the row with KEY, else the empty slot where the probe stops.
+   The table always has an empty slot (it doubles at half load). */
+static uint32_t memo_slot(const Lower *l, const uint32_t *key) {
+  uint32_t mask = l->memo_cap - 1u;
+  uint32_t i = memo_hash(key) & mask;
+  uint32_t have[MEMO_KEY_WORDS];
+  while (l->memo[i] != 0) {
+    memo_key(&l->rows[l->memo[i] - 1u], have);
+    if (memcmp(have, key, sizeof have) == 0) return i;
+    i = (i + 1u) & mask;
+  }
+  return i;
+}
+
+/* A CONST or an ARITH row through the memo: OUT gets the cell of the row with
+   the key of ROW, else the cell of a new row. */
+static int memo_row(Lower *l, const Row *row, Cell *out) {
+  uint32_t key[MEMO_KEY_WORDS];
+  uint32_t found;
+  uint32_t i;
+  memo_key(row, key);
+  found = l->memo_cap == 0 ? 0 : l->memo[memo_slot(l, key)];
+  if (found != 0) {
+    out->col = COL_C;
+    out->row = found - 1u;
+    return 1;
+  }
+  if (!add_row(l, row, out)) return 0;
+  if (2u * (l->memo_count + 1u) > l->memo_cap) {
+    const uint32_t *old = l->memo;
+    uint32_t old_cap = l->memo_cap;
+    uint32_t cap = old_cap == 0 ? 64u : old_cap * 2u;
+    uint32_t *slots = arena_alloc(l->m->arena, cap * sizeof *slots);
+    if (slots == NULL) return oom(l->m->diag);
+    memset(slots, 0, cap * sizeof *slots);
+    l->memo = slots;
+    l->memo_cap = cap;
+    for (i = 0; i < old_cap; i++)
+      if (old[i] != 0) {
+        uint32_t have[MEMO_KEY_WORDS];
+        memo_key(&l->rows[old[i] - 1u], have);
+        l->memo[memo_slot(l, have)] = old[i];
+      }
+  }
+  l->memo[memo_slot(l, key)] = out->row + 1u;
+  l->memo_count++;
+  return 1;
+}
+
 static int no_circuit_form(Lower *l, const char *what) {
   return diag_fail(l->m->diag, "CIRCUIT_LOWER", l->ci->name, "a constraint side normalizes to %s, which has no circuit form; M1 lowers Field literals, binders and + - * only", what);
 }
@@ -160,7 +246,7 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
     case VAL_OP:
       if (v->op != OP_FIELD_LIT || v->name == NULL || !fr_parse(v->name, strlen(v->name), &row.k)) return no_circuit_form(l, "a value that is not a Field literal");
       row.kind = ROW_CONST;
-      return add_row(l, &row, out);
+      return memo_row(l, &row, out);
     case VAL_STUCK: {
       int arith = v->op == OP_FIELD_ADD || v->op == OP_FIELD_SUB || v->op == OP_FIELD_MUL;
       if (!arith || v->argc != 2) return no_circuit_form(l, "a stuck operation that is not + - *");
@@ -169,7 +255,7 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
       l->depth--;
       row.kind = ROW_ARITH;
       row.op = v->op;
-      return ok && add_row(l, &row, out);
+      return ok && memo_row(l, &row, out);
     }
     case VAL_NAT:
     case VAL_TRAP:

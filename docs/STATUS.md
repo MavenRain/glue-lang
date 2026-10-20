@@ -5549,3 +5549,50 @@ is in its section).
 - Docs:  SPEC.md 4 (the bullet `The sender binding`) and 9 (O24:  the close sentence);  docs/PLAN.md (the M10 row DONE);  docs/M10-PLAN.md (the Status line, CLOSED);  this file (`### s5: close`).  SPEC.md 10 does not change:  its table has the rows M0 to M3 only (the template), and docs/PLAN.md holds the rows of each milestone up to M10.
 - Open after M10:  O23 (the deployment target:  the five USER facts of M9 question (e) and the check of the Axiom copy of the ceremony file;  USER items) and O24 (the Poseidon forms (ii) and (iii):  a milestone candidate that needs a USER ruling first;  answer (i) does not start it).
 - Next:  none.  A new milestone starts only when the USER names one (O24 or another topic).
+
+## M11
+
+### kickoff (2026-10-20)
+
+- Start condition MET:  HEAD 1f02fe5 `M10 s5: close` (USER), HEAD^{tree} edb256bd = the s5 staged tree, status empty.
+- Topic:  the topic slot of the kickoff message came as the literal placeholder `<O24 the Poseidon forms (ii)/(iii) | another topic, name it>`;  the kickoff took its first option, O24 (the Poseidon forms), and said so.
+- Plan:  docs/M11-PLAN.md DRAFT (sections 1 to 10;  not staged:  it goes with the M11 s1 commit after the rulings, with the docs/PLAN.md M11 row and this section).
+- Probe P1, form (iii) by hand in the source (~/Documents/glue-lang-M11-kickoff-probe/run.sh and rewrite.awk, the log run.out, scratch copies of the four Poseidon examples, the real build/langc of HEAD;  repository status empty before and after):  rewrite.awk names each `(A + B)` of two names in the constraint list with a new hint `zzmN` and the constraint `A + B == zzmN`.  Mode sbox:  the argument of `sbox5` only.  Mode all:  each such sum (also the partial-round sums that 3 mix constraints repeat).  circuit, witness and satcheck rc 0 for all 8 runs;  instance[0] = the golden value each time;  advice 3, fixed 7, gates 1 as before.
+
+| Circuit | golden:  rows, k | sbox:  named, rows, k | all:  named, rows, k |
+|---|---|---|---|
+| poseidon | 3644, 12 | 80, 3084, 12 | 194, 2742, 12 |
+| transfer | 7288, 13 | 160, 6168, 13 | 388, 5484, 13 |
+| kyc | 7291, 13 | 160, 6171, 13 | 388, 5487, 13 |
+| kycMerkle | 21899, 15 | 480, 18539, 15 | 1164, 16487, 15 |
+
+- P1 findings:  a memo has no hint row, so the memo rows = the P1 rows - named.  all - named = 2548, 5096, 5099, 15323 = the `(iii) binders` column of `### s4` exactly (the s4 model holds on the real lowering).  sbox - named = 3004 (k 12), 6008 (k 13), 6011 (k 13), 18059 (k 15) = a pointer memo inside one constraint.
+- Probe P2, form (ii) on the back end (the real halo2/target/debug/glue-halo2 of 2026-10-19, `--dev-srs`;  jq on a copy of test/circuit/square.circuit.json, k 5, rows 3, no lookup):  fixed 7 to 8 (q5 = fixed column 7), the gate `pow5` with the poly `q5 * (a^5 - c)` (degree 6).  base (as is):  check, keygen, prove, verify, solidity rc 0;  the verifier 46893 bytes (923 lines), proof.json 6714 bytes.  off (the gate, q5 = 0) and on (row 3:  a = 3, c = 243, q5 = 1):  all rc 0;  the verifier 41815 bytes (840 lines), proof.json 5690 bytes.  bad (c = 242):  check rc 1 and prove rc 1 (`Constraint 0 in gate 1 ('pow5') is not satisfied .. at offset 3`);  keygen and solidity rc 0 (they do not read the witness).  The generator sets the permutation chunks and the quotient count from `cs.degree()`;  not measured on a real circuit.
+- Survey (one read-only agent):  `lower_value` (src/circuit.c 148 to 187) has no memo and the values are not hash-consed;  `lower_check` runs `eval_core` once for each constraint (line 197);  satcheck, halo2/ and the verifier generator have no degree limit and no fixed-column limit, so form (ii) is a lowering peephole and docs/IR.md section 4 only;  a structural row memo is about 40 to 60 lines (the model:  kycMerkle 10847 rows, k 14;  the depth at k 15:  form (i) 6, the structural memo 16).  New form (iv):  a literal folded into ql, qr or qc of the arith gate (not estimated).
+- Questions for the USER (docs/M11-PLAN.md section 9):  (a) the scope (form (iii) as the structural memo;  (ii) and (iv) stay open in O24);  (b) the structural key, not the pointer key;  (c) the IR rule ruling for each golden that changes;  (d) the Merkle depth stays 4, the depth table into SPEC.md 9 O24;  (e) form (iv) recorded in O24, no build;  (f) no new guest example (the goldens only);  (g) the open items stay;  (h) the slices (s1 in two sessions, s2 the close).
+- Gates:  none ran (no code file changed).
+- Next:  the USER rules on (a) to (h);  then s1 (~/Documents/glue-lang-M11-s1-PROMPT.md).
+
+### s1 (2026-10-20)
+
+- Rulings (USER 2026-10-20, the first message of the s1 session:  "Take all recommendations for (a) through (h)"):  each recommendation of docs/M11-PLAN.md section 9 taken, no ruling differs.  The m2 ruling (USER 2026-10-20, the first message of the s1-b session):  (r1), the recommendation:  a refusal row for the op in the memo key.  It adds one guest example to ruling (f), with no e2e row, no verifier and no fixture.
+- Start condition MET.  s1:  HEAD 1f02fe5, the 3 kickoff docs unstaged.  s1-b:  HEAD 1f02fe5, the index tree c1321854 = the s1 staged tree, `git diff c1321854 HEAD --stat` = the s1 install only (9 files).
+- Probe (~/Documents/glue-lang-M11-s1-probe/probe.sh and refuse.sh, the logs probe.log and refuse.log, scratch copies from `git archive HEAD`, the repository status unchanged):  the D3 inference is true.  In poseidon the 5 factors of each of the 80 sbox5 chains are one `const Value *` (905 products and 80 squares on one pointer;  the rows stay 3644).  The memo copy:  circuit, witness and satcheck rc 0 for each of the 9 expect rows;  instance, advice, fixed, public, gates, lookups and the fixed column count the same.
+
+| Circuit | golden:  rows, k, copies | memo:  rows, k, copies | model (plan section 6):  rows, k |
+|---|---|---|---|
+| poseidon | 3644, 12, 4352 | 1972, 11, 3256 | 1972, 11 |
+| transfer | 7288, 13, 8704 | 3740, 12, 6512 | 3740, 12 |
+| kyc | 7291, 13, 8710 | 3743, 12, 6518 | 3743, 12 |
+| kycMerkle | 21899, 15, 26178 | 10847, 14, 19602 | 10847, 14 |
+
+- The model held exactly.  square, poly, range and nonzero (and quotSq) do not change.  The 19 same-ir rows keep their verdicts;  the 21 refuse rows keep their codes.
+- Install (~/Documents/glue-lang-M11-s1-probe/install.sh, install.log):  src/circuit.c +88/-2.  `Lower` gets `memo`, `memo_cap` and `memo_count`.  New:  `memo_key` (an exhaustive switch on RowKind, no `default:`), `memo_hash` (FNV-1a over 9 key words), `memo_slot` (a linear probe) and `memo_row` (the probe, else `add_row` and an insert;  the table doubles at half load;  `oom` on a failed alloc).  `lower_value` calls `memo_row` at the CONST and the ARITH site.  The 4 goldens regenerated with build/langc:  test/circuit/{poseidon,transfer,kyc,kycMerkle}.{circuit,witness}.json.
+- Mutants (~/Documents/glue-lang-M11-s1-probe/mutants.sh, mutants.log;  `make -B check` each, `git restore` from the index after each):  m1 (the probe removed) KILLED (8 FAIL lines:  circuit and witness of the 4 changed goldens);  m2 (the ARITH key without the op) SURVIVED in s1, because no current circuit has two ARITH rows with the same operand cells and different ops;  m3 (the ARITH key without the second operand) KILLED (8 FAIL lines);  m4 (the CONST key without the value) KILLED (8 FAIL lines);  the control GREEN.
+- The m2 ruling (r1) in s1-b (~/Documents/glue-lang-M11-s1-b-probe/step0.sh, step0.log):  examples/memoKey.glue has one circuit, `memoKey public (q : Field) (s : Field) private (a : Field) (b : Field) := a * b == q; a + b == s` (6 rows, k 5, 8 copies).  test/circuit/refuse.txt row 22 is `1 WITNESS_FAIL witness memoKey memoKey q=6 s=6 a=2 b=3` (the binder order of the circuit:  the public binders first).  With the op in the key, the witness is refused (`the left side is 5, the right side is 6`);  q=6 s=5 a=2 b=3 passes satcheck.  m2 again:  KILLED (2 FAIL lines at row 22:  exit 0, and a file written).  The control `make -B check` rc 0 (examples 68, circuit refusals 22).  `make e2e` does not read refuse.txt.
+- Gates (~/Documents/glue-lang-M11-s1-b-probe/gates.sh, sandbox off, the log gates.log, 164 s in all):  `make -B check` exit 0 (47 s):  native circuit 9, path 46, face 35, HIT 44;  examples 68, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 22, satcheck refusals 6;  node regressions 6, printer 2.  `make check-clang` exit 0.  `forge build --root contracts --sizes` exit 0.  `make e2e` exit 0 (42 s, 9 rows).  `forge test --root contracts` 100 passed.  `make e2e-ceremony SRS=~/Documents/glue-lang-M9-s5-probe/srs/kzg_bn254_15.srs` exit 0 (60 s, 9 rows;  kycMerkle at k 14 with the k 15 file).  `make rehearsal` exit 0 (anvil 31337).  `make deployment-test` exit 0.
+- The count delta against the M10 close:  examples 67 to 68, circuit refusals 21 to 22;  the other counts stay.
+- IR check:  before e2e (the index against HEAD):  src/circuit.c, the 8 goldens, examples/memoKey.glue and test/circuit/refuse.txt.  After e2e (the worktree against the index, test/circuit and contracts/src/verifiers):  contracts/src/verifiers/{poseidon,transfer,kyc,kycMerkle}.sol only.  The fixtures of square, poly, range and nonzero changed (4 lines each, a fresh proof) and went back with `git restore`;  the fixtures of the 4 changed circuits are staged.  No IR form changed, and docs/IR.md does not change.
+- Docs:  SPEC.md 7.1 (the memo rule) and 9 O24 (form (iii) DONE with the measured rows and k;  forms (ii) and (iv) open;  the depth table at s2);  docs/M11-PLAN.md (the Status line RULED, D3 tested, section 6 measured, sections 5 and 8 the m2 ruling);  docs/PLAN.md M11 row (s1 STAGED).
+- Open items:  none new.
+- Next:  the USER commits s1;  then s2, the close (~/Documents/glue-lang-M11-s2-PROMPT.md).

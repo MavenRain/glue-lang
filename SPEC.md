@@ -1325,6 +1325,19 @@ as variables. Then it lowers the normal form:
    On any other wire, it adds a range row: a copy of the wire in a, and
    qrange = 1.
 
+The memo (M11 s1).  The lowering keeps one memo table for each circuit,
+across all of its constraints.  It shares a constant row (item 2) with an
+earlier constant row that has the same value, and an arith row (item 3)
+with an earlier arith row that has the same op on the same operand cells,
+in this order.  The compiler then writes no new row and uses the wire of
+the earlier row.  Thus `x + y` and `y + x` get two rows, and `x * y` and
+`x + y` get two rows (examples/memoKey.glue, test/circuit/refuse.txt).  A
+binder has no row in the memo and no entry:  its wire is its input row
+(item 1).  A range row (item 5) is not shared.  The memo changes no IR
+form (docs/IR.md does not change).  It changes the rows, the copies and
+the fixed values of a circuit that repeats a literal or an operation, and
+it can make k smaller.
+
 The lowering has no row for `inv`. A residual `inv` in a normal form (for
 example `inv x` with x a binder, also through a definition) gives
 CIRCUIT_LOWER. A closed `inv k` computes to a literal before the lowering,
@@ -1536,7 +1549,7 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   count (docs/STATUS.md M10 `### s4`, from the lowering rules of
   section 7.1 and the golden test/circuit/poseidon.circuit.json):  the
   S-box `sbox5 (s + rc)` of form (i) is 14 rows, because the lowering
-  has no sharing and `s + rc` is lowered 5 times (5 constant rows, 5
+  of M10 has no sharing and `s + rc` is lowered 5 times (5 constant rows, 5
   add rows, 4 mul rows);  a full round is 72 rows and a partial round
   is 54 rows.  Form (ii) (a degree-5 gate) saves 11 rows for each S-box
   on a binder, or 13 if the gate holds the round constant.  Form (iii)
@@ -1558,7 +1571,18 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   or the verifier generator (M9 ruling (h)) and needs a USER ruling
   first.  The pinned SRS (k <= 15) covers each k of the table.  The M10
   close (slice s5, USER answer (i) of 2026-10-20) keeps O24 open:  no
-  milestone takes the forms yet.
+  milestone takes the forms yet.  M11 s1 (USER rulings (a) to (h) of
+  docs/M11-PLAN.md section 9, 2026-10-20) builds form (iii) as the
+  structural row memo of section 7.1, across all constraints of a
+  circuit and also for the constant rows.  Form (iii) is DONE.  The
+  measured rows and k (the M10 golden, then the memo):  `poseidon` 3644
+  at k 12 to 1972 at k 11;  `transfer` 7288 at k 13 to 3740 at k 12;
+  `kyc` 7291 at k 13 to 3743 at k 12;  `kycMerkle` 21899 at k 15 to
+  10847 at k 14.  These are the numbers of the model (docs/M11-PLAN.md
+  section 6).  `square`, `poly`, `range` and `nonzero` do not change.
+  Form (ii) (the degree-5 gate) and form (iv) (a literal folded into ql,
+  qr or qc of the arith gate, new in M11) stay open.  The depth table
+  goes in at the M11 close (slice s2).
 
 ## 10. Milestones
 

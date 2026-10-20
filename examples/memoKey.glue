@@ -1,0 +1,4 @@
+-- M11 s1: the memo key of an arithmetic row holds the op. a * b and a + b have
+-- the same operand cells in the same order, so each gets its own row. A witness
+-- with s = a * b must be refused (test/circuit/refuse.txt).
+circuit memoKey public (q : Field) (s : Field) private (a : Field) (b : Field) := a * b == q; a + b == s
