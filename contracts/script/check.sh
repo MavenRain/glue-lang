@@ -75,6 +75,6 @@ if [ -n "$GATE" ]; then
     || fail "gate admit (eth_call)"
   got=$(printf '%s\n' "$got" | first)
   [ "$got" = "$nf" ] || fail "admit returned $got, not the nullifier $nf"
-  echo "check: gate admits the $NAME proof (eth_call, nothing sent) ok"
+  echo "check: gate admits the $NAME proof from $sender (eth_call, nothing sent) ok"
 fi
 echo "check: all ok"

@@ -3,7 +3,7 @@
 Status:  RULED 2026-10-20 (the USER took each recommendation of section 9,
 the message `(a) .. (j) ..` of the s1 session);  s1 BUILT 2026-10-20 (the
 circuits, the goldens, the gate, the tests, the verifiers and the fixtures;
-docs/STATUS.md `### s1`).  docs/PLAN.md has the M10 row (PLANNED
+docs/STATUS.md `### s1`);  s2 BUILT 2026-10-20 (the operations side of O22, O22 CLOSED;  docs/STATUS.md `### s2`).  docs/PLAN.md has the M10 row (PLANNED
 2026-10-20, the scope of ruling (a)).  The plan file goes with the M10 s1
 commit.  The kickoff probes ran on
 scratch copies of the examples with the real build/langc (the runner

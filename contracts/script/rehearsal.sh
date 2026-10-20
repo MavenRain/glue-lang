@@ -4,6 +4,8 @@
 # KycGate in front of it, then the read-only checks of check.sh. The ONLY
 # broadcast is to this anvil. The sender is anvil account 0, unlocked in
 # the node (`--unlocked --sender`): no key and no keystore anywhere.
+# The e2e proofs bind that account as the holder (their fifth public input),
+# so the admission check of check.sh runs from the same address.
 #   sh contracts/script/rehearsal.sh NAME CHAIN_ID SCOPE MIN PORT
 # Run it from the repository root (`make rehearsal`). It needs the outputs
 # of `make e2e-ceremony SRS=FILE`. The logs go to build/e2e-ceremony/.
@@ -86,4 +88,4 @@ echo "rehearsal: KycGate $GATE (issuer $SENDER, scope $SCOPE, min $MIN, anchor a
 awk '/Estimated total gas|Paid:/ { print "rehearsal:   " $0 }' "$GLOG"
 
 RPC_URL=$RPC CHAIN_ID=$CHAIN_ID NAME=$NAME VERIFIER=$VERIFIER GATE=$GATE ISSUER=$SENDER SCOPE=$SCOPE MIN=$MIN sh $SCRIPT/check.sh
-echo "rehearsal: ok ($NAME at chain id $CHAIN_ID, verifier $VERIFIER, gate $GATE)"
+echo "rehearsal: ok ($NAME at chain id $CHAIN_ID, verifier $VERIFIER, gate $GATE, sender $SENDER)"

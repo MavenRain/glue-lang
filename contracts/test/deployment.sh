@@ -5,6 +5,9 @@ set -eu
 CEREMONY=build/e2e-ceremony
 REHEARSAL=${REHEARSAL:-contracts/script/rehearsal.sh}
 CHECK=${CHECK:-contracts/script/check.sh}
+# The anvil account 0: the deployer, the issuer and the holder bound by the
+# fifth public input of the e2e proof, so check.sh simulates the admission
+# from this address.
 SENDER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 PROOF=$CEREMONY/kyc-proof/proof.json
 test -f "$PROOF" || { echo "deployment-test: run make e2e-ceremony SRS=FILE first" >&2; exit 2; }
@@ -64,7 +67,7 @@ export NAME CHAIN_ID SCOPE MIN VERIFIER GATE ISSUER
 
 before=$(cast nonce "$SENDER" --rpc-url "$RPC_URL")
 if sh "$CHECK" >"$WORK/valid-check.log" 2>&1; then
-  echo "deployment-test: the configured issuer passes"
+  echo "deployment-test: the configured issuer passes (admission from the proof sender $SENDER)"
 else
   cat "$WORK/valid-check.log" >&2
   fail "the configured issuer was refused"

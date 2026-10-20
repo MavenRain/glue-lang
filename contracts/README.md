@@ -54,8 +54,8 @@ layout emitted by the CLI and rejects redirected argument offsets.
 | nonzero | 5,387 | 1,216,448 | 262,661 |
 | poseidon | 5,801 | 1,305,911 | 277,871 |
 | transfer | 5,802 | 1,306,127 | 278,592 |
-| kyc | 6,280 | 1,409,428 | 315,797 |
-| kycMerkle | 6,222 | 1,396,947 | 315,922 |
+| kyc | 6,280 | 1,409,440 | 316,454 |
+| kycMerkle | 6,222 | 1,396,947 | 316,579 |
 
 The EIP-170 limit is 24,576 bytes. The gas is from `forge test
 --gas-report`. `forge build --sizes` shows one
@@ -221,6 +221,21 @@ outside the repository.
        FOUNDRY_PROFILE=ceremony forge verify-contract --root contracts --chain $CHAIN_ID \
            --verifier-url $VERIFY_URL $GATE src/KycGate.sol:KycGate \
            --constructor-args $(cast abi-encode 'constructor(address,address,uint256,uint256)' $VERIFIER $ISSUER $SCOPE $MIN)
+
+7. Admit a holder. The holder's address is the fifth public input of the
+   credential proof (`sender=` as an unsigned integer), so the admission
+   transaction comes from that address: the gate reverts with `WrongSender`
+   for any other sender, a relayer included. PROOF_BYTES is `.proof` and
+   INSTANCES the five `.instances` of the holder's proof.json as decimals
+   (the form that check.sh builds). Simulate with `cast call --from` first:
+
+       cast call $GATE 'admit(bytes,uint256[])(uint256)' $PROOF_BYTES "[$INSTANCES]" \
+           --from $HOLDER --rpc-url $RPC_URL
+       cast send $GATE 'admit(bytes,uint256[])' $PROOF_BYTES "[$INSTANCES]" \
+           --rpc-url $RPC_URL --account <the holder's keystore account>
+
+   The gate records the nullifier: the same credential is admitted one
+   time at this scope.
 
 The bytecode targets EVM paris (no PUSH0), so it runs on chains that do
 not have Shanghai. `## Deploy on a local anvil` above is the development

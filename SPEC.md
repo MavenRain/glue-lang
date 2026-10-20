@@ -1488,20 +1488,22 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   `balanceCons` is also open: its iso (`idComm`) and its fold case (`ua
   (idComm ..)`) are in the example, but no def moves it. Open for M9
   (closed in slice s1: `balLaw` and `balD7`, above).
-- O22. New in M9 (slice s6). The sender binding. `KycGate.admit` records
-  the nullifier of an accepted proof and emits the sender, but the proof
-  does not bind `msg.sender`: a relayer that sees a proof before the
-  holder's transaction can send it first and spend the nullifier. A
-  binding needs a public input of the circuit (the sender address, or a
-  hash of it) and a check of that instance in the gate.  M10 s1 did the
-  circuit and the gate side:  the fifth public binder `sender` and the
-  row `sender == sender` of `kyc` and `kycMerkle` (section 2.10), the
-  four goldens, the error `WrongSender` and the check of the fifth
-  instance against `msg.sender` in `KycGate.admit`, the five-instance
-  verifiers and fixtures. The s1 staged-change review also updates the
-  read-only check to use `--from` with the proof's sender, the deployment
-  regression and the five-input runbook. M10 s2 completes the remaining
-  operations follow-up. Open until M10 s2.
+- O22. Closed in M10 (slices s1 and s2).  The sender binding.  M9 s6 left
+  `KycGate.admit` without a bind of `msg.sender`:  a relayer that saw a
+  proof before the holder's transaction could send it first and spend the
+  nullifier.  M10 s1 did the circuit and the gate side:  the fifth public
+  binder `sender` and the row `sender == sender` of `kyc` and `kycMerkle`
+  (section 2.10), the four goldens, the error `WrongSender` and the check
+  of the fifth instance against `msg.sender` in `KycGate.admit`, the
+  five-instance verifiers and fixtures.  M10 s2 did the operations side:
+  the read-only check derives the `--from` address of the admission call
+  from the fifth instance of the proof and names it in its report line,
+  the rehearsal and the deployment regression name the sender (the anvil
+  account 0 is the deployer, the issuer and the holder of the e2e proofs),
+  the deployment regression admits with an issuer that differs from the
+  holder, and the runbook has the admission step (the transaction comes
+  from the bound address;  the gate refuses any other sender).  A relayer
+  cannot admit another holder's proof.
 - O23. New in M9 (slice s6). The deployment target. The five USER facts
   of question (e) (the network, the chain id, the RPC URL, the explorer
   with its verify endpoint, the keystore account name) came as the
