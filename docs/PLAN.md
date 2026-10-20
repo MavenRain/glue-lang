@@ -52,7 +52,7 @@ reads a ceremony SRS file.
 | M6 | Monads (map, bind), algebras (fold) and coalgebras (unfold) over the cubical core. Two monads at lowering: the constrained monad and the hint monad (advice values with no constraint). | DONE 2026-10-18 (plan ac8625c, s1 f521e4e, s2 df0d1e2 and 36595d0, s3 fcb1902, s4 1b9f817, s5 and s6 4f0e083, s7 close; F6 uniqueness at a HIT is SPEC.md 9 O14) |
 | M7 | Direction 2: circuits quotiented by relation equivalence. The lowering of `rec` runs on representatives; `eq/` and `squash/` cases are checker obligations with no circuit cost. | DONE 2026-10-18 (s1 efd430b with the plan, s2 aa2d240, s3 4aefb85, s4 0ddc6bd, s5 b21aaf7, s6 close; the gap of `CEqv` is SPEC.md 9 O19, the indexed binder form of `Circ` is O20) |
 | M8 | Direction 4: HIT specification, equivalence to the circuit relation, transport by `ua`. Poseidon gadget. Telcoin private-transfer circuit. | DONE 2026-10-18 (s1 0b82a04 with the plan, s2 c6d952f, s3 5062dda, s4 cded21d, s5 0224aee, s6 dcbac52, s7 close; the hash of open inputs is SPEC.md 9 O21; Merkle membership and the Poseidon forms (ii) and (iii) are M9 or later) |
-| M9 | ZK-KYC credential circuit. Ceremony SRS ingestion. Deployment to a Telcoin network (USER runs the broadcast). | PLANNED |
+| M9 | ZK-KYC credential circuit. Ceremony SRS ingestion. Deployment to a Telcoin network (USER runs the broadcast). | DONE 2026-10-19 (s1 674c32f with the plan, s2 be5a3f6, s3 d409eab, s4 0208087, s5 becd33c, s6 0b0c136, s7 close; the sender binding is SPEC.md 9 O22, the deployment target and the ceremony file check are O23; the Poseidon forms (ii) and (iii) are M10 or later) |
 
 ## Lowering rules (all milestones)
 

@@ -5191,8 +5191,9 @@ development verifier contracts/src/verifiers/NAME.sol;  a real deploy
 needs the ceremony verifier under build/e2e-ceremony/verifiers/ (the
 s6 probe rules the route).  The USER fact of question (e) (the
 network, the chain id, the RPC URL, the explorer, the keystore
-account name) comes before s6.  k 15 holds no headroom above
-kycMerkle:  a larger file at the same URL pattern is a pin change
+account name) comes before s6.  The pinned k 15 file supports circuits
+with k <= 15, including growth of kycMerkle within that limit.  A
+circuit requiring k > 15 needs a larger SRS file and a new pin
 (halo2/ceremony.sha256).  The Axiom file is a derived copy in the
 halo2 format, not the ceremony transcript:  its own check against the
 powers of tau response is a USER item.  The point name kycNullifier
@@ -5283,3 +5284,154 @@ Staged:  the 12 slice paths and docs/STATUS.md.  Next:  M9 s6.
     fresh local anvils, shellcheck and git diff --check all passed.
     No compiler, IR, generated verifier or proof fixture was changed.
     No default test or CI check was weakened. Twelve paths are staged.
+
+### s7: close (2026-10-19)
+
+- Commits:  s1 674c32f (with the plan docs/M9-PLAN.md);  s2 be5a3f6;
+  s3 d409eab;  s4 0208087;  s5 becd33c;  s6 0b0c136.  s7 changes docs
+  only:  no change in src/, in domain/domain.lang, in halo2/, in
+  contracts/, in the Makefile, in test/ and in examples/.
+- The slices:
+  - s1 674c32f:  the plan (docs/M9-PLAN.md, RULED 2026-10-18) and O21
+    closed (D4, ruling (f)):  `TSatH`, `transferSatH`, `transferD7H`,
+    `BalLine`, `balLaw` and `balD7` in examples/transferSpec.lang, the
+    PATH_BOUNDARY row bal-orientation.lang, 2 eval rows.
+  - s2 be5a3f6:  the credential circuit `kyc` (D1, ruling (a):  `cm =
+    pos2 attr sk`, `nf = pos2 sk scope`, `d + min == attr` with `range8
+    d`;  7290 rows, k 13), its golden, e2e row, verifier and 11 Forge
+    tests, the WITNESS_FAIL row.
+  - s3 d409eab:  the family `KycSpec` (D3, ruling (g);  the points
+    `credential`, `kycNullifier` and `predicate`, the laws `noReplay`
+    and `disclosure`), examples/kycSpec.lang (`CredSat`, `NfSat`,
+    `PredSat`, the fold `KycSat` into `Type 0`, `kycLaw`, `discLaw`,
+    `kycLawH`, the instances `kycDH` and `discD`), the REFUSE_NAME row.
+  - s4 0208087:  the Merkle credential circuit `kycMerkle` (D2, ruling
+    (b):  a public issuer root, depth 4, k 15), its golden, e2e row,
+    verifier and 11 Forge tests, the circuit refusal row (a wrong
+    public root).
+  - s5 becd33c:  the ceremony SRS rule (D5, ruling (c)):  the halo2 back
+    end reads a KZG params file pinned by SHA-256 (`Digest`,
+    `SrsSource::Pinned`, `Error::Pin`;  a file below the circuit k is
+    refused), halo2/ceremony.sha256 (kzg_bn254_15.srs, k 15, the Axiom
+    copy of the Perpetual Powers of Tau challenge 0085), `make
+    e2e-ceremony` (keys, proofs and verifiers under build/e2e-ceremony/,
+    not committed), cargo test 14.
+  - s6 0b0c136:  the deployment (D6 and D7, rulings (d) and (e)):
+    contracts/src/KycGate.sol and its 11 Forge tests,
+    DeployKycGate.s.sol, the `ceremony` profile of contracts/foundry.toml
+    (route (ii)), the anvil rehearsal (contracts/script/rehearsal.sh,
+    chain id 31337, no key), the read-only check
+    (contracts/script/check.sh), the deployment test
+    (contracts/test/deployment.sh) and the runbook (contracts/README.md).
+    The five (e) fields are parameters.
+- What M9 added outside the examples, the guest tables and the docs:
+  domain/domain.lang +6 lines (`KycSpec`, s3);  halo2/ (s5:  backend.rs,
+  error.rs, main.rs, lib.rs, tests/backend.rs, Cargo.toml and Cargo.lock
+  for sha2, ceremony.sha256);  contracts/src/verifiers/kyc.sol (s2) and
+  kycMerkle.sol (s4) with their proof fixtures and 22 tests in
+  Verifiers.t.sol;  contracts/src/KycGate.sol, KycGate.t.sol, Vm.sol,
+  foundry.toml, the scripts and deployment.sh (s6);  the doc comment
+  list of DeployVerifier.s.sol;  the Makefile (s5 e2e-ceremony;  s6
+  rehearsal, deploy-check, deployment-test).  No src/ change, no new IR
+  form, no verifier generator change and no conv rule.
+- Docs:  SPEC.md 2.10 (s1:  the O21 defs;  s3:  `KycSpec`), 4 (s7:  the
+  M9 bullet) and 9 (s1:  O21 closed;  s7:  O22 and O23 new).
+  docs/PLAN.md:  the M9 row DONE 2026-10-19 with the slice commits.
+  docs/M9-PLAN.md:  unchanged (docs/M8-PLAN.md has no result section).
+  docs/STATUS.md:  this section.
+
+#### Rulings
+
+The USER ruled each recommendation of docs/M9-PLAN.md section 9 on
+2026-10-18.  The USER facts came later:  (c) on 2026-10-19 (the
+ceremony file and its source), (e) on 2026-10-19 (the literal word
+VALUE for each field).
+
+| Ruling | Content | Where it landed |
+|---|---|---|
+| (a) | D1:  `cm = pos2 attr sk`, `nf = pos2 sk scope`, `range8 d` with `d + min == attr` | s2 `kyc` |
+| (b) | D2:  Merkle membership, depth 4 | s4 `kycMerkle` (k 15) |
+| (c) | D5:  a halo2 KZG params file from the Perpetual Powers of Tau ceremony, k >= 15, pinned by SHA-256;  the USER named the file and its source on 2026-10-19 | s5 (halo2/ceremony.sha256, `make e2e-ceremony`) |
+| (d) | D7:  the consumer contract `KycGate` | s6 |
+| (e) | D6:  the deployment target;  the five USER facts came as the literal word VALUE | s6 (the make variables, the runbook, the rehearsal at 31337);  O23 |
+| (f) | D4:  O21 closed with the hash as an argument | s1 |
+| (g) | D3:  the specification HIT `KycSpec` | s3 |
+| (h) | D8:  the Poseidon forms (ii) and (iii) are not in M9 | none (M10 or later) |
+| (i) | O3, O12 (c), O13, O14, O15, O16 and O19 stay open | SPEC.md 9 |
+| (j) | the slices s1 to s7 of section 10 | s1 to s7 (s2 to s6 each used more than one session) |
+
+No further USER ruling came from the slices.  The point name
+`kycNullifier` (s3) waits for a USER ruling.
+
+#### Mutant roll-up
+
+The mutants of the `Mutants` items of s1 to s6 (the table of each slice
+is in its section).
+
+| Slice | Mutants | KILLED | EQUIVALENT | SURVIVED |
+|---|---|---|---|---|
+| s1 | 4 | 4 | 0 | 0 |
+| s2 | 4 | 4 | 0 | 0 |
+| s3 | 4 | 4 | 0 | 0 |
+| s4 | 4 | 4 | 0 | 0 |
+| s5 | 3 | 3 | 0 | 0 |
+| s6 | 5 | 4 | 1 | 0 |
+| M9 | 24 | 23 | 1 | 0 |
+
+- Totals:  24 mutants:  23 KILLED, 1 EQUIVALENT (s6 m3:  the record
+  before the staticcall;  the ProofRejected revert rolls the record
+  back, thus no test can see it;  m3b, the revert removed, is the mutant
+  that the tests see), 0 SURVIVED.  16 mutants are in guest files (s1 to
+  s4:  the examples, the eval rows and the refuse rows);  3 are inputs
+  of the back end (s5:  the pin, the file and the downsized file, killed
+  by Error::Pin and Error::Shape);  5 are in contracts/src/KycGate.sol
+  (s6, killed by the Forge tests).  No mutant is in src/ (M9 changed no
+  src/ file).  No mutant added a row.
+
+#### Review
+
+- (i) No conv rule reads a type.  M9 changed no src/ file (the diff of
+  fa38310 to 0b0c136 holds no src/ path):  the checker, the evaluator
+  and the conv rules are the M8 close state, thus the M8 close review
+  (i) holds.
+- (ii) No rule `hcomp A i0 u u0 = u0` (D8 of M3):  no change in the
+  evaluator, and the hcomp-i0-int.lang and hcomp-i0-circle.lang rows
+  stay.
+- (iii) `hcomp` at a HIT stays a canonical value (D3 of M4):  no change
+  in the evaluator.  `KycSpec` has the form of `TransferSpec`, and its
+  fold `KycSat` into `Type 0` goes through `ua` (s3).
+- (iv) No IR change:  M9 adds no IR form and no verifier generator
+  change (ruling (h)).  The IR and the development verifier of each M8
+  circuit stayed byte-identical (the IR check after each e2e and each
+  e2e-ceremony).  The new circuits `kyc` and `kycMerkle` each added a
+  golden and a verifier file.  The ceremony verifiers stay under
+  build/e2e-ceremony/ (D5).
+- (v) Deployment (D6):  no key, no keystore and no live RPC was read or
+  used;  the rehearsal ran on a local anvil (chain id 31337) only;  no
+  broadcast.  No value of the five (e) fields is in a repository file.
+- Gates (s7, the s7 files staged first;  the sandbox on, thus no forge,
+  no anvil and no e2e in s7):  `make -B check` exit 0:  native circuit
+  9, path 46, face 35, HIT 44;  examples 67, parse refusals 18, check
+  refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9,
+  same-ir 19, circuit refusals 20, satcheck refusals 6;  node regressions
+  6, printer 2.  Against s6:  no change (section 10:  none).  Against the
+  M8 close:  examples +3, check refusals +2, evals +6, json +1, circuits
+  +2, circuit refusals +2.  The s6 sandbox-off gates stand (s7 changes
+  docs only):  `make check-clang` exit 0, `forge build --root contracts
+  --sizes` exit 0, `forge test --root contracts` 99 passed (66 at the M8
+  close), `make e2e` 9 rows (7 at the M8 close), `make e2e-ceremony` 9
+  rows, the IR diff of test/circuit and contracts/src/verifiers empty
+  before and after each, `make rehearsal` exit 0.
+- Open items at the M9 close (SPEC.md 9):  O22 (new in M9:  the sender
+  binding;  the proof does not bind msg.sender, thus a relayer can spend
+  the nullifier first;  a binding needs a public input and a gate
+  check);  O23 (new in M9:  the deployment target;  the five (e) fields
+  came as the literal word VALUE and the USER fills them at the
+  broadcast;  the check of the Axiom copy of the ceremony file against
+  the Perpetual Powers of Tau response;  a circuit requiring k > 15
+  needs a larger SRS file and a new pin, while growth within k <= 15
+  fits the pinned file).  The point name
+  `kycNullifier` (s3) waits for a USER ruling.  The Poseidon forms (ii)
+  and (iii) (ruling (h)) go to M10 or later.  O3, O12 (c), O13, O14,
+  O15, O16 and O19 stay open (ruling (i)).  Next:  none in M9;  an M10
+  starts only when the USER opens it.

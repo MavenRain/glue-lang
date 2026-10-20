@@ -1219,6 +1219,23 @@ the host form of each former.
   conv rule. The lowering
   has no subterm sharing, thus a Poseidon round has one hint for each
   S-box output and state word (form (i) of docs/M8-PLAN.md D4).
+- **ZK-KYC** (M9, section 2.10): the credential circuit `kyc` (D1 of
+  docs/M9-PLAN.md: `cm = pos2 attr sk`, `nf = pos2 sk scope`, `d + min
+  == attr` with `range8 d`; 7290 rows, k 13) and the Merkle credential
+  circuit `kycMerkle` (D2: a public issuer root, depth 4; k 15); the
+  specification HIT `KycSpec` (D3) with its fold `KycSat` into `Type 0`
+  and the laws `kycLaw`, `discLaw` and `kycLawH` (examples/kycSpec.lang);
+  the law for all inputs `transferSatH` (D4, O21). The halo2 back end
+  reads a ceremony SRS pinned by SHA-256 (D5: halo2/ceremony.sha256,
+  `make e2e-ceremony`; the ceremony verifiers stay under build/). The
+  consumer contract `KycGate` (D7, contracts/src/KycGate.sol): the
+  verifier, the scope and `min` are immutable, the issuer approves an
+  anchor (`cm` or the Merkle root), and `admit` checks the instances,
+  calls the verifier and records the nullifier once. The deployment
+  (D6) is the anvil rehearsal, the check script and the runbook
+  (contracts/README.md); the USER runs the broadcast. M9 adds no IR
+  form, no conv rule and no src/ change. The sender binding is O22 and
+  the deployment target is O23.
 
 ## 5. Core types
 
@@ -1456,7 +1473,25 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   examples/transferSpec.lang takes the hash values as arguments, and the
   eval row `transferSpec transferD7` is at the D7 inputs. The transport of
   `balanceCons` is also open: its iso (`idComm`) and its fold case (`ua
-  (idComm ..)`) are in the example, but no def moves it. Open for M9.
+  (idComm ..)`) are in the example, but no def moves it. Open for M9
+  (closed in slice s1: `balLaw` and `balD7`, above).
+- O22. New in M9 (slice s6). The sender binding. `KycGate.admit` records
+  the nullifier of an accepted proof and emits the sender, but the proof
+  does not bind `msg.sender`: a relayer that sees a proof before the
+  holder's transaction can send it first and spend the nullifier. A
+  binding needs a public input of the circuit (the sender address, or a
+  hash of it) and a check of that instance in the gate. Open for M10 or
+  later.
+- O23. New in M9 (slice s6). The deployment target. The five USER facts
+  of question (e) (the network, the chain id, the RPC URL, the explorer
+  with its verify endpoint, the keystore account name) came as the
+  literal word VALUE (2026-10-19): the Makefile variables and the
+  runbook take them as parameters, the rehearsal ran at chain id 31337
+  (anvil), and no value is in a repository file. The USER fills them at
+  the broadcast. Also open: the check of the Axiom copy of the ceremony
+  file against the Perpetual Powers of Tau response (a USER item).
+  The pinned SRS supports circuits with k <= 15. A circuit requiring
+  k > 15 needs a larger SRS file and a new pin (halo2/ceremony.sha256).
 
 ## 10. Milestones
 
