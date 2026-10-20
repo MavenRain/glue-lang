@@ -7,7 +7,7 @@ pub mod error;
 pub mod field;
 pub mod ir;
 
-pub use backend::{mock, Keys, Proof, Srs, Verifier};
+pub use backend::{mock, Digest, Keys, Proof, Srs, Verifier};
 pub use circuit::{GlueCircuit, Shape};
 pub use error::Error;
 pub use ir::{CircuitDoc, WitnessDoc};

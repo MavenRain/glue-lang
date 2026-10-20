@@ -2,7 +2,7 @@
 
 use glue_halo2::error::KeyProblem;
 use glue_halo2::{
-    mock, CircuitDoc, Error, GlueCircuit, Keys, Proof, Shape, Srs, Verifier, WitnessDoc,
+    mock, CircuitDoc, Digest, Error, GlueCircuit, Keys, Proof, Shape, Srs, Verifier, WitnessDoc,
 };
 use halo2_proofs::halo2curves::bn256::Fr;
 use serde_json::{json, Value};
@@ -242,6 +242,49 @@ fn srs_smaller_than_k_is_refused() -> Result<(), Error> {
     Srs::dev(4).write(&path)?;
     assert!(matches!(Srs::read(&path, 5), Err(Error::Shape { .. })));
     Srs::read(&path, 3).map(|srs| assert!(srs.k() == 3))
+}
+
+/// The pin check comes first: a wrong pin or a changed file is `Error::Pin`,
+/// and with the right pin the `k` check still applies.
+#[test]
+fn pinned_srs_refuses_a_wrong_pin_and_a_changed_file() -> Result<(), Error> {
+    let dir = std::env::temp_dir().join("glue-halo2-test-pin");
+    std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, &e))?;
+    let path = dir.join("srs4.bin");
+    Srs::dev(4).write(&path)?;
+    let bytes = std::fs::read(&path).map_err(|e| Error::io(&path, &e))?;
+    let pin = Digest::of(&bytes);
+    assert!(Srs::read_pinned(&path, 3, &pin)?.k() == 3);
+    assert!(matches!(
+        Srs::read_pinned(&path, 5, &pin),
+        Err(Error::Shape { .. })
+    ));
+    let hex = pin.to_string();
+    let flip = |c: char| if c == '0' { '1' } else { '0' };
+    let flipped = hex
+        .chars()
+        .take(1)
+        .map(flip)
+        .chain(hex.chars().skip(1))
+        .collect::<String>();
+    let wrong = Digest::parse(&flipped)?;
+    assert!(matches!(
+        Srs::read_pinned(&path, 3, &wrong),
+        Err(Error::Pin { expected, actual, .. }) if expected == wrong && actual == pin
+    ));
+    let plus = dir.join("srs4-plus.bin");
+    std::fs::write(&plus, [bytes.as_slice(), &[0u8]].concat()).map_err(|e| Error::io(&plus, &e))?;
+    assert!(matches!(
+        Srs::read_pinned(&plus, 3, &pin),
+        Err(Error::Pin { expected, .. }) if expected == pin
+    ));
+    assert!(matches!(Digest::parse("abc"), Err(Error::Usage(_))));
+    assert!(matches!(
+        Digest::parse(&"g".repeat(64)),
+        Err(Error::Usage(_))
+    ));
+    assert!(Digest::parse(&hex)? == pin);
+    Ok(())
 }
 
 fn circuit_refusal(text: &str) -> Result<Error, Error> {

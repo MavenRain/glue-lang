@@ -5060,3 +5060,142 @@ fact of question (e) stays open (ask before s6).  The point name
 kycNullifier (`### s3`) stays until the USER rules.
 
 Staged:  the 11 slice paths.  Next:  M9 s5.
+
+### s5
+
+The ceremony SRS rule (docs/M9-PLAN.md D5;  section 10 row s5).  The
+halo2 back end reads a pinned KZG params file, the Makefile builds the
+ceremony keys, proofs and verifiers under build/, and the
+documentation names the rule.  No src/ change, no domain change, no
+new IR form and no verifier generator change.  The IR and the
+development verifier of each current circuit are byte-identical.
+
+The question (c) answer (the USER;  COMMON line 3):  the format is a
+halo2 ParamsKZG params file;  the ceremony verifiers stay under
+build/ and are not committed.  The file:
+~/Documents/glue-lang-M9-s5-probe/srs/kzg_bn254_15.srs, 4,194,564 B,
+k 15, SHA-256
+4cdb1688ec4457351582cc99a31e073279bb3abe1ee6fe04c401cc9e390ab67b.
+The USER ran the curl in the session (a Claude-chosen download host
+is denied at the permission gate).  The source is
+https://axiom-crypto.s3.amazonaws.com/challenge_0085/kzg_bn254_15.srs,
+the Axiom copy of the perpetual powers of tau challenge 0085 in the
+halo2 format.
+
+What changed:
+- halo2/Cargo.toml:  `sha2 = "0.10"` after hex.  halo2/Cargo.lock:
+  the sha2 0.10.9 package block and its dependency line (12
+  insertions, 0 deletions, 234 to 235 packages;  digest, cpufeatures,
+  block-buffer and crypto-common were in the lock before).
+- halo2/src/backend.rs:  `pub struct Digest([u8; 32])` (Clone, Copy,
+  Debug, PartialEq, Eq;  `parse` = hex::decode then
+  `<[u8; 32]>::try_from`, a wrong length or a non-hex char is
+  `Error::Usage("--sha256 HEX needs 64 hex digits")`;  `of` =
+  Sha256::digest;  Display = lowercase hex).  `Srs::read_pinned(path,
+  k, &pin)`:  fs::read, the digest check BEFORE the parse,
+  `Error::Pin { path, expected, actual }` on a mismatch, then
+  `ParamsKZG::read` on an io::Cursor.  The k check moved into `fn
+  sized(params, k)`, shared by `read` and `read_pinned` (`read` is
+  unchanged in behavior).
+- halo2/src/error.rs:  the variant `Pin { path: PathBuf, expected:
+  Digest, actual: Digest }`, Display `the SRS file {path} has SHA-256
+  {actual}, the pin is {expected}`.  The Display match stays
+  exhaustive (the only match on Error).
+- halo2/src/main.rs:  `SrsSource::Pinned(PathBuf, Digest)`;
+  `Flags::value` (a &str accessor;  `path` is value + PathBuf::from)
+  and `Flags::need_hex` (value, else `missing NAME HEX`, then
+  Digest::parse);  the keygen flag list adds `--sha256`;  the
+  `match ()` chain in order:  `--sha256` without `--srs` is
+  `Error::Usage("--sha256 HEX needs --srs FILE")`, then the old `give
+  one of` arm, then Dev, then Pinned, then File;  the USAGE line
+  `keygen --circuit C (--srs FILE [--sha256 HEX] | --dev-srs) --keys
+  DIR`;  execute `Pinned(path, digest) => Srs::read_pinned(&path, k,
+  &digest)`.  halo2/src/lib.rs re-exports Digest.
+- halo2/tests/backend.rs:
+  `pinned_srs_refuses_a_wrong_pin_and_a_changed_file` (a temp dir, a
+  dev k 4 file;  read_pinned at k 3 ok;  k 5 is Shape;  the flipped
+  first hex char is Pin with expected == wrong and actual == pin;  the
+  file + one byte is Pin;  `parse("abc")` and 64 'g' are Usage;  the
+  hex round trip).  14 tests.
+- halo2/ceremony.sha256 (new, one line, the sha256sum format):
+  `4cdb1688...  kzg_bn254_15.srs`.
+- Makefile:  `CEREMONY = build/e2e-ceremony`, `CEREMONY_PIN =
+  halo2/ceremony.sha256`, `.PHONY` adds e2e-ceremony, the rule
+  `e2e-ceremony` after the e2e rule (`SRS=FILE` required, exit 2 with
+  a message when absent;  the pin read by awk from $(CEREMONY_PIN);
+  the e2e chain with `--srs $(SRS) --sha256 $$pin`;  the verifiers to
+  $(CEREMONY)/verifiers/;  no forge step).
+- contracts/README.md:  the keygen lines name `--srs FILE --sha256
+  HEX` and the rule;  the new section `## The ceremony SRS` after
+  them.  halo2/README.md:  the keygen usage line and the `--sha256
+  HEX` sentence.  README.md:  `--srs FILE --sha256 HEX` and the rule.
+
+Probes (~/Documents/glue-lang-M9-s5-probe/probe.sh, probe.out and
+p1/, on HEAD 0208087 before the build):  the pin MATCHES the file;
+`square` keygen `--srs` ok (the format is accepted);  kycMerkle
+keygen 5.5 s / 190 MB, prove 12.5 s / 203 MB, verify and solidity
+ok;  the srs.bin of the keys dir round trips byte-identical to the
+input file;  the dev fixture proof is refused by the ceremony keys;
+the verifier diff against contracts/src/verifiers/kycMerkle.sol is
+56 lines = the whole vk (the G2 point at mstore 0x05a0 and the fixed
+and permutation commitments from 0x07c0), not G2 only:  the
+commitments are G1 points of the SRS.
+
+Mutants (~/Documents/glue-lang-M9-s5-probe/mutants.sh, mutants.out
+and m/;  F = srs/kzg_bn254_15.srs;  the built binary, no source
+change):
+
+| Mutant | Change | Result | Status |
+|---|---|---|---|
+| m1 | a wrong pin (the first digit 4 to 5) | the back end:  exit 1, `the SRS file .../kzg_bn254_15.srs has SHA-256 4cdb1688..., the pin is 5cdb1688...`;  the rule with CEREMONY_PIN=m/wrong.sha256:  stops at row 1, make exit 2 | KILLED (Error::Pin;  the rule) |
+| m2 | the file + one byte (m/plus.srs), the right pin | exit 1, Pin, actual 89825ddd... | KILLED (Error::Pin) |
+| m3 | the downsized file:  the k 13 srs.bin of a kyc keys dir (1,048,836 B, pin ff7e044c...) with its own pin, kycMerkle keygen | exit 1, `srs: k 13 is less than the circuit k 15` (the pin passes, the k check refuses:  the order holds) | KILLED (Error::Shape) |
+
+The flag probes:  `make e2e-ceremony` with no SRS exit 2
+`e2e-ceremony: give SRS=FILE (the ceremony KZG params file)`;
+`--sha256` with `--dev-srs` exit 1 `usage: --sha256 HEX needs --srs
+FILE`;  `--sha256 abc` exit 1 `usage: --sha256 HEX needs 64 hex
+digits`;  `--sha256` with neither exit 1 `needs --srs FILE`;  the
+pin in UPPERCASE is accepted (hex::decode takes either case;  Display
+is lowercase).
+
+The lock (~/Documents/glue-lang-M9-s5-probe/s5lock.sh and lock.out):
+the s5-b resolution ran with `--offline` and left a lock with 143
+insertions and 844 deletions (74 unreachable rows pruned).  The HEAD
+lock restored, then one online `cargocho build -- -j 2`:  12
+insertions, 0 deletions, names removed 0, names added 1 (sha2),
+`version = 4` unchanged.  That minimal lock is the staged one.
+clippy `--all-targets` on it:  0 errors, 0 warnings (gateledger green
+2d366bd4).
+
+Gates (~/Documents/glue-lang-M9-s5-probe/s5gates.sh and gates.out,
+sandbox off, on the staged slice files):  `make -B check` exit 0:
+native circuit 9, path 46, face 35, HIT 44;  examples 67, parse
+refusals 18, check refusals 157, evals 290, json 42 builds, build
+refusals 8, circuits 9, same-ir 19, circuit refusals 20, satcheck
+refusals 6, `gate: 0 failures`;  node regressions 6, printer 2.
+`make check-clang` exit 0.  `forge build --root contracts --sizes`
+exit 0 (DeployVerifier 1,445 B).  `cargo test` (testledger):  14
+passed (the new test runs).  `make e2e` exit 0 (9 rows, 41 s).  The
+IR diff of test/circuit and contracts/src/verifiers:  0 B before and
+after e2e.  `git restore contracts/test/fixtures`, then `forge test
+--root contracts`:  88 passed.  `make e2e-ceremony SRS=<the probe
+file>` exit 0 (9 `e2e-ceremony:` rows, 44 s;  the IR diff 0 B after
+it;  8 verifier files under build/e2e-ceremony/verifiers, the 8
+distinct names of the 9 expect.txt rows;
+build/e2e-ceremony/verifiers/kycMerkle.sol is byte-identical to the
+probe verifier p1/kycMerkle.sol).
+
+Open items:  s6 (the deploy, D6 and D7):  the deploy script reads the
+development verifier contracts/src/verifiers/NAME.sol;  a real deploy
+needs the ceremony verifier under build/e2e-ceremony/verifiers/ (the
+s6 probe rules the route).  The USER fact of question (e) (the
+network, the chain id, the RPC URL, the explorer, the keystore
+account name) comes before s6.  k 15 holds no headroom above
+kycMerkle:  a larger file at the same URL pattern is a pin change
+(halo2/ceremony.sha256).  The Axiom file is a derived copy in the
+halo2 format, not the ceremony transcript:  its own check against the
+powers of tau response is a USER item.  The point name kycNullifier
+(`### s3`) stays until the USER rules.
+
+Staged:  the 12 slice paths and docs/STATUS.md.  Next:  M9 s6.

@@ -1,6 +1,7 @@
 //! The SRS, keys, proofs, native verification, the Solidity verifier and the
 //! EVM calldata.
 
+use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -23,6 +24,7 @@ use halo2_solidity_verifier::{
 use rand_chacha::ChaCha20Rng;
 use rand_core::{OsRng, SeedableRng};
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
 use crate::circuit::{GlueCircuit, Shape};
 use crate::error::{Doc, Error, KeyProblem};
@@ -61,6 +63,33 @@ fn read_file<T>(
         .map_err(|err| Error::io(path, &err))
 }
 
+/// A SHA-256 digest: the pin of an SRS file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Digest([u8; 32]);
+
+impl Digest {
+    /// Parse 64 hex digits (either case).
+    pub fn parse(hex: &str) -> Result<Self, Error> {
+        hex::decode(hex)
+            .ok()
+            .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+            .map(Self)
+            .ok_or_else(|| Error::Usage("--sha256 HEX needs 64 hex digits".to_string()))
+    }
+
+    /// The SHA-256 of `bytes`.
+    pub fn of(bytes: &[u8]) -> Self {
+        Self(Sha256::digest(bytes).into())
+    }
+}
+
+impl fmt::Display for Digest {
+    /// Lowercase hex, 64 digits.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
 /// The KZG structured reference string, sized to the circuit `k`.
 #[derive(Clone, Debug)]
 pub struct Srs(ParamsKZG<Bn256>);
@@ -76,16 +105,40 @@ impl Srs {
 
     /// Read an SRS file (halo2 KZG format) and downsize it to `k`.
     pub fn read(path: &Path, k: u32) -> Result<Self, Error> {
-        read_file(path, ParamsKZG::<Bn256>::read).and_then(|params| {
-            if params.k() < k {
-                Err(Error::shape(
-                    "srs",
-                    format!("k {} is less than the circuit k {k}", params.k()),
-                ))
-            } else {
-                Ok(Self::downsized(params, k))
-            }
-        })
+        read_file(path, ParamsKZG::<Bn256>::read).and_then(|params| Self::sized(params, k))
+    }
+
+    /// Read an SRS file whose SHA-256 is `pin`, and downsize it to `k`.
+    /// The pin check comes before the parse and before the `k` check.
+    pub fn read_pinned(path: &Path, k: u32, pin: &Digest) -> Result<Self, Error> {
+        fs::read(path)
+            .map_err(|err| Error::io(path, &err))
+            .and_then(|bytes| {
+                let actual = Digest::of(&bytes);
+                if actual == *pin {
+                    ParamsKZG::<Bn256>::read(&mut io::Cursor::new(&bytes))
+                        .map_err(|err| Error::io(path, &err))
+                } else {
+                    Err(Error::Pin {
+                        path: path.to_path_buf(),
+                        expected: *pin,
+                        actual,
+                    })
+                }
+            })
+            .and_then(|params| Self::sized(params, k))
+    }
+
+    /// Refuse a file with a `k` below the circuit `k`, then downsize.
+    fn sized(params: ParamsKZG<Bn256>, k: u32) -> Result<Self, Error> {
+        if params.k() < k {
+            Err(Error::shape(
+                "srs",
+                format!("k {} is less than the circuit k {k}", params.k()),
+            ))
+        } else {
+            Ok(Self::downsized(params, k))
+        }
     }
 
     fn downsized(params: ParamsKZG<Bn256>, k: u32) -> Self {

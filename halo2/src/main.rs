@@ -6,11 +6,11 @@ use std::process::ExitCode;
 
 use comp_cat_rs::effect::io::Io;
 use glue_halo2::{
-    mock, CircuitDoc, Error, GlueCircuit, Keys, Proof, Shape, Srs, Verifier, WitnessDoc,
+    mock, CircuitDoc, Digest, Error, GlueCircuit, Keys, Proof, Shape, Srs, Verifier, WitnessDoc,
 };
 
 const USAGE: &str = "glue-halo2 check --circuit C --witness W
-glue-halo2 keygen --circuit C (--srs FILE | --dev-srs) --keys DIR
+glue-halo2 keygen --circuit C (--srs FILE [--sha256 HEX] | --dev-srs) --keys DIR
 glue-halo2 prove --circuit C --witness W --keys DIR --out DIR
 glue-halo2 verify --circuit C --keys DIR --proof FILE.json
 glue-halo2 solidity --circuit C --keys DIR --out FILE.sol";
@@ -18,6 +18,8 @@ glue-halo2 solidity --circuit C --keys DIR --out FILE.sol";
 /// Where keygen gets the SRS.
 enum SrsSource {
     File(PathBuf),
+    /// A file whose SHA-256 must be the pin.
+    Pinned(PathBuf, Digest),
     /// An INSECURE SRS from a fixed seed. The user must ask for it.
     Dev,
 }
@@ -69,16 +71,26 @@ impl Flags {
         self.0.iter().any(|(flag, _)| flag == name)
     }
 
-    fn path(&self, name: &str) -> Option<PathBuf> {
+    fn value(&self, name: &str) -> Option<&str> {
         self.0
             .iter()
             .find(|(flag, _)| flag == name)
-            .and_then(|(_, value)| value.as_ref().map(PathBuf::from))
+            .and_then(|(_, value)| value.as_deref())
+    }
+
+    fn path(&self, name: &str) -> Option<PathBuf> {
+        self.value(name).map(PathBuf::from)
     }
 
     fn need(&self, name: &str) -> Result<PathBuf, Error> {
         self.path(name)
             .ok_or_else(|| Error::Usage(format!("missing `{name} PATH`")))
+    }
+
+    fn need_hex(&self, name: &str) -> Result<Digest, Error> {
+        self.value(name)
+            .ok_or_else(|| Error::Usage(format!("missing `{name} HEX`")))
+            .and_then(Digest::parse)
     }
 }
 
@@ -106,22 +118,32 @@ fn command(args: &[&str]) -> Result<Command, Error> {
                     .map(|witness| Command::Check { circuit, witness })
             })
         }),
-        ["keygen", rest @ ..] => Flags::parse(rest, &["--circuit", "--srs", "--dev-srs", "--keys"])
-            .and_then(|f| {
-                let srs = match () {
-                    () if f.has("--srs") == f.has("--dev-srs") => Err(Error::Usage(
-                        "give one of `--srs FILE` and `--dev-srs`".to_string(),
-                    )),
-                    () if f.has("--dev-srs") => Ok(SrsSource::Dev),
-                    () => f.need("--srs").map(SrsSource::File),
-                };
-                srs.and_then(|srs| {
-                    f.need("--circuit").and_then(|circuit| {
-                        f.need("--keys")
-                            .map(|keys| Command::Keygen { circuit, srs, keys })
-                    })
+        ["keygen", rest @ ..] => Flags::parse(
+            rest,
+            &["--circuit", "--srs", "--dev-srs", "--keys", "--sha256"],
+        )
+        .and_then(|f| {
+            let srs = match () {
+                () if f.has("--sha256") && !f.has("--srs") => {
+                    Err(Error::Usage("--sha256 HEX needs --srs FILE".to_string()))
+                }
+                () if f.has("--srs") == f.has("--dev-srs") => Err(Error::Usage(
+                    "give one of `--srs FILE` and `--dev-srs`".to_string(),
+                )),
+                () if f.has("--dev-srs") => Ok(SrsSource::Dev),
+                () if f.has("--sha256") => f.need("--srs").and_then(|path| {
+                    f.need_hex("--sha256")
+                        .map(|digest| SrsSource::Pinned(path, digest))
+                }),
+                () => f.need("--srs").map(SrsSource::File),
+            };
+            srs.and_then(|srs| {
+                f.need("--circuit").and_then(|circuit| {
+                    f.need("--keys")
+                        .map(|keys| Command::Keygen { circuit, srs, keys })
                 })
-            }),
+            })
+        }),
         ["prove", rest @ ..] => Flags::parse(rest, &["--circuit", "--witness", "--keys", "--out"])
             .and_then(|f| {
                 f.need("--circuit").and_then(|circuit| {
@@ -205,6 +227,7 @@ fn execute(command: Command) -> Result<String, Error> {
             let k = shape.doc().k();
             let source = match srs {
                 SrsSource::File(path) => Srs::read(&path, k),
+                SrsSource::Pinned(path, digest) => Srs::read_pinned(&path, k, &digest),
                 SrsSource::Dev => Ok(Srs::dev(k)),
             };
             source

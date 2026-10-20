@@ -60,7 +60,33 @@ the root README.md (section Pipeline). Use the same keys directory for
 `solidity` and `prove`, or the proof does not match the verifier.
 
 `--dev-srs` is INSECURE. It is for local tests only. For a real deploy,
-use `--srs FILE` with a KZG params file from a trusted setup.
+use `--srs FILE --sha256 HEX` with a KZG params file from a trusted setup
+and its pin. The rule `make e2e-ceremony` does this for each example
+circuit (the next section).
+
+## The ceremony SRS
+
+`make e2e-ceremony SRS=FILE` runs the chain of `make e2e` for each example
+circuit with the ceremony SRS in FILE in place of the development SRS. The
+keys, the proofs and the verifiers go to `build/e2e-ceremony/` (the
+verifiers to `build/e2e-ceremony/verifiers/NAME.sol`). Nothing under
+`contracts/` changes, and the rule does not run Forge.
+
+The back end checks the file before it reads it. `keygen --srs FILE
+--sha256 HEX` computes the SHA-256 of FILE and refuses the file when the
+digest is not HEX. The pin is the first word of `halo2/ceremony.sha256`
+(the `shasum -a 256` form). The rule gives that pin to each `keygen`.
+
+The pinned file is `kzg_bn254_15.srs`: k 15, the halo2 KZG params layout
+(PSE halo2 v0.3.0), from
+https://axiom-crypto.s3.amazonaws.com/challenge_0085/kzg_bn254_15.srs, a
+copy of the perpetual powers of tau, challenge 0085. The file is not in
+the repository. Keep it outside the repository or under `build/`.
+
+A ceremony SRS changes the G2 points and the verifying key of each
+verifier. A ceremony verifier is not the verifier in `src/verifiers/`, and
+the tests here stay on the development SRS. A real deploy uses a verifier
+from `build/e2e-ceremony/verifiers/` (M9 s6).
 
 ## Test
 

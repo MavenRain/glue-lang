@@ -19,8 +19,10 @@ E2E_TABLE = test/circuit/expect.txt
 E2E = build/e2e
 VERIFIERS = contracts/src/verifiers
 FIXTURES = contracts/test/fixtures
+CEREMONY = build/e2e-ceremony
+CEREMONY_PIN = halo2/ceremony.sha256
 
-.PHONY: build check check-clang clean e2e
+.PHONY: build check check-clang clean e2e e2e-ceremony
 
 build: build/langc
 
@@ -85,6 +87,30 @@ e2e: build/langc $(HALO2)
 	for name in $$(awk '{ print $$2 }' $(E2E_TABLE)); do \
 	  forge script contracts/script/DeployVerifier.s.sol --root contracts --sig 'run(string)' $$name || exit 1; \
 	done
+
+# The same chain with the ceremony SRS (docs/M9-PLAN.md D5): `make
+# e2e-ceremony SRS=FILE`. The back end checks the SHA-256 of FILE against
+# the pin in $(CEREMONY_PIN) before it reads the file. The keys, proofs and
+# verifiers go to $(CEREMONY)/, never to contracts/: the gates stay on the
+# development SRS. No Forge step: the deploy (M9 s6) takes a verifier from
+# $(CEREMONY)/verifiers/.
+e2e-ceremony: build/langc $(HALO2)
+	@test -n "$(SRS)" || { echo "e2e-ceremony: give SRS=FILE (the ceremony KZG params file)" >&2; exit 2; }
+	rm -rf $(CEREMONY)
+	mkdir -p $(CEREMONY)/verifiers
+	pin=$$(awk '{ print $$1 }' "$(CEREMONY_PIN)"); \
+	while read -r prog name args; do \
+	  out=$(CEREMONY)/$$name; \
+	  echo "e2e-ceremony: $$name"; \
+	  build/langc circuit examples/$$prog.glue $$name -o $$out.circuit.json \
+	  && build/langc witness examples/$$prog.glue $$name $$args -o $$out.witness.json \
+	  && build/langc satcheck $$out.circuit.json $$out.witness.json \
+	  && $(HALO2) keygen --circuit $$out.circuit.json --srs "$(SRS)" --sha256 "$$pin" --keys $$out-keys \
+	  && $(HALO2) prove --circuit $$out.circuit.json --witness $$out.witness.json --keys $$out-keys --out $$out-proof \
+	  && $(HALO2) verify --circuit $$out.circuit.json --keys $$out-keys --proof $$out-proof/proof.json \
+	  && $(HALO2) solidity --circuit $$out.circuit.json --keys $$out-keys --out $(CEREMONY)/verifiers/$$name.sol \
+	  || exit 1; \
+	done <$(E2E_TABLE)
 
 clean:
 	rm -rf build

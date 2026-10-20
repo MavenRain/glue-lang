@@ -25,16 +25,17 @@ same tag, and the build has ONE `halo2_proofs`. That commit has the
 ## Commands
 
     glue-halo2 check    --circuit C --witness W
-    glue-halo2 keygen   --circuit C (--srs FILE | --dev-srs) --keys DIR
+    glue-halo2 keygen   --circuit C (--srs FILE [--sha256 HEX] | --dev-srs) --keys DIR
     glue-halo2 prove    --circuit C --witness W --keys DIR --out DIR
     glue-halo2 verify   --circuit C --keys DIR --proof FILE.json
     glue-halo2 solidity --circuit C --keys DIR --out FILE.sol
 
 - `check` runs the mock prover.
 - `keygen` writes `srs.bin`, `vk.bin` and `pk.bin` to DIR. `--srs` reads a
-  halo2 KZG params file and downsizes it to the circuit `k`. `--dev-srs`
-  makes an SRS from a fixed seed. It is INSECURE: use it for local tests
-  only.
+  halo2 KZG params file and downsizes it to the circuit `k`. `--sha256 HEX`
+  pins that file: `keygen` refuses the file when its SHA-256 is not HEX
+  (64 hex digits). `--dev-srs` makes an SRS from a fixed seed. It is
+  INSECURE: use it for local tests only.
 - `prove` runs the mock prover first, then writes `proof.bin` and
   `proof.json` to DIR. `proof.json` has `proof` (0x hex), `instances`
   (instance column 0, 0x hex uint256), `columns` (every instance column)

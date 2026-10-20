@@ -1,6 +1,9 @@
 //! The crate error type.
 
 use std::fmt;
+use std::path::PathBuf;
+
+use crate::backend::Digest;
 
 /// The document that an error is about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +52,12 @@ pub enum Error {
     Halo2(String),
     /// A file could not be read or written.
     Io { path: String, reason: String },
+    /// The SHA-256 of the SRS file is not the pin.
+    Pin {
+        path: PathBuf,
+        expected: Digest,
+        actual: Digest,
+    },
     /// The circuit is valid IR, but the Solidity generator cannot take it.
     Unsupported(String),
     /// The command line is wrong.
@@ -106,6 +115,15 @@ impl fmt::Display for Error {
             Self::Unsatisfied(why) => write!(f, "witness does not satisfy the circuit: {why}"),
             Self::Halo2(why) => write!(f, "halo2: {why}"),
             Self::Io { path, reason } => write!(f, "{path}: {reason}"),
+            Self::Pin {
+                path,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "the SRS file {} has SHA-256 {actual}, the pin is {expected}",
+                path.display()
+            ),
             Self::Unsupported(why) => write!(f, "not supported: {why}"),
             Self::Usage(why) => write!(f, "usage: {why}"),
         }

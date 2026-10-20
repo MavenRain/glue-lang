@@ -65,8 +65,9 @@ forge test --root contracts
 RPC, no broadcast). It needs `cargo` and `forge` on the PATH.
 
 `--dev-srs` is INSECURE. It is for local tests only. For a real deploy,
-use `--srs FILE` with a KZG params file from a trusted setup, and run
-`keygen`, `prove` and `solidity` with the same keys.
+use `--srs FILE --sha256 HEX` with a KZG params file from a trusted setup
+and its SHA-256 pin, and run `keygen`, `prove` and `solidity` with the
+same keys (`make e2e-ceremony SRS=FILE`, see contracts/README.md).
 
 ## Deploy on Telcoin
 
