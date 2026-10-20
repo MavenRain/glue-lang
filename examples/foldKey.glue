@@ -1,0 +1,4 @@
+-- M12 s1: the memo key of an arithmetic row holds the 4 coefficients. x + 5 and
+-- x + 7 fold the literal into qc on the same operand cell, so each gets its own
+-- row. A witness with q = x + 5 must be refused (test/circuit/refuse.txt).
+circuit foldKey public (p : Field) (q : Field) private (x : Field) := x + 5 == p; x + 7 == q

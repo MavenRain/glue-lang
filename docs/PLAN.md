@@ -55,6 +55,7 @@ reads a ceremony SRS file.
 | M9 | ZK-KYC credential circuit. Ceremony SRS ingestion. Deployment to a Telcoin network (USER runs the broadcast). | DONE 2026-10-19 (s1 674c32f with the plan, s2 be5a3f6, s3 d409eab, s4 0208087, s5 becd33c, s6 0b0c136, s7 close; the sender binding is SPEC.md 9 O22, the deployment target and the ceremony file check are O23; the Poseidon forms (ii) and (iii) are M10 or later) |
 | M10 | The sender binding (O22): the fifth public binder `sender` of kyc and kycMerkle, the gate check, the operations scripts and the runbook. The `kycNullifier` name ruling. The Poseidon forms (ii) and (iii) as an estimate. | DONE 2026-10-20 (s1 54cc43b with the plan, s2 6a17d6f, s3 and s4 c4b79d1 (one docs commit), s5 close; O22 CLOSED; the deployment target and the ceremony file check stay O23; the Poseidon forms (ii) and (iii) are O24, open, no milestone named) |
 | M11 | The Poseidon forms (O24):  form (iii), a memo in the lowering, if the USER rules it;  forms (ii) and (iv) stay open. | DONE 2026-10-20 (s1 d0b78f1 with the plan, s2 close;  form (iii) DONE;  forms (ii) and (iv) stay O24, open, no milestone named) |
+| M12 | The literal fold (O24 form (iv)):  T1, a literal operand into the coefficients ql, qr, qm, qc of its row, and T2, the affine fold, if the USER rules them;  form (ii) stays open. | IN PROGRESS:  RULED 2026-10-20 ((a) to (h) = the recommendations of docs/M12-PLAN.md section 9);  s1 (T1) BUILT and STAGED 2026-10-20, the gates GREEN in s1-b (STAGED);  next s2 (T2) |
 
 ## Lowering rules (all milestones)
 

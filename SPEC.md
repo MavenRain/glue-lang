@@ -1326,10 +1326,20 @@ as variables. Then it lowers the normal form:
    then the private binders, then the hints. The value of the binder is in
    advice a. A hint row has the form of a private binder row: it has no
    instance copy, and its selectors are zero (item 5 can set qrange).
-2. A Field literal k is a constant row: qc = k, qo = 1. The value is in c.
-3. Each `+`, `-` or `*` is an arith row. Copies tie a and b to the wires of
-   the operands. The value is in c. `+` sets ql = qr = qo = 1. `-` sets
-   ql = 1, qr = r - 1, qo = 1. `*` sets qm = qo = 1.
+2. A Field literal k that is a constraint side is a constant row: qc = k,
+   qo = 1. The value is in c.  A Field literal that is an operand of `+`,
+   `-` or `*` has no row (item 3).
+3. Each `+`, `-` or `*` is an arith row with qo = 1. The value is in c.
+   The literal fold (M12 s1, O24 form (iv) T1):  each operand is
+   S * cell + C, with S = 1, C = 0 for a wire and S = 0, C = k for a Field
+   literal k.  `x + y` sets ql = Sx, qr = Sy, qc = Cx + Cy.  `x - y` sets
+   ql = Sx, qr = r - Sy (that is, -Sy), qc = Cx - Cy.  `x * y` sets
+   qm = Sx * Sy, ql = Sx * Cy, qr = Cx * Sy, qc = Cx * Cy.  Thus `x + y`
+   on two wires sets ql = qr = 1, `x - y` sets ql = 1, qr = r - 1, `x * y`
+   sets qm = 1, and `x + 5` sets ql = 1, qc = 5.  Cell a is an operand when
+   ql or qm is not 0;  cell b is an operand when qr or qm is not 0.  Copies
+   tie each operand cell to the wire of its operand.  A cell that is not
+   an operand has no copy, and its value is 0.
 4. `a == b` is a copy between the two wires. If the two wires are one cell,
    the compiler writes no copy.
 5. `range8 e` on a binder sets qrange = 1 on the input row of the binder.
@@ -1339,15 +1349,23 @@ as variables. Then it lowers the normal form:
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an
 earlier constant row that has the same value, and an arith row (item 3)
-with an earlier arith row that has the same op on the same operand cells,
-in this order.  The compiler then writes no new row and uses the wire of
-the earlier row.  Thus `x + y` and `y + x` get two rows, and `x * y` and
-`x + y` get two rows (examples/memoKey.glue, test/circuit/refuse.txt).  A
+with an earlier arith row that has the same 4 coefficients ql, qr, qm, qc
+on the same operand cells (M12 s1:  the key is the row kind, the 4
+coefficients and the operand cells;  a cell that is not an operand is not
+in the key).  The compiler then writes no new row and uses the wire of
+the earlier row.  Thus `x + y` and `y + x` get two rows, `x * y` and
+`x + y` get two rows (examples/memoKey.glue, test/circuit/refuse.txt row
+22), and `x + 5` and `x + 7` get two rows (examples/foldKey.glue, row
+23).  Two rows with the same key hold the same value in each satisfying
+witness.  A
 binder has no row in the memo and no entry:  its wire is its input row
 (item 1).  A range row (item 5) is not shared.  The memo changes no IR
 form (docs/IR.md does not change).  It changes the rows, the copies and
 the fixed values of a circuit that repeats a literal or an operation, and
-it can make k smaller.
+it can make k smaller.  The literal fold (item 3) also changes no IR form
+(M12 rulings (b) and (f)):  the gate `arith` accepts any value in each
+coefficient column.  It changes the rows, the copies and the fixed values
+of a circuit with a literal operand.
 
 The lowering has no row for `inv`. A residual `inv` in a normal form (for
 example `inv x` with x a binder, also through a definition) gives
@@ -1355,7 +1373,8 @@ CIRCUIT_LOWER. A closed `inv k` computes to a literal before the lowering,
 thus `x * inv 1 == x` lowers (examples/nonzero.glue, circuit invOne).
 
 The copies are in this order: instance(0, i) to advice(a, i) for each public
-binder i; for each row, a then b; then the `==` copies.
+binder i; for each row, a then b (each operand cell only, item 3); then the
+`==` copies.
 
 The t column holds 0 to 255 when the circuit uses `range8`. Otherwise t is
 zero on each row, and `lookups` is empty.
@@ -1608,9 +1627,27 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   M11 s1 measured the structural memo:  kycMerkle 10847 rows, k 14, as
   the model.  At k 15 the Merkle depth is 6 under form (i) and 16 under
   the structural memo.  A depth-20 tree is above the pinned SRS under
-  each form.  Ruling (d):  the depth stays 4 in M11.  O24 stays OPEN for
-  forms (ii) and (iv):  each needs a USER ruling first, and no milestone
-  takes them yet.
+  each form.  Ruling (d):  the depth stays 4 in M11.  At the M11 close
+  O24 stays OPEN for forms (ii) and (iv).  M12 (USER rulings (a) to (h)
+  of docs/M12-PLAN.md section 9, 2026-10-20) builds form (iv) in two
+  steps:  T1, a literal operand into the coefficients ql, qr, qm, qc of
+  its arith row (section 7.1 item 3), and T2, the affine fold (slice s2).
+  T1 is DONE (M12 s1).  The measured rows, k and copies (the memo, then
+  T1;  the D3 T1 column of docs/M12-PLAN.md, exact):
+
+  | Circuit | memo (M11) | T1 (M12 s1) |
+  |---|---|---|
+  | poseidon | 1972, 11, 3256 | 1769, 11, 2477 |
+  | transfer | 3740, 12, 6512 | 3537, 12, 4954 |
+  | kyc | 3743, 12, 6518 | 3540, 12, 4960 |
+  | kycMerkle | 10847, 14, 19602 | 10644, 14, 14928 |
+  | poly | 9, 5, 13 | 8, 5, 12 |
+  | range | 4, 9, 4 | 3, 9, 3 |
+
+  T1 removes the 203 constant rows of each Poseidon circuit that have
+  only operand uses (the 204th is also a constraint side), so k does not
+  change.  `square` and `nonzero` do not change.  T2 (slice s2) stays
+  open.  Form (ii) (the degree-5 gate) stays open (M12 ruling (g)).
 
 ## 10. Milestones
 

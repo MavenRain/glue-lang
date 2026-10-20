@@ -41,15 +41,21 @@ typedef struct {
 typedef enum {
   ROW_INPUT, /* a = binder */
   ROW_CONST, /* qc = k, qo = 1: c = k */
-  ROW_ARITH, /* a = x, b = y, c = a op b */
+  ROW_ARITH, /* a = x, b = y, c = ql*a + qr*b + qm*a*b + qc */
   ROW_RANGE  /* a = x, qrange = 1 */
 } RowKind;
 
+/* M12 D5 (ruling (c) (r1)): an ARITH row holds the coefficients of the arith
+   gate, not an op;  a CONST row holds k in qc.  x is an operand of an ARITH
+   row when ql or qm is not 0, y when qr or qm is not 0 (a folded Field
+   literal is in the coefficients, not in a cell). */
 typedef struct {
   RowKind kind;
   uint32_t binder;
-  Op op;
-  Fr k;
+  Fr ql;
+  Fr qr;
+  Fr qm;
+  Fr qc;
   Cell x;
   Cell y;
   int range; /* qrange is 1 on this row */
@@ -143,26 +149,48 @@ static int add_row(Lower *l, const Row *row, Cell *out) {
   return 1;
 }
 
-/* M11 D2: the structural row memo. The key of a CONST row is its value; the
-   key of an ARITH row is the op and the cells of the two operands, in this
-   order (no commutative normal form). The arith gate fixes the output cell
-   of a row from the op and the operand cells, so two rows with one key hold
-   one value in each satisfying witness. INPUT and RANGE rows have no key. */
-#define MEMO_KEY_WORDS (FR_LIMBS + 1u)
+static int is_zero(const Fr *x) {
+  Fr zero;
+  fr_from_u64(&zero, 0);
+  return fr_eq(x, &zero);
+}
+
+/* M12 D5: the operands of a row.  A cell that is not an operand has no copy
+   and no place in the memo key. */
+static int uses_a(const Row *r) {
+  return r->kind == ROW_ARITH && !(is_zero(&r->ql) && is_zero(&r->qm));
+}
+
+static int uses_b(const Row *r) {
+  return r->kind == ROW_ARITH && !(is_zero(&r->qr) && is_zero(&r->qm));
+}
+
+/* M11 D2: the structural row memo.  M12 D5: the key of a CONST or an ARITH
+   row is its kind, its 4 coefficients and the cells of its operands, in this
+   order (no commutative normal form;  a cell that is not an operand is 0).
+   The arith gate fixes the output cell of a row from the coefficients and the
+   operand cells, so two rows with one key hold one value in each satisfying
+   witness.  INPUT and RANGE rows have no key. */
+#define MEMO_KEY_WORDS (1u + 4u * FR_LIMBS + 4u)
 
 static void memo_key(const Row *r, uint32_t *key) {
+  const Fr *q[4] = {&r->ql, &r->qr, &r->qm, &r->qc};
+  uint32_t *cells = &key[1u + 4u * FR_LIMBS];
+  uint32_t i;
   memset(key, 0, MEMO_KEY_WORDS * sizeof *key);
   key[0] = (uint32_t)r->kind;
   switch (r->kind) {
     case ROW_CONST:
-      memcpy(&key[1], r->k.w, sizeof r->k.w);
-      break;
     case ROW_ARITH:
-      key[1] = (uint32_t)r->op;
-      key[2] = r->x.col;
-      key[3] = r->x.row;
-      key[4] = r->y.col;
-      key[5] = r->y.row;
+      for (i = 0; i < 4u; i++) memcpy(&key[1u + i * FR_LIMBS], q[i]->w, sizeof q[i]->w);
+      if (uses_a(r)) {
+        cells[0] = r->x.col;
+        cells[1] = r->x.row;
+      }
+      if (uses_b(r)) {
+        cells[2] = r->y.col;
+        cells[3] = r->y.row;
+      }
       break;
     case ROW_INPUT:
     case ROW_RANGE:
@@ -230,6 +258,47 @@ static int no_circuit_form(Lower *l, const char *what) {
   return diag_fail(l->m->diag, "CIRCUIT_LOWER", l->ci->name, "a constraint side normalizes to %s, which has no circuit form; M1 lowers Field literals, binders and + - * only", what);
 }
 
+/* V is a Field literal (VAL_OP).  K gets its value. */
+static int field_literal(Lower *l, const Value *v, Fr *k) {
+  if (v->op != OP_FIELD_LIT || v->name == NULL || !fr_parse(v->name, strlen(v->name), k)) return no_circuit_form(l, "a value that is not a Field literal");
+  return 1;
+}
+
+/* M12 D5 (T1): the coefficients of the ARITH row x op y, where each operand is
+   S * cell + C (S = 1, C = 0 for a wire;  S = 0, C = k for a Field literal). */
+static void arith_coeffs(Row *r, Op op, const Fr *sx, const Fr *cx, const Fr *sy, const Fr *cy) {
+  Fr zero;
+  fr_from_u64(&zero, 0);
+  if (op == OP_FIELD_MUL) {
+    fr_mul(&r->ql, sx, cy);
+    fr_mul(&r->qr, cx, sy);
+    fr_mul(&r->qm, sx, sy);
+    fr_mul(&r->qc, cx, cy);
+    return;
+  }
+  r->ql = *sx;
+  r->qm = zero;
+  if (op == OP_FIELD_SUB) {
+    fr_sub(&r->qr, &zero, sy);
+    fr_sub(&r->qc, cx, cy);
+    return;
+  }
+  r->qr = *sy;
+  fr_add(&r->qc, cx, cy);
+}
+
+static int lower_value(Lower *l, const Value *v, Cell *out);
+
+/* M12 D5 (T1): an operand of an ARITH row.  A Field literal k goes into the
+   coefficients of the row (S = 0, C = k;  no CONST row);  else OUT gets its
+   wire (S = 1, C = 0). */
+static int lower_operand(Lower *l, const Value *v, Cell *out, Fr *s, Fr *c) {
+  int lit = v != NULL && v->kind == VAL_OP;
+  fr_from_u64(s, lit ? 0u : 1u);
+  fr_from_u64(c, 0);
+  return lit ? field_literal(l, v, c) : lower_value(l, v, out);
+}
+
 /* V is a normal form of type Field. OUT gets the wire that holds its value. */
 static int lower_value(Lower *l, const Value *v, Cell *out) {
   Row row;
@@ -244,18 +313,21 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
       out->row = (uint32_t)v->nat;
       return 1;
     case VAL_OP:
-      if (v->op != OP_FIELD_LIT || v->name == NULL || !fr_parse(v->name, strlen(v->name), &row.k)) return no_circuit_form(l, "a value that is not a Field literal");
+      /* A literal that is a constraint side keeps its CONST row. */
+      if (!field_literal(l, v, &row.qc)) return 0;
       row.kind = ROW_CONST;
       return memo_row(l, &row, out);
     case VAL_STUCK: {
       int arith = v->op == OP_FIELD_ADD || v->op == OP_FIELD_SUB || v->op == OP_FIELD_MUL;
+      Fr sx, cx, sy, cy;
       if (!arith || v->argc != 2) return no_circuit_form(l, "a stuck operation that is not + - *");
       l->depth++;
-      int ok = lower_value(l, v->args[0], &row.x) && lower_value(l, v->args[1], &row.y);
+      int ok = lower_operand(l, v->args[0], &row.x, &sx, &cx) && lower_operand(l, v->args[1], &row.y, &sy, &cy);
       l->depth--;
+      if (!ok) return 0;
       row.kind = ROW_ARITH;
-      row.op = v->op;
-      return ok && memo_row(l, &row, out);
+      arith_coeffs(&row, v->op, &sx, &cx, &sy, &cy);
+      return memo_row(l, &row, out);
     }
     case VAL_NAT:
     case VAL_TRAP:
@@ -369,25 +441,17 @@ static uint32_t pick_k(const Lower *l) {
 
 static void fixed_at(const Lower *l, uint32_t col, uint32_t row, Fr *out) {
   const Row *r = row < l->row_count ? &l->rows[row] : NULL;
-  int arith = r != NULL && r->kind == ROW_ARITH;
+  /* M12 D5: a CONST or an ARITH row holds its coefficients (a CONST row has
+     ql = qr = qm = 0). */
+  int gate = r != NULL && (r->kind == ROW_ARITH || r->kind == ROW_CONST);
   uint64_t one = 0;
   fr_from_u64(out, 0);
   switch (col) {
-    case FIX_QL: one = arith && r->op != OP_FIELD_MUL; break;
-    case FIX_QR:
-      one = arith && r->op != OP_FIELD_MUL;
-      if (one && r->op == OP_FIELD_SUB) {
-        Fr unit;
-        fr_from_u64(&unit, 1);
-        fr_neg(out, &unit);
-        return;
-      }
-      break;
-    case FIX_QO: one = arith || (r != NULL && r->kind == ROW_CONST); break;
-    case FIX_QM: one = arith && r->op == OP_FIELD_MUL; break;
-    case FIX_QC:
-      if (r != NULL && r->kind == ROW_CONST) *out = r->k;
-      return;
+    case FIX_QL: if (gate) *out = r->ql; return;
+    case FIX_QR: if (gate) *out = r->qr; return;
+    case FIX_QO: one = gate; break;
+    case FIX_QM: if (gate) *out = r->qm; return;
+    case FIX_QC: if (gate) *out = r->qc; return;
     case FIX_QRANGE: one = r != NULL && r->range; break;
     case FIX_T: one = 0; if (l->ranged && row < RANGE8_SIZE) fr_from_u64(out, row); return;
     default: break;
@@ -415,8 +479,8 @@ static int put_copies(Buf *b, const Lower *l) {
   }
   for (i = 0; ok && i < l->row_count; i++) {
     const Row *r = &l->rows[i];
-    if (r->kind == ROW_ARITH || r->kind == ROW_RANGE) ok = put_copy(b, &first, "advice", COL_A, i, r->x);
-    if (ok && r->kind == ROW_ARITH) ok = put_copy(b, &first, "advice", COL_B, i, r->y);
+    if (r->kind == ROW_RANGE || uses_a(r)) ok = put_copy(b, &first, "advice", COL_A, i, r->x);
+    if (ok && uses_b(r)) ok = put_copy(b, &first, "advice", COL_B, i, r->y);
   }
   for (i = 0; ok && i < l->check_count; i++) {
     const Check *ch = &l->checks[i];
@@ -484,6 +548,13 @@ static Fr *cell_at(Fr *cells, uint32_t rows, Cell c) {
   return &cells[c.col * rows + c.row];
 }
 
+/* ACC gets ACC + X * Y. */
+static void mul_add(Fr *acc, const Fr *x, const Fr *y) {
+  Fr t;
+  fr_mul(&t, x, y);
+  fr_add(acc, acc, &t);
+}
+
 /* Computes each advice cell in row order. Each source is an earlier row. */
 static void fill_advice(const Lower *l, const Fr *inputs, Fr *cells) {
   uint32_t rows = l->row_count;
@@ -493,16 +564,23 @@ static void fill_advice(const Lower *l, const Fr *inputs, Fr *cells) {
     Cell a = {COL_A, i}, bc = {COL_B, i}, c = {COL_C, i};
     switch (r->kind) {
       case ROW_INPUT: *cell_at(cells, rows, a) = inputs[r->binder]; break;
-      case ROW_CONST: *cell_at(cells, rows, c) = r->k; break;
+      case ROW_CONST: *cell_at(cells, rows, c) = r->qc; break;
       case ROW_RANGE: *cell_at(cells, rows, a) = *cell_at(cells, rows, r->x); break;
       case ROW_ARITH: {
-        Fr x = *cell_at(cells, rows, r->x);
-        Fr y = *cell_at(cells, rows, r->y);
+        /* M12 D5: c = ql*a + qr*b + qm*a*b + qc;  a cell that is not an
+           operand holds 0. */
+        Fr x, y, xy, v = r->qc;
+        fr_from_u64(&x, 0);
+        fr_from_u64(&y, 0);
+        if (uses_a(r)) x = *cell_at(cells, rows, r->x);
+        if (uses_b(r)) y = *cell_at(cells, rows, r->y);
         *cell_at(cells, rows, a) = x;
         *cell_at(cells, rows, bc) = y;
-        if (r->op == OP_FIELD_ADD) fr_add(cell_at(cells, rows, c), &x, &y);
-        else if (r->op == OP_FIELD_SUB) fr_sub(cell_at(cells, rows, c), &x, &y);
-        else fr_mul(cell_at(cells, rows, c), &x, &y);
+        fr_mul(&xy, &x, &y);
+        mul_add(&v, &r->ql, &x);
+        mul_add(&v, &r->qr, &y);
+        mul_add(&v, &r->qm, &xy);
+        *cell_at(cells, rows, c) = v;
         break;
       }
     }
