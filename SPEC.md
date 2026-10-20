@@ -1266,6 +1266,17 @@ the host form of each former.
   hypothesis that neither form changes k fails for `kycMerkle` (k 15 to
   14);  the forms are O24.  M10 adds no IR form, no conv rule and no
   src/ change.  The deployment target stays O23.
+- **The structural row memo** (M11, section 7.1):  form (iii) of O24
+  (rulings (a) to (h) of docs/M11-PLAN.md section 9).  The lowering
+  shares an ARITH row that has the same op and the same operand cells,
+  and a CONST row that has the same value, across all constraints of a
+  circuit.  The rows and k of the 4 Poseidon circuits:  `poseidon` 1972
+  rows, k 11;  `transfer` 3740 rows, k 12;  `kyc` 3743 rows, k 12;
+  `kycMerkle` 10847 rows, k 14.  `square`, `poly`, `range` and `nonzero`
+  do not change.  M11 adds no IR form, no conv rule and no new check
+  code.  examples/memoKey.glue and the circuit refusal row 22 of
+  test/circuit/refuse.txt test the op in the memo key.  Forms (ii) and
+  (iv) stay O24.  The deployment target stays O23.
 
 ## 5. Core types
 
@@ -1582,7 +1593,24 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   section 6).  `square`, `poly`, `range` and `nonzero` do not change.
   Form (ii) (the degree-5 gate) and form (iv) (a literal folded into ql,
   qr or qc of the arith gate, new in M11) stay open.  The depth table
-  goes in at the M11 close (slice s2).
+  (docs/M11-PLAN.md D1, the M11 close):  the rows of one Merkle level =
+  (kycMerkle - kyc) / 4, because `kycMerkle` has depth 4 (6 hashes, the
+  bits b0 to b3);  rows(d) = the rows at depth 4 + (d - 4) x the level
+  rows;  k 15 has 32752 usable rows.
+
+  | Form | rows a level | kycMerkle (depth 4) | max depth at k 15 | depth 20 |
+  |---|---|---|---|---|
+  | (i), the current lowering | 3652 | 21899, k 15 | 6 | 80331, k 17 |
+  | pointer memo (D3) | 3012 | 18059, k 15 | 8 | |
+  | binder memo (P1, no hint rows) | 2556 | 15323, k 14 | 10 | |
+  | structural memo (D2, a model) | 1776 | 10847, k 14 | 16 | 39263, k 16 |
+
+  M11 s1 measured the structural memo:  kycMerkle 10847 rows, k 14, as
+  the model.  At k 15 the Merkle depth is 6 under form (i) and 16 under
+  the structural memo.  A depth-20 tree is above the pinned SRS under
+  each form.  Ruling (d):  the depth stays 4 in M11.  O24 stays OPEN for
+  forms (ii) and (iv):  each needs a USER ruling first, and no milestone
+  takes them yet.
 
 ## 10. Milestones
 

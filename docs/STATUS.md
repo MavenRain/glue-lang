@@ -5596,3 +5596,16 @@ is in its section).
 - Docs:  SPEC.md 7.1 (the memo rule) and 9 O24 (form (iii) DONE with the measured rows and k;  forms (ii) and (iv) open;  the depth table at s2);  docs/M11-PLAN.md (the Status line RULED, D3 tested, section 6 measured, sections 5 and 8 the m2 ruling);  docs/PLAN.md M11 row (s1 STAGED).
 - Open items:  none new.
 - Next:  the USER commits s1;  then s2, the close (~/Documents/glue-lang-M11-s2-PROMPT.md).
+
+### s2: close (2026-10-20)
+
+- Start condition MET:  HEAD d0b78f1 `M11 s1: share rows in the lowering (structural memo)` (USER), its parent 1f02fe5 (`M10 s5: close`), HEAD^{tree} ddd82a8a = the s1-b staged tree (23 paths), status empty.  The USER did not change the staged tree.
+- Commits:  s1 d0b78f1 (with the plan docs/M11-PLAN.md, the docs/PLAN.md M11 row and `### kickoff`).  s2 changes docs only:  no change in src/, in domain/domain.lang, in halo2/, in contracts/, in the Makefile, in test/ and in examples/.
+- The slice:
+  - s1 d0b78f1:  form (iii) of O24 as the structural row memo of SPEC.md 7.1 (rulings (a) to (h)):  `memo_key`, `memo_hash`, `memo_slot` and `memo_row` in src/circuit.c, called at the CONST and the ARITH site of `lower_value`;  the 4 Poseidon goldens (poseidon 1972 rows, k 11;  transfer 3740, k 12;  kyc 3743, k 12;  kycMerkle 10847, k 14), their verifiers and fixtures;  the m2 ruling (r1):  examples/memoKey.glue and refuse.txt row 22;  23 paths.
+- Mutants:  4 of 4 KILLED (s1 m1, m3 and m4;  m2 at row 22 after the m2 ruling (r1)).
+- Gates at the close (the log ~/Documents/glue-lang-M11-s2-probe/check.log, sandbox on):  `make -B check` exit 0:  native circuit 9, path 46, face 35, HIT 44;  examples 68, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 22, satcheck refusals 6;  gate 0 failures;  node regressions 6, printer 2.  These are the s1 counts.  The s2 gate delta is none, so the session did not run forge or e2e;  the last full gates are at s1-b (`make check-clang`, `forge build --root contracts --sizes`, `make e2e` 9 rows, `forge test --root contracts` 100 passed, `make e2e-ceremony` 9 rows, `make rehearsal`, `make deployment-test`, each exit 0).
+- The IR rule kept:  `git diff 1f02fe5 HEAD --stat -- src domain halo2 Makefile test examples contracts/src docs/IR.md` names 15 paths only:  src/circuit.c, examples/memoKey.glue, test/circuit/refuse.txt, the goldens and witnesses of poseidon, transfer, kyc and kycMerkle, and their 4 verifiers.  The other 4 goldens and verifiers (square, poly, range, nonzero) do not change.  No new IR form, no conv rule, no new check code, no change to the verifier generator, and docs/IR.md does not change.
+- Docs:  SPEC.md 4 (the bullet `The structural row memo`) and 9 O24 (the depth table of docs/M11-PLAN.md D1 and the close sentence);  docs/PLAN.md (the M11 row DONE);  docs/M11-PLAN.md (the Status line, CLOSED);  this file (`### s2: close`).
+- Open after M11:  O24 (forms (ii), the degree-5 gate, and (iv), the literal fold:  each needs a USER ruling first;  no milestone named);  O23 (the deployment target and the check of the Axiom copy of the ceremony file;  USER items);  O3, O12 (c), O13, O14, O15, O16 and O19 do not change (D7).
+- Next:  the USER picks M12 (O24 form (ii) or (iv), O23, or another topic).

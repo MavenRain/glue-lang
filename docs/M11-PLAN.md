@@ -1,6 +1,8 @@
 # M11 plan: the Poseidon forms (O24)
 
-Status:  RULED 2026-10-20 (USER, the first message of the s1 session:
+Status:  CLOSED 2026-10-20 (s2);  s1 d0b78f1 (USER);  s2 the close, DONE
+2026-10-20 (docs only;  docs/STATUS.md `### s2: close`).
+RULED 2026-10-20 (USER, the first message of the s1 session:
 "Take all recommendations for (a) through (h)";  each recommendation of
 section 9 taken, no ruling differs);  s1 BUILT 2026-10-20.  The m2 ruling
 of s1-b (USER 2026-10-20):  (r1), the recommendation:  a refusal row for
