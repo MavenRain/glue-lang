@@ -378,6 +378,189 @@ static int lower_check(Lower *l, const Env *env, const ConstraintInfo *k) {
   return 0;
 }
 
+/* ---- M12 D5 (T2): the affine fold ---- */
+
+/* A monomial of a form:  q (DEG 0), q * u (DEG 1) or q * u * v (DEG 2,
+   u.row <= v.row).  A cell is the output cell of its row, so its row names
+   it;  a cell that a monomial does not use is {0, 0}. */
+typedef struct {
+  Fr q;
+  Cell u;
+  Cell v;
+  uint32_t deg;
+} Mono;
+
+/* A form of degree 2 at most:  the sum of its monomials.  The form of a
+   consumer has at most 4 cells, thus at most 1 + 4 + 10 monomials. */
+#define FORM_MONOS 16u
+
+typedef struct {
+  Mono m[FORM_MONOS];
+  uint32_t n;
+} Form;
+
+static int same_cell(Cell a, Cell b) {
+  return a.col == b.col && a.row == b.row;
+}
+
+static Mono unit_mono(void) {
+  Mono m;
+  memset(&m, 0, sizeof m);
+  fr_from_u64(&m.q, 1);
+  return m;
+}
+
+/* F gets F + Q * A * B;  0 when the degree is above 2 or F has no room. */
+static int form_add(Form *f, const Fr *q, const Mono *a, const Mono *b) {
+  Cell zero = {0, 0};
+  Mono t;
+  uint32_t i;
+  fr_mul(&t.q, q, &a->q);
+  fr_mul(&t.q, &t.q, &b->q);
+  if (is_zero(&t.q)) return 1;
+  t.deg = a->deg + b->deg;
+  if (t.deg > 2u) return 0;
+  t.u = t.deg == 0 ? zero : a->deg > 0 ? a->u : b->u;
+  t.v = t.deg < 2u ? zero : a->deg == 2u ? a->v : a->deg == 1u ? b->u : b->v;
+  if (t.deg == 2u && t.v.row < t.u.row) {
+    Cell s = t.u;
+    t.u = t.v;
+    t.v = s;
+  }
+  for (i = 0; i < f->n; i++)
+    if (f->m[i].deg == t.deg && same_cell(f->m[i].u, t.u) && same_cell(f->m[i].v, t.v)) {
+      fr_add(&f->m[i].q, &f->m[i].q, &t.q);
+      return 1;
+    }
+  if (f->n == FORM_MONOS) return 0;
+  f->m[f->n++] = t;
+  return 1;
+}
+
+/* F gets the form of the operand cell C of a consumer:  the form of the ARITH
+   row of C (ql*x + qr*y + qm*x*y + qc) when TAKE, else C. */
+static int operand_form(const Lower *l, Cell c, int take, Form *f) {
+  Mono one = unit_mono();
+  Mono x = one, y = one;
+  const Row *r = take ? &l->rows[c.row] : NULL;
+  f->n = 0;
+  x.deg = y.deg = 1u;
+  x.u = c;
+  if (r == NULL) return form_add(f, &one.q, &x, &one);
+  x.u = r->x;
+  y.u = r->y;
+  return form_add(f, &r->qc, &one, &one) && form_add(f, &r->ql, &x, &one) && form_add(f, &r->qr, &y, &one) && form_add(f, &r->qm, &x, &y);
+}
+
+/* The fit check (M12 D2):  OUT gets the ARITH row of F when F has at most two
+   cells and no square of one cell when two cells occur;  else 0. */
+static int form_row(const Form *f, Row *out) {
+  Cell c[4] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}};
+  uint32_t cells = 0, i, j, k;
+  int square = 0;
+  for (i = 0; i < f->n; i++) {
+    const Mono *m = &f->m[i];
+    Cell at[2] = {m->u, m->v};
+    if (is_zero(&m->q)) continue;
+    square |= m->deg == 2u && same_cell(m->u, m->v);
+    for (j = 0; j < m->deg; j++) {
+      for (k = 0; k < cells; k++)
+        if (same_cell(c[k], at[j])) break;
+      if (k == cells && cells < 4u) c[cells++] = at[j];
+    }
+  }
+  if (cells > 2u || (cells == 2u && square)) return 0;
+  memset(out, 0, sizeof *out);
+  out->kind = ROW_ARITH;
+  out->x = c[0];
+  out->y = cells == 1u && square ? c[0] : c[1];
+  for (i = 0; i < f->n; i++) {
+    const Mono *m = &f->m[i];
+    Fr *q = m->deg == 0 ? &out->qc : m->deg == 2u ? &out->qm : same_cell(m->u, c[0]) ? &out->ql : &out->qr;
+    fr_add(q, q, &m->q);
+  }
+  return 1;
+}
+
+/* The consumer R takes the row of its operand x when TA, of y when TB:  OUT
+   gets ql*X + qr*Y + qm*X*Y + qc over the operand forms X and Y;  0 when the
+   form does not fit the gate. */
+static int take_form(const Lower *l, const Row *r, int ta, int tb, Row *out) {
+  Mono one = unit_mono();
+  Form x, y, f;
+  uint32_t i, j;
+  int ok = operand_form(l, r->x, ta, &x) && operand_form(l, r->y, tb, &y);
+  f.n = 0;
+  ok = ok && form_add(&f, &r->qc, &one, &one);
+  for (i = 0; ok && i < x.n; i++) ok = form_add(&f, &r->ql, &x.m[i], &one);
+  for (j = 0; ok && j < y.n; j++) ok = form_add(&f, &r->qr, &y.m[j], &one);
+  for (i = 0; ok && i < x.n; i++)
+    for (j = 0; ok && j < y.n; j++) ok = form_add(&f, &r->qm, &x.m[i], &y.m[j]);
+  return ok && form_row(&f, out);
+}
+
+/* M12 D2 (T2):  the row S can go into its consumers:  an ARITH row with uses,
+   each an ARITH operand (USE;  PIN counts the other uses). */
+static int foldable(const Lower *l, const uint32_t *use, const uint32_t *pin, uint32_t s) {
+  return l->rows[s].kind == ROW_ARITH && use[s] > 0 && pin[s] == 0;
+}
+
+/* M12 D5 (T2):  the affine fold, a pass after the lowering.  Bottom-up, each
+   ARITH row takes the rows of its operands that can go (both, else x, else
+   y) when its form still fits;  a row goes when each consumer took it.  The
+   rows above the binder rows get new numbers (AT), and so do the cells of the
+   rows and of the checks. */
+static int fold_affine(Lower *l) {
+  const int trial[3][2] = {{1, 1}, {1, 0}, {0, 1}};
+  uint32_t n = l->row_count;
+  uint32_t *use, *pin, *took, *at;
+  uint32_t i, t, kept = 0;
+  use = arena_alloc(l->m->arena, (4u * n + 1u) * sizeof *use);
+  if (use == NULL) return oom(l->m->diag);
+  memset(use, 0, (4u * n + 1u) * sizeof *use);
+  pin = use + n;
+  took = pin + n;
+  at = took + n;
+  /* The uses:  the ARITH operands (USE);  the range rows and the sides of the
+     checks (PIN;  the instance copies go to the binder rows). */
+  for (i = 0; i < n; i++) {
+    const Row *r = &l->rows[i];
+    if (uses_a(r)) use[r->x.row]++;
+    if (uses_b(r)) use[r->y.row]++;
+    if (r->kind == ROW_RANGE) pin[r->x.row]++;
+  }
+  for (i = 0; i < l->check_count; i++) {
+    pin[l->checks[i].lhs.row]++;
+    if (l->checks[i].kind == CONSTRAINT_EQ) pin[l->checks[i].rhs.row]++;
+  }
+  for (i = 0; i < n; i++) {
+    Row *r = &l->rows[i];
+    Row next;
+    int a = uses_a(r) && foldable(l, use, pin, r->x.row);
+    int b = uses_b(r) && foldable(l, use, pin, r->y.row);
+    for (t = 0; t < 3u; t++)
+      if ((a || !trial[t][0]) && (b || !trial[t][1]) && take_form(l, r, trial[t][0], trial[t][1], &next)) break;
+    if (t == 3u) continue;
+    if (trial[t][0]) took[r->x.row]++;
+    if (trial[t][1]) took[r->y.row]++;
+    *r = next;
+  }
+  for (i = 0; i < n; i++) {
+    at[i] = kept;
+    if (!(foldable(l, use, pin, i) && took[i] == use[i])) l->rows[kept++] = l->rows[i];
+  }
+  for (i = 0; i < kept; i++) {
+    l->rows[i].x.row = at[l->rows[i].x.row];
+    l->rows[i].y.row = at[l->rows[i].y.row];
+  }
+  for (i = 0; i < l->check_count; i++) {
+    l->checks[i].lhs.row = at[l->checks[i].lhs.row];
+    if (l->checks[i].kind == CONSTRAINT_EQ) l->checks[i].rhs.row = at[l->checks[i].rhs.row];
+  }
+  l->row_count = kept;
+  return 1;
+}
+
 /* M6 s5 (D14): a hint row is an input row too (zero selectors, no instance
    copy), after the private rows. */
 static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
@@ -409,7 +592,7 @@ static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
                        i < ci->public_count + ci->private_count ? "private binder" : "hint", ci->binders[i]);
   for (i = 0; i < ci->public_count; i++)
     if (!l->used[i]) return diag_fail(m->diag, "CIRCUIT_UNUSED_PUBLIC", ci->name, "the public binder %s is in no constraint", ci->binders[i]);
-  return 1;
+  return fold_affine(l);
 }
 
 static const CircuitInfo *find_circuit(Machine *m, const char *name) {

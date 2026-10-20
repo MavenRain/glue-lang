@@ -1367,6 +1367,26 @@ it can make k smaller.  The literal fold (item 3) also changes no IR form
 coefficient column.  It changes the rows, the copies and the fixed values
 of a circuit with a literal operand.
 
+The affine fold (M12 s2, O24 form (iv) T2).  After the lowering, the
+compiler gives each arith row a form:  a sum of monomials of degree 2 at
+most on the cells of the rows that stay.  An arith row whose uses are all
+operands of arith rows goes into each consumer row when the form of the
+consumer, with the form of the row in place of its cell, still fits the
+gate:  at most two cells, degree 2 at most, and no square of one cell
+when two cells occur.  A consumer takes both of its operand rows when
+the form fits, else the row of x, else the row of y.  The row goes when
+each consumer takes it.  A range row (item 5) and each side of a check
+(item 4) also use a row, thus such a row stays.  The compiler then gives
+new numbers to the rows after the input rows, and to the cells of the
+copies and the checks.  Thus `m0 * t0 + m1 * t1` with m0 and m1 Field
+literals is one row (ql = m0, qr = m1), `(s + rc) * (s + rc)` is one row
+(a = b = s, qm = 1, ql = 2 rc, qc = rc^2), and `x4 * (s + rc)` is one
+row (qm = 1, ql = rc).  The affine fold changes no IR form and no memo
+key.  The new form of each consumer has the value of the old form in
+each satisfying witness:  the fold is a change of the lowering, not a
+conv rule.  It changes the rows, the copies, the fixed values and k of a
+circuit with an arith row inside an arith row.
+
 The lowering has no row for `inv`. A residual `inv` in a normal form (for
 example `inv x` with x a binder, also through a definition) gives
 CIRCUIT_LOWER. A closed `inv k` computes to a literal before the lowering,
@@ -1632,22 +1652,26 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   of docs/M12-PLAN.md section 9, 2026-10-20) builds form (iv) in two
   steps:  T1, a literal operand into the coefficients ql, qr, qm, qc of
   its arith row (section 7.1 item 3), and T2, the affine fold (slice s2).
-  T1 is DONE (M12 s1).  The measured rows, k and copies (the memo, then
-  T1;  the D3 T1 column of docs/M12-PLAN.md, exact):
+  T1 is DONE (M12 s1).  T2 is DONE (M12 s2, section 7.1, the affine
+  fold).  The measured rows, k and copies (the memo, then T1, then T2;
+  the D3 T1 and T2 columns of docs/M12-PLAN.md, exact):
 
-  | Circuit | memo (M11) | T1 (M12 s1) |
-  |---|---|---|
-  | poseidon | 1972, 11, 3256 | 1769, 11, 2477 |
-  | transfer | 3740, 12, 6512 | 3537, 12, 4954 |
-  | kyc | 3743, 12, 6518 | 3540, 12, 4960 |
-  | kycMerkle | 10847, 14, 19602 | 10644, 14, 14928 |
-  | poly | 9, 5, 13 | 8, 5, 12 |
-  | range | 4, 9, 4 | 3, 9, 3 |
+  | Circuit | memo (M11) | T1 (M12 s1) | T2 (M12 s2) |
+  |---|---|---|---|
+  | poseidon | 1972, 11, 3256 | 1769, 11, 2477 | 990, 10, 1698 |
+  | transfer | 3740, 12, 6512 | 3537, 12, 4954 | 1979, 11, 3396 |
+  | kyc | 3743, 12, 6518 | 3540, 12, 4960 | 1982, 11, 3402 |
+  | kycMerkle | 10847, 14, 19602 | 10644, 14, 14928 | 5970, 13, 10254 |
+  | poly | 9, 5, 13 | 8, 5, 12 | 7, 5, 11 |
+  | range | 4, 9, 4 | 3, 9, 3 | 3, 9, 3 |
 
   T1 removes the 203 constant rows of each Poseidon circuit that have
   only operand uses (the 204th is also a constraint side), so k does not
-  change.  `square` and `nonzero` do not change.  T2 (slice s2) stays
-  open.  Form (ii) (the degree-5 gate) stays open (M12 ruling (g)).
+  change.  T2 removes the arith rows that go into their consumers:  k
+  goes down by 1 for each Poseidon circuit.  `square` and `nonzero` do
+  not change under T1 and T2;  `range` does not change under T2.  The
+  depth table of the fold (docs/M12-PLAN.md D4) comes with the M12 close
+  (slice s3).  Form (ii) (the degree-5 gate) stays open (M12 ruling (g)).
 
 ## 10. Milestones
 
