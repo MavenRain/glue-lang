@@ -5435,3 +5435,60 @@ is in its section).
   and (iii) (ruling (h)) go to M10 or later.  O3, O12 (c), O13, O14,
   O15, O16 and O19 stay open (ruling (i)).  Next:  none in M9;  an M10
   starts only when the USER opens it.
+
+## M10
+
+### kickoff (2026-10-19)
+
+- Start condition MET:  HEAD f1012a8 `M9 s7: close` (USER), status empty.  The HEAD tree 089602a5 is not the staged s7 tree 55c48ad7:  the diff is SPEC.md (6 lines) and docs/STATUS.md (10 lines), a USER rewording of the O23 text (the pinned SRS supports circuits with k <= 15;  k > 15 needs a larger file and a new pin).  Accepted (the M9 kickoff rule:  docs-only lines).
+- Plan:  docs/M10-PLAN.md DRAFT (sections 1 to 10;  not staged:  it goes with the M10 s1 commit after the rulings).  Scope candidates from the M9 close:  O22 the sender binding, the point name `kycNullifier`, the Poseidon forms (ii) and (iii) as an estimate, the open items.
+- Probe (~/Documents/glue-lang-M10-kickoff-probe/run.sh, scratch copies of examples/kyc.glue and examples/kycMerkle.glue, the real build/langc of HEAD;  the header edit `(min : Field) (sender : Field) private`, one binding row appended after `range8 d`;  sender = 1390849295786071768276380950238675083608645509734, the anvil account 0 address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 as an integer):
+
+| Probe | Circuit | Row | rows (golden) | copies (golden) | public | k | check | witness | satcheck |
+|---|---|---|---|---|---|---|---|---|---|
+| kycA | kyc | `sender * 1 == sender` | 7293 (7290) | 8713 (8709) | 5 | 13 | ok | ok | ok |
+| kycB | kyc | `sender == sender` | 7291 (7290) | 8710 (8709) | 5 | 13 | ok | ok | ok |
+| kycC | kyc | `sender + 0 == sender` | 7293 (7290) | 8713 (8709) | 5 | 13 | ok | ok | ok |
+| kycE | kyc | `0 * sender == 0` | 7294 (7290) | 8713 (8709) | 5 | 13 | ok | ok | ok |
+| kycU | kyc | none (the binder only) | | | | | CIRCUIT_UNUSED_PUBLIC (rc 1) | the same | |
+| kmA | kycMerkle | `sender * 1 == sender` | 21901 (21898) | 26181 (26177) | 5 | 15 | ok | ok | ok |
+| kmB | kycMerkle | `sender == sender` | 21899 (21898) | 26178 (26177) | 5 | 15 | ok | ok | ok |
+
+- Probe findings:  the other IR fields stay (advice 3, fixed 7, instance 1, gates 1, lookups 1, fixed_values 7);  k stays 13 and 15 (within the pinned SRS);  `witness` with `sender + 1` also exits 0 in each form (the row does not restrict the value:  the gate does, and the transcript binds the instance);  `witness` without `sender=` gives rc 2 `WITNESS_ARGS: kyc: the binder sender has no value`;  the name `sender` is free (no REFUSE_NAME).  The gate side (a read of KycGate.sol, no forge):  the count check at line 89 becomes 5, a new check of `instances[4]` against `uint256(uint160(msg.sender))` and an error `WrongSender`;  both verifiers hold `num_instances` 4 (kyc.sol line 220) and regenerate through e2e.
+- Questions for the USER (docs/M10-PLAN.md section 9):  (a) the scope (O22 in s1 and s2, the `kycNullifier` ruling in s3, the Poseidon estimate in s4, the close in s5);  (b) the raw address as the fifth public binder;  (c) form B `sender == sender`;  (d) kyc and kycMerkle in place (the IR rule ruling);  (e) the gate design and the fixture sender;  (f) keep `kycNullifier`;  (g) the Poseidon estimate only;  (h) the open items stay;  (i) the slices;  (j) the SPEC.md 2.10 sentences.
+- Gates:  none ran (the kickoff edits no tracked file;  docs/M10-PLAN.md is untracked).
+- Next:  the USER rules on section 9;  then a fresh session follows ~/Documents/glue-lang-M10-s1-PROMPT.md.
+
+### s1 (2026-10-20)
+
+- Rulings (USER 2026-10-20, the first message of the s1 session):  `(a) .. (j) ..`, each recommendation of docs/M10-PLAN.md section 9 taken (the M9 form, no deviation named):  (a) the scope O22 in s1 and s2, the `kycNullifier` ruling in s3, the Poseidon estimate in s4, the close in s5;  (b) the raw address as the fifth public binder;  (c) form B `sender == sender`;  (d) kyc and kycMerkle in place;  (e) the gate count 5, `WrongSender` after `WrongMin`, the fixture sender = the anvil account 0, `vm.prank` in the tests, check.sh `--from`;  (f) keep `kycNullifier`;  (g) the Poseidon estimate only;  (h) the open items stay;  (i) the slices s1 to s5;  (j) the SPEC.md 2.10 sentences.  Recorded in the plan Status line.
+- Start condition MET:  HEAD f1012a8, ` M docs/STATUS.md` and `?? docs/M10-PLAN.md` only.
+- Changed (the install runner ~/Documents/glue-lang-M10-s1-probe/install.sh, the log install.out, rc 0):  examples/kyc.glue (224 lines) and examples/kycMerkle.glue (228 lines) get the binder `(sender : Field)` after `min`, the row `; sender == sender` at the end of the circuit line and a 3-line header sentence (O22);  the four goldens regenerate (kyc 7291 rows, 8710 copies, public 5, k 13;  kycMerkle 21899 rows, 26178 copies, public 5, k 15;  satcheck ok on each pair);  test/circuit/expect.txt rows 8 and 9 and refuse.txt rows 19 and 20 take `sender=1390849295786071768276380950238675083608645509734` (the anvil account 0 address as an integer);  refuse.txt row 21 is new (`2 WITNESS_ARGS witness kyc kyc` with the row 8 args without `sender=`;  21 rows);  contracts/src/KycGate.sol (105 lines):  the count check 5, `error WrongSender(uint256 sender)`, the check of `instances[4]` against `uint256(uint160(msg.sender))` after the `WrongMin` check, the doc comments name five inputs;  contracts/test/KycGate.t.sol (172 lines):  the constant `SENDER`, `vm.prank(SENDER)` before each of the 10 admits, `testRefusesAnotherSender` (no prank, `WrongSender` with the fixture value), `testRefusesAWrongInstanceCount` keeps `new uint256[](3)`;  contracts/test/Verifiers.t.sol (314 lines):  `SENDER` in `VerifierCase`, `instances.length == 5` and `instances[4] == uint256(uint160(SENDER))` in the two kyc tests;  `make e2e` regenerated contracts/src/verifiers/kyc.sol and kycMerkle.sol (48 lines each;  `num_instances` 5) and the fixtures contracts/test/fixtures/kyc.proof.json and kycMerkle.proof.json (five instances;  the fifth is 0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266).
+- Mutants (langc on scratch copies, ~/Documents/glue-lang-M10-s1-probe/mutants.out;  forge on the staged gate, mutants45.out):  m1 the binding row removed:  KILLED (CIRCUIT_UNUSED_PUBLIC rc 1 at check, circuit and witness;  kycMerkle the same);  m2 the header binder removed with the row kept:  KILLED (NAME_UNKNOWN `unknown name sender` rc 1 at check and circuit);  m3 the circuits row without `sender=`:  KILLED (WITNESS_ARGS rc 2, no witness file;  kycMerkle the same);  m4 the gate check of `instances[4]` removed:  KILLED (`testRefusesAnotherSender` FAIL, `next call did not revert as expected`);  m5 the count check kept at 4:  KILLED (9 of the 12 KycGateTest tests FAIL with `WrongInstanceCount(5)`, `testRefusesAWrongInstanceCount` passes);  the control goldens byte-identical, the restored gate 12 passed.
+- Gates (~/Documents/glue-lang-M10-s1-probe/gates.sh, sandbox off, the log gates.out):  `make -B check` exit 0 (51 s):  native circuit 9, path 46, face 35, HIT 44;  examples 67, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 21 (20 at the M9 close), satcheck refusals 6;  node regressions 6, printer 2;  `make check-clang` exit 0;  `forge build --root contracts --sizes` exit 0;  `make e2e` exit 0 (73 s, 9 rows, 100 tests passed inside);  `forge test --root contracts` 100 passed (99 at the M9 close;  KycGateTest 12);  `make e2e-ceremony SRS=<the pinned file>` exit 0 (68 s, 9 rows, 8 verifier files under build/e2e-ceremony/verifiers, not committed).
+- IR check:  before e2e (the index against HEAD) test/circuit holds the kyc and kycMerkle goldens, expect.txt and refuse.txt, contracts/src/verifiers nothing;  after e2e (the worktree against the index) test/circuit empty, contracts/src/verifiers kyc.sol and kycMerkle.sol only (the 6 other verifiers byte-identical), the fixtures kyc and kycMerkle (10 lines each, the fifth instance) and the 6 other fixtures (4 lines each, the proof bytes of a fresh run, restored from the index as at each M9 e2e).  No new IR form, no verifier generator change.
+- Docs:  SPEC.md 2.10 (the sender binder sentence, the flat constructor namespace sentence of ruling (j) and D6) and 9 (O22:  the circuit and the gate side done in s1, the operations side in s2;  open until s2);  docs/PLAN.md M10 row (PLANNED 2026-10-20, the scope of ruling (a));  docs/M10-PLAN.md Status line (RULED 2026-10-20, s1 BUILT).
+- Open items:  O22 stays open until s2 (contracts/script/check.sh `--from`, contracts/script/rehearsal.sh, contracts/test/deployment.sh, the runbook in contracts/README.md).
+- Staged-change review (2026-10-20): one MEDIUM finding fixed. The new
+  sender check made the admission simulation in contracts/script/check.sh
+  revert with WrongSender because cast call supplied no sender. The
+  original `make deployment-test` reproduced the failure. The check now
+  decodes the address from the proof's fifth instance and passes `--from`;
+  a failed admission call also retains its exit status before output parsing.
+  The deployment regression covers a holder distinct from the issuer and
+  checks that simulations send no transaction and leave the nullifier unused.
+  contracts/README.md now documents five inputs and the simulation sender.
+  These review fixes bring the check.sh and runbook work forward from s2;
+  O22 remains open for the rest of that slice.
+- Review validation: `make check` passed, including regenerated circuit
+  and witness golden comparisons; `forge test --root contracts --gas-report`
+  passed all 100 tests; `make deployment-test rehearsal NAME=kyc` and
+  `make rehearsal NAME=kycMerkle` passed against local Anvil nodes. Both
+  staged verifiers regenerated byte-for-byte from the staged circuits and
+  development keys; both staged proof fixtures verified natively and their
+  instances matched the witness goldens. No CI weakening or remaining
+  correctness finding was identified. Full command captures are retained
+  locally under build/staged-review/.kanon-exec/ (original failure:
+  run-ci4EkP; compiler: run-hBiEo3; Solidity: run-WUEcMF; deployment and
+  kyc rehearsal: run-n4ZZms; kycMerkle rehearsal: run-zGQYgM).
+- Next:  s2, the operations side of O22 (~/Documents/glue-lang-M10-s2-PROMPT.md).

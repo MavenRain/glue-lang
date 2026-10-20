@@ -123,24 +123,25 @@ Call the verifier with the CLI calldata. The result is 1 (true):
 of one kyc or kycMerkle verifier. The verifier, the scope and the minimum
 are fixed at the deploy. The issuer approves an anchor: the commitment cm
 of a credential (kyc) or the root of a credential tree (kycMerkle). A
-revoked anchor is refused. `admit(proof, instances)` takes the four public
-inputs in the circuit order: anchor, nf, scope, min. A wrong count, an
-anchor that is not approved, another scope or min and a used nullifier are
-refused before the verifier runs. A rejected proof reverts with
+revoked anchor is refused. `admit(proof, instances)` takes the five public
+inputs in the circuit order: anchor, nf, scope, min, sender. The sender is
+the caller's address as an unsigned integer. A wrong count, an anchor
+that is not approved, another scope or min, a sender different from
+`msg.sender` and a used nullifier are refused before the verifier runs.
+A rejected proof reverts with
 ProofRejected and records nothing. An accepted proof records nf, so the
 same credential is admitted one time at this scope (the replay guard). The
-caller chooses no anchor, scope or min. The constructor refuses a scope at
-or above r and a min above r - 256 (the D1 range bound). Open item:
-msg.sender is not bound by the proof, so a relayer can send a proof it has
-seen before the owner does. A binding needs a public input of the circuit
-(not M9).
+caller chooses no anchor, scope, min or sender. The constructor refuses a
+scope at or above r and a min above r - 256 (the D1 range bound). The
+proof binds the sender, so a relayer cannot admit another holder's proof.
 
 `test/KycGate.t.sol` tests the gate against the kyc and kycMerkle fixtures
-(11 tests). `script/DeployKycGate.s.sol` deploys a gate. `script/rehearsal.sh`
+(12 tests). `script/DeployKycGate.s.sol` deploys a gate. `script/rehearsal.sh`
 and `script/check.sh` are the D6 rehearsal and the read-only checks of the
 runbook below. After building the ceremony artifacts, `make deployment-test`
-checks that an occupied rehearsal port receives no transactions and that
-deployment checks reject a missing or unexpected issuer.
+checks that an occupied rehearsal port receives no transactions, that
+deployment checks reject a missing or unexpected issuer, and that the
+proof sender can differ from the issuer. Checks leave the nullifier unused.
 
 ## The deployment runbook
 
@@ -206,7 +207,10 @@ outside the repository.
    It compares the verifier code with the ceremony artifact, calls the
    verifier on the ceremony proof, checks the gate's issuer and policy
    parameters, and runs the admission as an eth_call. ISSUER is required
-   when GATE is supplied.
+   when GATE is supplied. The admission call sets `--from` to the sender
+   in the proof's fifth public input. It needs no key and sends nothing.
+   Build a holder's proof with `sender=` set to that holder's address as
+   an integer; the example proofs use anvil account 0.
 
 6. Publish the source on the explorer when it has a verify endpoint (add
    `--verifier blockscout` for a Blockscout explorer; the default is the

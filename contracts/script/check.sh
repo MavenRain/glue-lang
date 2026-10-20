@@ -7,7 +7,8 @@
 #   RPC_URL=.. NAME=.. VERIFIER=0x.. [GATE=0x.. SCOPE=.. MIN=.. ISSUER=0x..] [CHAIN_ID=..] sh contracts/script/check.sh
 # or the same values as arguments in that order. PROOF and ARTIFACT are the
 # `make e2e-ceremony` proof and the ceremony profile artifact of NAME. Each
-# check prints `check: <what> ok`; the first failure exits 1.
+# check prints `check: <what> ok`; the first failure exits 1. The admission
+# call uses the sender bound by the proof's fifth public input.
 RPC_URL=${RPC_URL:-$1}
 NAME=${NAME:-$2}
 VERIFIER=${VERIFIER:-$3}
@@ -68,8 +69,11 @@ if [ -n "$GATE" ]; then
   [ "$u" = "false" ] || fail "the nullifier of the proof is used"
   echo "check: gate nullifier unused ok"
   instances=$(for h in $(jq -r '.instances[]' "$PROOF"); do cast to-dec "$h" | first; done | paste -s -d , -)
-  got=$(cast call "$GATE" 'admit(bytes,uint256[])(uint256)' "$(jq -r .proof "$PROOF")" "[$instances]" --rpc-url "$RPC_URL" | first) \
+  sender=$(jq -er '.instances[4]' "$PROOF") || fail "proof sender"
+  sender=$(cast parse-bytes32-address "$sender") || fail "proof sender is not an address"
+  got=$(cast call "$GATE" 'admit(bytes,uint256[])(uint256)' "$(jq -r .proof "$PROOF")" "[$instances]" --from "$sender" --rpc-url "$RPC_URL") \
     || fail "gate admit (eth_call)"
+  got=$(printf '%s\n' "$got" | first)
   [ "$got" = "$nf" ] || fail "admit returned $got, not the nullifier $nf"
   echo "check: gate admits the $NAME proof (eth_call, nothing sent) ok"
 fi

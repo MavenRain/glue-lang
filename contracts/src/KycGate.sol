@@ -12,23 +12,24 @@ interface IVerifier {
 /// The verifier, the scope and the minimum are fixed at the deploy. The
 /// issuer approves an anchor: the commitment cm of a credential (the kyc
 /// circuit) or the root of a credential tree (the kycMerkle circuit). A
-/// caller admits with a proof and the four public inputs of the circuit in
-/// the declared order: anchor, nf, scope, min. The gate checks that the
-/// anchor is approved, that scope and min are its own and that the
-/// nullifier nf is new. Then it asks the verifier. Only an accepted proof
-/// records nf, so a second admission with the same credential at this
-/// scope is refused (the replay). The caller chooses no anchor, no scope
-/// and no min: each is a public input that the proof binds or a constant
-/// of the gate.
+/// caller admits with a proof and the five public inputs of the circuit in
+/// the declared order: anchor, nf, scope, min, sender. The gate checks
+/// that the anchor is approved, that scope and min are its own, that
+/// sender is the caller and that the nullifier nf is new. Then it asks the
+/// verifier. Only an accepted proof records nf, so a second admission with
+/// the same credential at this scope is refused (the replay). The caller
+/// chooses no anchor, no scope, no min and no sender: each is a public
+/// input that the proof binds or a constant of the gate.
 ///
 /// The D1 bound: the circuit checks `attr >= min` with a range check on
 /// `attr - min`, so min is at most r - 256 (r is the BN254 scalar field
 /// modulus) and scope is below r. The constructor refuses other values.
 ///
-/// Open item (docs/STATUS.md M9 s6): msg.sender is not bound by the proof.
-/// A relayer can send a proof it has seen before the owner does, and the
-/// nf is then spent by that admission. A binding needs a public input of
-/// the circuit, which is not M9 work.
+/// The sender binding (M10 s1, SPEC.md 9 O22): the fifth public input
+/// sender is the caller as an unsigned integer. The proof binds it (the
+/// verifier absorbs each public input), and the gate refuses a caller that
+/// is not the sender of the proof (WrongSender). A relayer that sees a
+/// proof cannot spend its nullifier.
 contract KycGate {
     /// The BN254 scalar field modulus r.
     uint256 private constant R = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
@@ -53,6 +54,7 @@ contract KycGate {
     error AnchorNotApproved(uint256 anchor);
     error WrongScope(uint256 scope);
     error WrongMin(uint256 min);
+    error WrongSender(uint256 sender);
     error NullifierUsed(uint256 nf);
     error ProofRejected();
 
@@ -84,12 +86,14 @@ contract KycGate {
     }
 
     /// Admit the holder of a credential: the proof and the public inputs
-    /// `[anchor, nf, scope, min]` of the circuit. Returns nf and records it.
+    /// `[anchor, nf, scope, min, sender]` of the circuit, with sender the
+    /// caller. Returns nf and records it.
     function admit(bytes calldata proof, uint256[] calldata instances) external returns (uint256 nf) {
-        if (instances.length != 4) revert WrongInstanceCount(instances.length);
+        if (instances.length != 5) revert WrongInstanceCount(instances.length);
         if (!approved[instances[0]]) revert AnchorNotApproved(instances[0]);
         if (instances[2] != scope) revert WrongScope(instances[2]);
         if (instances[3] != min) revert WrongMin(instances[3]);
+        if (instances[4] != uint256(uint160(msg.sender))) revert WrongSender(instances[4]);
         nf = instances[1];
         if (used[nf]) revert NullifierUsed(nf);
         (bool ok, bytes memory ret) =

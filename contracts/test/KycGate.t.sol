@@ -8,8 +8,10 @@ import {Vm, VM_ADDRESS} from "./Vm.sol";
 
 /// The tests of KycGate (docs/M9-PLAN.md D7) against the kyc and kycMerkle
 /// verifiers and the proofs in test/fixtures/. The fixtures are at scope 9
-/// and min 18. The public inputs are `[anchor, nf, scope, min]` with
-/// anchor = cm (kyc) or the tree root (kycMerkle).
+/// and min 18. The public inputs are `[anchor, nf, scope, min, sender]`
+/// with anchor = cm (kyc) or the tree root (kycMerkle) and sender = the
+/// anvil account 0 address (docs/M10-PLAN.md D4): each admit of a fixture
+/// runs as that sender (vm.prank), and another sender gets WrongSender.
 contract KycGateTest {
     Vm private constant VM = Vm(VM_ADDRESS);
 
@@ -18,6 +20,10 @@ contract KycGateTest {
 
     uint256 private constant SCOPE = 9;
     uint256 private constant MIN = 18;
+
+    /// The sender of the fixtures: the anvil account 0 address, the fifth
+    /// public input of the kyc and kycMerkle proofs.
+    address private constant SENDER = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
 
     IVerifier private kyc;
     IVerifier private kycMerkle;
@@ -33,7 +39,7 @@ contract KycGateTest {
         (merkleProof, merkleInstances) = fixture("kycMerkle");
     }
 
-    /// The proof and the public inputs of test/fixtures/NAME.proof.json.
+    /// The proof and the five public inputs of test/fixtures/NAME.proof.json.
     function fixture(string memory name) private view returns (bytes memory proof, uint256[] memory instances) {
         string memory json = VM.readFile(string.concat(VM.projectRoot(), "/test/fixtures/", name, ".proof.json"));
         proof = VM.parseJsonBytes(json, ".proof");
@@ -59,6 +65,7 @@ contract KycGateTest {
 
     function testAdmitsTheKycMerkleFixture() public {
         KycGate g = approvedMerkleGate();
+        VM.prank(SENDER);
         uint256 nf = g.admit(merkleProof, merkleInstances);
         require(nf == merkleInstances[1], "admit did not return the nullifier");
         require(g.used(nf), "the nullifier is not recorded");
@@ -66,14 +73,17 @@ contract KycGateTest {
 
     function testRefusesTheSameNullifierTwice() public {
         KycGate g = approvedMerkleGate();
+        VM.prank(SENDER);
         uint256 nf = g.admit(merkleProof, merkleInstances);
         VM.expectRevert(abi.encodeWithSelector(KycGate.NullifierUsed.selector, nf));
+        VM.prank(SENDER);
         g.admit(merkleProof, merkleInstances);
     }
 
     function testRefusesAnUnapprovedAnchor() public {
         KycGate g = gate(kycMerkle, SCOPE, MIN);
         VM.expectRevert(abi.encodeWithSelector(KycGate.AnchorNotApproved.selector, merkleInstances[0]));
+        VM.prank(SENDER);
         g.admit(merkleProof, merkleInstances);
     }
 
@@ -81,6 +91,7 @@ contract KycGateTest {
         KycGate g = approvedMerkleGate();
         g.approve(merkleInstances[0], false);
         VM.expectRevert(abi.encodeWithSelector(KycGate.AnchorNotApproved.selector, merkleInstances[0]));
+        VM.prank(SENDER);
         g.admit(merkleProof, merkleInstances);
     }
 
@@ -88,6 +99,7 @@ contract KycGateTest {
         KycGate g = gate(kycMerkle, SCOPE + 1, MIN);
         g.approve(merkleInstances[0], true);
         VM.expectRevert(abi.encodeWithSelector(KycGate.WrongScope.selector, SCOPE));
+        VM.prank(SENDER);
         g.admit(merkleProof, merkleInstances);
     }
 
@@ -95,6 +107,7 @@ contract KycGateTest {
         KycGate g = gate(kycMerkle, SCOPE, MIN - 1);
         g.approve(merkleInstances[0], true);
         VM.expectRevert(abi.encodeWithSelector(KycGate.WrongMin.selector, MIN));
+        VM.prank(SENDER);
         g.admit(merkleProof, merkleInstances);
     }
 
@@ -105,6 +118,7 @@ contract KycGateTest {
         three[1] = merkleInstances[1];
         three[2] = merkleInstances[2];
         VM.expectRevert(abi.encodeWithSelector(KycGate.WrongInstanceCount.selector, 3));
+        VM.prank(SENDER);
         g.admit(merkleProof, three);
     }
 
@@ -113,6 +127,7 @@ contract KycGateTest {
         bytes memory tampered = merkleProof;
         tampered[0] = bytes1(uint8(tampered[0]) ^ 0x01);
         VM.expectRevert(abi.encodeWithSelector(KycGate.ProofRejected.selector));
+        VM.prank(SENDER);
         g.admit(tampered, merkleInstances);
         require(!g.used(merkleInstances[1]), "a rejected proof recorded the nullifier");
     }
@@ -143,7 +158,15 @@ contract KycGateTest {
     function testAdmitsTheKycFixtureWithAnApprovedCommitment() public {
         KycGate g = gate(kyc, SCOPE, MIN);
         g.approve(kycInstances[0], true);
+        VM.prank(SENDER);
         uint256 nf = g.admit(kycProof, kycInstances);
         require(nf == kycInstances[1] && g.used(nf), "the kyc admission did not record the nullifier");
+    }
+
+    function testRefusesAnotherSender() public {
+        KycGate g = approvedMerkleGate();
+        VM.expectRevert(abi.encodeWithSelector(KycGate.WrongSender.selector, merkleInstances[4]));
+        g.admit(merkleProof, merkleInstances);
+        require(!g.used(merkleInstances[1]), "a refused sender recorded the nullifier");
     }
 }

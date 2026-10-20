@@ -1139,6 +1139,19 @@ examples/transferSpec.lang (slice s1 of M9, D4) also gives the law for all input
 family KycSpec := credential | kycNullifier | predicate | noReplay <i> [ ~i -> kycNullifier, i -> credential ] | disclosure <i> [ ~i -> credential, i -> predicate ]
 ```
 
+The fifth public binder `sender` of the circuits `kyc` and `kycMerkle`
+(M10 s1, O22) is the admitting address as a field value (the gate rows
+use the anvil account 0 address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+as the integer 1390849295786071768276380950238675083608645509734);  the
+row `sender == sender` puts the binder in one constraint (a public binder
+in no constraint gives CIRCUIT_UNUSED_PUBLIC), the row does not restrict
+the value, and `KycGate.admit` checks the fifth instance against
+`msg.sender` (`WrongSender`).  The constructor namespace of the domain
+families is flat (src/front/check.c name_owner, rule R4):  a point or law
+name is unique over all families, thus `TransferSpec` has the point
+`nullifier` and `KycSpec` has the point `kycNullifier` (M10 ruling (f),
+docs/M10-PLAN.md D6).
+
 ## 3. Type formers
 
 > Write here: only the deviations from the formers. Do not copy the forms.
@@ -1480,8 +1493,15 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   does not bind `msg.sender`: a relayer that sees a proof before the
   holder's transaction can send it first and spend the nullifier. A
   binding needs a public input of the circuit (the sender address, or a
-  hash of it) and a check of that instance in the gate. Open for M10 or
-  later.
+  hash of it) and a check of that instance in the gate.  M10 s1 did the
+  circuit and the gate side:  the fifth public binder `sender` and the
+  row `sender == sender` of `kyc` and `kycMerkle` (section 2.10), the
+  four goldens, the error `WrongSender` and the check of the fifth
+  instance against `msg.sender` in `KycGate.admit`, the five-instance
+  verifiers and fixtures. The s1 staged-change review also updates the
+  read-only check to use `--from` with the proof's sender, the deployment
+  regression and the five-input runbook. M10 s2 completes the remaining
+  operations follow-up. Open until M10 s2.
 - O23. New in M9 (slice s6). The deployment target. The five USER facts
   of question (e) (the network, the chain id, the RPC URL, the explorer
   with its verify endpoint, the keystore account name) came as the

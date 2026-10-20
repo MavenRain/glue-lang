@@ -71,6 +71,9 @@ else
 fi
 after=$(cast nonce "$SENDER" --rpc-url "$RPC_URL")
 [ "$before" = "$after" ] || fail "the deployment check sent transactions"
+NF=$(cast to-dec "$(jq -r '.instances[1]' "$PROOF")")
+used=$(cast call "$GATE" 'used(uint256)(bool)' "$NF" --rpc-url "$RPC_URL")
+[ "$used" = false ] || fail "the deployment check consumed the nullifier"
 
 if ISSUER='' sh "$CHECK" >"$WORK/missing-issuer.log" 2>&1; then
   fail "the gate check accepted a missing expected issuer"
@@ -93,5 +96,18 @@ else
     fail "the unexpected issuer check failed for another reason"
   fi
 fi
+# The proof's sender remains the credential holder after the issuer changes.
+# The admission simulation must use the fifth instance, not ISSUER.
+before=$(cast nonce "$SENDER" --rpc-url "$RPC_URL")
+if ISSUER=0x000000000000000000000000000000000000bEEF sh "$CHECK" >"$WORK/changed-issuer.log" 2>&1; then
+  echo "deployment-test: the proof sender passes with a different issuer"
+else
+  cat "$WORK/changed-issuer.log" >&2
+  fail "the proof sender was confused with the issuer"
+fi
+after=$(cast nonce "$SENDER" --rpc-url "$RPC_URL")
+[ "$before" = "$after" ] || fail "the changed-issuer check sent transactions"
+used=$(cast call "$GATE" 'used(uint256)(bool)' "$NF" --rpc-url "$RPC_URL")
+[ "$used" = false ] || fail "the changed-issuer check consumed the nullifier"
 [ "$failures" -eq 0 ] || exit 1
 echo "deployment-test: all checks passed"

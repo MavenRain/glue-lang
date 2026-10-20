@@ -25,6 +25,10 @@ abstract contract VerifierCase {
     /// The BN254 scalar field modulus r.
     uint256 private constant R = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
+    /// The sender of the kyc and kycMerkle fixtures: the anvil account 0
+    /// address, the fifth public input (docs/M10-PLAN.md D4).
+    address internal constant SENDER = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+
     Verifier private verifier;
     bytes private proof;
     uint256[] internal instances;
@@ -257,7 +261,8 @@ contract TransferVerifierTest is VerifierCase {
 
 /// examples/kyc.glue with attr=30 sk=5 d=12 at scope=9 min=18
 /// (test/circuit/expect.txt). The public inputs are cm = poseidon([attr, sk]),
-/// nf = poseidon([sk, scope]), then scope and min (docs/M9-PLAN.md D1).
+/// nf = poseidon([sk, scope]), then scope, min and the sender address
+/// (docs/M9-PLAN.md D1, docs/M10-PLAN.md D1).
 contract KycVerifierTest is VerifierCase {
     function name() internal pure override returns (string memory) {
         return "kyc";
@@ -269,12 +274,13 @@ contract KycVerifierTest is VerifierCase {
 
     function testThePublicInputsAreTheCredential() public view {
         require(
-            instances.length == 4
+            instances.length == 5
                 && instances[0] == 5967774456880520545986641262024216432454924249289189870195314151569515620696
                 && instances[1] == 2046061026757605145648934375530781408765546393983200800628234446163090055163
                 && instances[2] == 9
-                && instances[3] == 18,
-            "the public inputs of kyc are not poseidon([30, 5]), poseidon([5, 9]), 9 and 18"
+                && instances[3] == 18
+                && instances[4] == uint256(uint160(SENDER)),
+            "the public inputs of kyc are not poseidon([30, 5]), poseidon([5, 9]), 9, 18 and the sender"
         );
     }
 }
@@ -283,7 +289,8 @@ contract KycVerifierTest is VerifierCase {
 /// path bits b0=0 b1=1 b2=1 b3=0 and the siblings s0=11 s1=22 s2=33 s3=44
 /// (test/circuit/expect.txt). The public inputs are the root of the depth 4
 /// Merkle tree over the leaf cm = poseidon([attr, sk]), nf = poseidon([sk,
-/// scope]), then scope and min (docs/M9-PLAN.md D2).
+/// scope]), then scope, min and the sender address (docs/M9-PLAN.md D2,
+/// docs/M10-PLAN.md D1).
 contract KycMerkleVerifierTest is VerifierCase {
     function name() internal pure override returns (string memory) {
         return "kycMerkle";
@@ -295,12 +302,13 @@ contract KycMerkleVerifierTest is VerifierCase {
 
     function testThePublicInputsAreTheRootAndTheNullifier() public view {
         require(
-            instances.length == 4
+            instances.length == 5
                 && instances[0] == 2073838814982733625467528882884732980574637884548700319820113673768149909053
                 && instances[1] == 2046061026757605145648934375530781408765546393983200800628234446163090055163
                 && instances[2] == 9
-                && instances[3] == 18,
-            "the public inputs of kycMerkle are not the root of the depth 4 tree, poseidon([5, 9]), 9 and 18"
+                && instances[3] == 18
+                && instances[4] == uint256(uint160(SENDER)),
+            "the public inputs of kycMerkle are not the root of the depth 4 tree, poseidon([5, 9]), 9, 18 and the sender"
         );
     }
 }
