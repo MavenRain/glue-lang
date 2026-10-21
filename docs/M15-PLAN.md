@@ -2,7 +2,7 @@
 
 ## Status
 
-DRAFT 2026-10-21.  The USER picked the topic on 2026-10-21:  k 14 for kycMerkle.  The Merkle depth stays 20 (M13).  The USER rules section 9, (a) to (k);  question (b) is the ruling on the lowering rule.  Kickoff:  this plan, the docs/PLAN.md M15 row and docs/STATUS.md M15 `### kickoff`, on parent 8a09680.  Probe:  ~/Documents/glue-lang-M15-kickoff-probe/ (run.sh, run.out, census.py, census.json, gluecensus.py, rows.jq, model.py, REPORT.md).
+IN PROGRESS 2026-10-21 (s1).  RULED 2026-10-21:  the USER accepts the recommendations (a) to (k) of section 9.  The USER picked the topic on 2026-10-21:  k 14 for kycMerkle.  The Merkle depth stays 20 (M13).  The USER rules section 9, (a) to (k);  question (b) is the ruling on the lowering rule.  Kickoff:  this plan, the docs/PLAN.md M15 row and docs/STATUS.md M15 `### kickoff`, on parent 8a09680.  Probe:  ~/Documents/glue-lang-M15-kickoff-probe/ (run.sh, run.out, census.py, census.json, gluecensus.py, rows.jq, model.py, REPORT.md).
 
 ## 1. Sources
 
@@ -66,6 +66,8 @@ None.  A hint term that is not equal to its check gives WITNESS_FAIL (D4);  a wr
 - s1-b:  `make e2e` (the 4 verifiers and fixtures), `forge test --root contracts` (100 passed), `make e2e-ceremony` (max k 14), `make rehearsal` (kycMerkle at k 14), `make deployment-test`, the RSS and time of keygen and prove (sandbox off), the contracts/README.md rows.
 
 ## 9. Questions for the USER
+
+RULED 2026-10-21:  the USER accepts the recommendations (a) to (k):  H1, the hint merge of the pow5-checked S-box hints;  the lowering rule D14 changes (SPEC.md 7.1 items 1 and 7);  no IR form, no gate, no column and no halo2/ change.
 
 - (a) The form (D1).  Recommendation:  H1, the hint merge for the pow5-checked S-box hints only.  Reasons:  it gets k 14 (14,882 rows, 1,486 under the limit);  it changes only the lowering, no gate and no column;  the constraint set is the same (section 4);  only kycMerkle changes k.  H2:  the same rows, but a new gate form and a new gate text in 4 verifiers.  H1g:  more rows go (kycMerkle 10,530, max depth 32 at k 14), but 4 circuits change k, and the MDS and select checks have more cases (a hint on the lhs, 2 checks);  a later milestone can take it if the USER asks.
 - (b) The ruling on the lowering rule (D2).  Recommendation:  yes, M15 changes the lowering rule D14 (SPEC.md 7.1 item 1:  each hint has its own input row) for the hints of D3;  no IR form changes.  Reasons:  the IR document has no input-row form;  the halo2 back end and the verifier generator are generic;  the merge is a lowering rule, not a conv rule.

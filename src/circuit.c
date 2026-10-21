@@ -91,6 +91,7 @@ typedef struct {
   uint32_t *memo; /* M11 D2: a row index + 1 in each slot, or 0 */
   uint32_t memo_cap;
   uint32_t memo_count;
+  uint32_t *merged; /* M15 D3: for each hint, the index + 1 of the check that holds its cell, or 0 */
 } Lower;
 
 typedef struct {
@@ -633,8 +634,105 @@ static int fold_affine(Lower *l) {
   return 1;
 }
 
+/* M15 D3 (ruling (b) of docs/M15-PLAN.md section 9):  the hint merge, a pass
+   after the checks and before the affine fold.  A hint h has no input row
+   when (1) h is a hint, (2) exactly one check has the cell of h as one side
+   and that check is `==`, (3) the other side is the c cell of a POW5 row,
+   (4) h has no range8, and (5) no row at or before that POW5 row reads the
+   cell of h.  The check then holds that c cell on its two sides (no copy),
+   each use of h reads it, and the rows above the removed rows get new
+   numbers (MOVED).  Else h keeps its input row.  The check is the source of
+   truth for the cell:  witness_checks compares the value of the hint term
+   with it (D4). */
+static uint32_t binder_of(Cell c, uint32_t binders) {
+  return c.col == COL_A && c.row < binders ? c.row : binders;
+}
+
+/* The cell that holds C after the merge:  the cell of the check of a merged
+   hint, else C. */
+static Cell merged_cell(const Lower *l, Cell c) {
+  uint32_t base = l->ci->public_count + l->ci->private_count;
+  uint32_t b = binder_of(c, base + l->ci->hint_count);
+  if (b < base || b == base + l->ci->hint_count || l->merged[b - base] == 0) return c;
+  return l->checks[l->merged[b - base] - 1u].lhs;
+}
+
+static int merge_hints(Lower *l) {
+  uint32_t n = l->row_count;
+  uint32_t base = l->ci->public_count + l->ci->private_count;
+  uint32_t binders = base + l->ci->hint_count;
+  uint32_t *sides, *first, *moved;
+  uint32_t i, h, kept = 0;
+  l->merged = arena_alloc(l->m->arena, (l->ci->hint_count + 1u) * sizeof *l->merged);
+  sides = arena_alloc(l->m->arena, (2u * binders + n + 2u) * sizeof *sides);
+  if (l->merged == NULL || sides == NULL) return oom(l->m->diag);
+  memset(l->merged, 0, (l->ci->hint_count + 1u) * sizeof *l->merged);
+  memset(sides, 0, (2u * binders + n + 2u) * sizeof *sides);
+  first = sides + binders + 1u;
+  moved = first + binders + 1u;
+  for (h = 0; h <= binders; h++) first[h] = n;
+  /* (2):  the check sides at each binder cell, and the check of each hint
+     (index binders is a sink for the other cells). */
+  for (i = 0; i < l->check_count; i++) {
+    const Check *ch = &l->checks[i];
+    uint32_t lb = binder_of(ch->lhs, binders);
+    uint32_t rb = ch->kind == CONSTRAINT_EQ ? binder_of(ch->rhs, binders) : binders;
+    sides[lb]++;
+    sides[rb]++;
+    if (lb >= base && lb < binders) l->merged[lb - base] = i + 1u;
+    if (rb >= base && rb < binders) l->merged[rb - base] = i + 1u;
+  }
+  /* (5):  the first row that has each binder cell as an operand. */
+  for (i = 0; i < n; i++) {
+    const Row *r = &l->rows[i];
+    uint32_t xb = (uses_a(r) || r->kind == ROW_RANGE) ? binder_of(r->x, binders) : binders;
+    uint32_t yb = uses_b(r) ? binder_of(r->y, binders) : binders;
+    if (first[xb] > i) first[xb] = i;
+    if (first[yb] > i) first[yb] = i;
+  }
+  for (h = base; h < binders; h++) {
+    Cell hc = {COL_A, h};
+    Check *ch;
+    Cell o;
+    if (l->merged[h - base] == 0) continue;
+    ch = &l->checks[l->merged[h - base] - 1u];
+    o = same_cell(ch->lhs, hc) ? ch->rhs : ch->lhs;
+    if (sides[h] == 1u && ch->kind == CONSTRAINT_EQ && o.col == COL_C && l->rows[o.row].kind == ROW_POW5 && !l->rows[h].range && first[h] > o.row) {
+      ch->lhs = o;
+      ch->rhs = o;
+    } else {
+      l->merged[h - base] = 0;
+    }
+  }
+  /* Each use of a merged hint reads the c cell of its check. */
+  for (i = 0; i < n; i++) {
+    Row *r = &l->rows[i];
+    if (uses_a(r) || r->kind == ROW_RANGE) r->x = merged_cell(l, r->x);
+    if (uses_b(r)) r->y = merged_cell(l, r->y);
+  }
+  for (i = 0; i < l->check_count; i++) {
+    l->checks[i].lhs = merged_cell(l, l->checks[i].lhs);
+    if (l->checks[i].kind == CONSTRAINT_EQ) l->checks[i].rhs = merged_cell(l, l->checks[i].rhs);
+  }
+  for (i = 0; i < n; i++) {
+    moved[i] = kept;
+    if (i < base || i >= binders || l->merged[i - base] == 0) l->rows[kept++] = l->rows[i];
+  }
+  for (i = 0; i < kept; i++) {
+    l->rows[i].x.row = moved[l->rows[i].x.row];
+    l->rows[i].y.row = moved[l->rows[i].y.row];
+  }
+  for (i = 0; i < l->check_count; i++) {
+    l->checks[i].lhs.row = moved[l->checks[i].lhs.row];
+    if (l->checks[i].kind == CONSTRAINT_EQ) l->checks[i].rhs.row = moved[l->checks[i].rhs.row];
+  }
+  l->row_count = kept;
+  return 1;
+}
+
 /* M6 s5 (D14): a hint row is an input row too (zero selectors, no instance
-   copy), after the private rows. */
+   copy), after the private rows.  M15 D3:  a hint that merge_hints merges has
+   no input row;  its cell is the c cell of the POW5 row of its check. */
 static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
   uint32_t n = ci->public_count + ci->private_count + ci->hint_count;
   const Env *env = NULL;
@@ -664,7 +762,7 @@ static int lower_circuit(Machine *m, const CircuitInfo *ci, Lower *l) {
                        i < ci->public_count + ci->private_count ? "private binder" : "hint", ci->binders[i]);
   for (i = 0; i < ci->public_count; i++)
     if (!l->used[i]) return diag_fail(m->diag, "CIRCUIT_UNUSED_PUBLIC", ci->name, "the public binder %s is in no constraint", ci->binders[i]);
-  return fold_affine(l);
+  return merge_hints(l) && fold_affine(l);
 }
 
 static const CircuitInfo *find_circuit(Machine *m, const char *name) {
@@ -860,7 +958,8 @@ static void fill_advice(const Lower *l, const Fr *inputs, Fr *cells) {
   }
 }
 
-static int witness_checks(const Lower *l, Fr *cells) {
+static int witness_checks(const Lower *l, const Fr *inputs, Fr *cells) {
+  uint32_t base = l->ci->public_count + l->ci->private_count;
   char left[FR_TEXT_MAX];
   char right[FR_TEXT_MAX];
   uint32_t i;
@@ -873,6 +972,18 @@ static int witness_checks(const Lower *l, Fr *cells) {
     if (ch->kind == CONSTRAINT_EQ && !fr_eq(x, cell_at(cells, l->row_count, ch->rhs))) {
       fr_print(cell_at(cells, l->row_count, ch->rhs), right);
       return diag_fail(l->m->diag, "WITNESS_FAIL", l->ci->name, "%d:%d: the constraint fails: the left side is %s, the right side is %s", ch->line, ch->col, left, right);
+    }
+  }
+  /* M15 D4:  the cell of a merged hint comes from its check;  the value of
+     the hint term must be the same. */
+  for (i = 0; i < l->ci->hint_count; i++) {
+    const Check *ch;
+    if (l->merged[i] == 0) continue;
+    ch = &l->checks[l->merged[i] - 1u];
+    if (!fr_eq(&inputs[base + i], cell_at(cells, l->row_count, ch->lhs))) {
+      fr_print(&inputs[base + i], left);
+      fr_print(cell_at(cells, l->row_count, ch->lhs), right);
+      return diag_fail(l->m->diag, "WITNESS_FAIL", l->ci->name, "%d:%d: the hint %s is %s, but its check gives %s", ch->line, ch->col, l->ci->binders[base + i], left, right);
     }
   }
   return 1;
@@ -912,7 +1023,7 @@ int circuit_witness(Machine *m, const char *name, char *const *args, int arg_cou
   if (!witness_args(m, ci, args, arg_count, inputs)) return 2;
   if (!witness_hints(m, ci, inputs)) return 1;
   fill_advice(&l, inputs, cells);
-  if (!witness_checks(&l, cells)) return 1;
+  if (!witness_checks(&l, inputs, cells)) return 1;
   int ok = putf(&b, "{\"glue-lang-witness\":1,\n\"name\":\"%s\",\n\"advice\":[", ci->name);
   uint32_t col, row;
   for (col = 0; ok && col < ADVICE_COUNT; col++) {

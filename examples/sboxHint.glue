@@ -1,0 +1,6 @@
+-- M15 s1:  the hint merge (D3).  The hint t has one check, and its other side
+-- is a pow5 row, so t has no input row:  its cell is the c cell of that row.
+-- The term s * s is not (s + 1)^5, so the witness must be refused
+-- (test/circuit/refuse.txt, D4).
+def sbox5 : Field -> Field := fun x => x * x * x * x * x
+circuit sboxHint private (s : Field) hint t := s * s := sbox5 (s + 1) == t

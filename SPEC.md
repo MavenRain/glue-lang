@@ -74,7 +74,8 @@ lowering. `circuit`, `public`, `private`, `hint` and `range8` are keywords.
 A hint `hint h := e` (M6 s5, D14) is a Field value that the witness
 computes. The checker checks e at Field over the public binders, the private
 binders and the earlier hints. The constraints see h as a Field variable:
-they do not see e. `langc witness` computes the value of h from e and the
+they do not see e.  The lowering can put h in the output cell of its check
+(section 7.1, item 7;  M15). `langc witness` computes the value of h from e and the
 values of the earlier binders. The command line gives no value for a hint.
 Example (`examples/nonzero.glue`):
 
@@ -1341,6 +1342,7 @@ as variables. Then it lowers the normal form:
    then the private binders, then the hints. The value of the binder is in
    advice a. A hint row has the form of a private binder row: it has no
    instance copy, and its selectors are zero (item 5 can set qrange).
+   A hint that item 7 merges has no input row (M15).
 2. A Field literal k that is a constraint side is a constant row: qc = k,
    qo = 1. The value is in c.  A Field literal that is an operand of `+`,
    `-` or `*` has no row (item 3).
@@ -1373,6 +1375,18 @@ as variables. Then it lowers the normal form:
    b has no operand copy, and the result wire is c.  The memo key holds
    the row kind, c5 and the cell of s.  The affine fold does not fold
    into a pow5 row.  This is a lowering rule, with no conv rule change.
+7. The hint merge (M15, D3 and D4).  A hint h has no input row when each
+   of these is true:  exactly one check has the wire of h as one side, and
+   that check is `==`;  the other side is the c wire of a pow5 row (item
+   6);  h has no `range8` (item 5);  no row at or before that pow5 row has
+   the wire of h as an operand.  The wire of h is then that c wire:  the
+   check has one cell and no copy (item 4), and the rows above the removed
+   rows get new numbers.  Else h keeps its input row.  The witness writes
+   the cell from the pow5 row, not from e.  `langc witness` then compares
+   the value of e with the cell:  WITNESS_FAIL when they differ
+   (examples/sboxHint.glue, test/circuit/refuse.txt).  The check is the
+   source of truth for the cell.  This is a lowering rule, with no IR form
+   and no conv rule change.
 
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an

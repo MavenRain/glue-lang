@@ -5845,3 +5845,16 @@ is in its section).
 - Fixed M15-PLAN.md D3 (5):  every active row use of a merged hint must be strictly after its producing pow5 row.  The producing row itself must not read the hint.
 - Reproducer:  `hint t := 1` checked by `sbox5 t == t` passes check, witness generation and satcheck at HEAD.  A C reproducer using fill_advice gives the pow5 output 1 before the merge and 0 after a self-read merge.
 - The plan now requires the selfHint regression in the existing test/circuit-regressions.c (9 to 10 native circuit regressions), plus mutant m5 for the inclusive row-order guard.
+
+### s1 (2026-10-21)
+
+- Start condition MET:  HEAD ae82f95 (the M15 kickoff, USER).  RULED 2026-10-21:  the USER accepts the recommendations (a) to (k) of docs/M15-PLAN.md section 9 (H1, the hint merge;  the lowering rule D14 changes;  no IR form).
+- Built src/circuit.c:  the merge pass of D3 (conditions (1) to (5)) in lower_circuit, after the checks and before fold_affine, with the `at` remap;  D4 in fill_advice and witness_checks (WITNESS_FAIL when the hint value is not the merged cell);  the D14 comment.  No new gate, column, IR form or halo2/ change.
+- Regenerated the circuit and witness goldens of 4 circuits.  Rows/k/copies match section 6:  poseidon 670/10/1,058;  transfer 1,339/11/2,116;  kyc 1,342/11/2,122;  kycMerkle 14,882/14/23,582.  The goldens of square, nonzero, poly and range match HEAD byte for byte.
+- New example examples/sboxHint.glue and its WITNESS_FAIL row in test/circuit/refuse.txt (the hint t is 4, but its check gives 243).  Rows 24 and 25 of refuse.txt now name row 200 (was row 280).  test/circuit-regressions.c has the selfHint regression.
+- SPEC.md 7.1 (item 1 and the merge item) and the D14 paragraph.
+- Smoke (sandbox off):  keygen --dev-srs, prove and verify exit 0 for poseidon (k 10, proof 1,344 B) and kycMerkle (k 14, proof 1,824 B).
+- make -B check exit 0:  native circuit regressions 9 to 10;  examples 69 to 70;  circuit refusals 26 to 27.  Circuits 9, same-ir 19 and all other M14 close counts do not change.
+- Mutants (section 8):  m1 KILLED (8 FAIL lines);  m2 KILLED (8);  m3 KILLED (2);  m4 KILLED (4);  m5 KILLED (1).  The good source was restored and the final make -B check exit 0.
+- Evidence:  ~/Documents/glue-lang-M15-s1-probe/ (REPORT.md, patch.py, build.sh, gates.sh, run.out, smoke.txt, counts.txt, mutants.tsv, circuit.good.c and its SHA-256).  No forge, e2e, verifier or fixture change (s1-b).
+- Next:  ~/Documents/glue-lang-M15-s1-b-PROMPT.md (the gates).

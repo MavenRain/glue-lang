@@ -1,5 +1,6 @@
 /* Native regressions for compiler and satcheck boundary cases. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "circuit.h"
@@ -51,6 +52,61 @@ static int check_json(const char *label, const char *version, const char *suffix
   return 0;
 }
 
+/* M15 D3 (5):  the pow5 row of `sbox5 t == t` reads t, so t keeps its input
+   row:  2 rows, a witness for t = 1, and satcheck accepts the two documents. */
+static int check_self_hint(void) {
+  const char *text = "def sbox5 : Field -> Field := fun x => x * x * x * x * x\n"
+    "circuit selfHint hint t := 1 := sbox5 t == t\n";
+  const char *circuit = NULL;
+  const char *witness = NULL;
+  const char *rows = NULL;
+  size_t circuit_len = 0, witness_len = 0;
+  Arena arena;
+  Diag diag;
+  DeclList decls;
+  Machine machine;
+  int ok;
+  arena_init(&arena, (size_t)64 << 20);
+  diag_init(&diag);
+  ok = front_load(&arena, "selfHint", text, strlen(text), &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag)
+    && circuit_document(&machine, "selfHint", &circuit, &circuit_len)
+    && (rows = strstr(circuit, "\"rows\":")) != NULL
+    && strtoul(rows + 7, NULL, 10) == 2ul
+    && circuit_witness(&machine, "selfHint", NULL, 0, &witness, &witness_len) == 0
+    && circuit_satcheck(&arena, &diag, circuit, circuit_len, witness, witness_len);
+  if (!ok) {
+    fprintf(stderr, "FAIL selfHint: expected 2 rows, a witness and satcheck ok, got %s\n",
+      diag.code == NULL ? "no diagnostic" : diag.code);
+    arena_release(&arena);
+    return 1;
+  }
+  arena_release(&arena);
+  return 0;
+}
+
+static int check_reflexive_copy(void) {
+  const char *text = "circuit reflexive private (x : Field) := x == x\n";
+  const char *circuit = NULL;
+  size_t circuit_len = 0;
+  Arena arena;
+  Diag diag;
+  DeclList decls;
+  Machine machine;
+  int ok;
+  arena_init(&arena, (size_t)64 << 20);
+  diag_init(&diag);
+  ok = front_load(&arena, "reflexive", text, strlen(text), &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag)
+    && circuit_document(&machine, "reflexive", &circuit, &circuit_len)
+    && strstr(circuit, "\"copies\":[],") != NULL;
+  if (!ok)
+    fprintf(stderr, "FAIL reflexive: expected no copy for x == x, got %s\n",
+      diag.code == NULL ? "an unnecessary copy" : diag.code);
+  arena_release(&arena);
+  return !ok;
+}
+
 int main(void) {
   int failed = 0;
   failed += check_source("large Field", "def x : Field := 18446744073709551616\n", NULL);
@@ -62,6 +118,8 @@ int main(void) {
   failed += check_json("leading zero JSON number", "01", "", "[]", "SAT_JSON");
   failed += check_json("unknown IR key", "1", ",\"extra\":1", "[]", "SAT_IR");
   failed += check_json("advice lookup table", "1", "", "[{\"name\":\"bad\",\"inputs\":[{\"a\":[0,0]}],\"tables\":[{\"a\":[0,0]}]}]", "SAT_IR");
-  printf("native circuit regressions: 9 checked, %d failed\n", failed);
+  failed += check_self_hint();
+  failed += check_reflexive_copy();
+  printf("native circuit regressions: 11 checked, %d failed\n", failed);
   return failed != 0;
 }
