@@ -5888,3 +5888,17 @@ is in its section).
 - The measured facts (s1-b):  the `verifyProof` gas does not change for poseidon, transfer and kyc, and goes down by 65 for kycMerkle;  the deployment gas changes by -12, -24, -180 and +468.  The kycMerkle time goes down by 75 % (keygen, 20.1 to 4.9 s) and 76 % (prove, 27.5 to 6.6 s), more than the D8 MODEL (about half);  the RSS goes down by 32 % (keygen, 188 to 127 MB) and 17 % (prove, 202 to 167 MB), less than the MODEL.  One sample each;  far below the 4 GB limit.
 - Open after M15:  M15 adds no open item.  O23 stays open (the deployment target, the target fields with the literal word VALUE, the PPoT check of the ceremony file:  USER items).  H1g, H1-mds and H2 are not open items;  each needs a USER request (ruling (j)).  The max Merkle depth of kycMerkle at k 14 is 22 (MODEL, D5).  The other open items of section 9 do not change.
 - Next:  the USER commits s2;  then the USER picks M16 (O23 USER fields and the PPoT check, a deeper Merkle tree at k 14 (max depth 22, MODEL), or another topic).
+
+## M16
+
+### kickoff (2026-10-21)
+
+- Start condition MET:  HEAD 81af21c `M15 s2: close M15 (k 14 for kycMerkle)` (USER), its parent 8192f9d, tree e80247fc, git status empty.
+- Topic (USER pick, 2026-10-21, the answer to a question of the kickoff session):  a deeper Merkle tree for kycMerkle at k 14 (the max depth 22, the MODEL of docs/M15-PLAN.md D5).
+- Plan:  docs/M16-PLAN.md, DRAFT 2026-10-21.
+- Probe (~/Documents/glue-lang-M16-kickoff-probe/, read only;  no src/ change, no build):  the depth sites, the generator, the contracts and the docs that name the depth or the root, and the model of the rows (REPORT.md, run.sh, run.out).
+- The answer:  at HEAD kycMerkle has depth 20, 14,882 rows, k 14 and 23,582 copies.  The Merkle depth is in the circuit text only (examples/kycMerkle.glue, from the M13 generator outside the repository);  src/, halo2/ and the Makefile have no depth parameter.  A level costs 677 rows and 1,073 copies (MODEL).  Depth 22:  16,236 rows, k 14, 25,728 copies, 132 rows under the limit 16,368 (MODEL).  Depth 21:  15,559 rows (809 under).  Depth 23:  16,913 rows, k 15.
+- The changes (MODEL):  the kycMerkle example, its 2 goldens, expect.txt row 9, refuse.txt rows 20 and 26, the kycMerkle verifier (the VK constants only) and fixture, contracts/test/Verifiers.t.sol, contracts/README.md (the gas row) and SPEC.md.  No IR form, no conv rule, no change in src/, halo2/, KycGate or the scripts.  The proof size stays 1,824 B.
+- Questions:  docs/M16-PLAN.md section 9, (a) to (k);  (a) is the depth (recommendation 22).
+- Gates:  none ran;  the M15 close counts stay (native circuit 11, examples 70, circuit refusals 27, satcheck 6, circuits 9, same-ir 19, forge test 100, e2e 9 rows).
+- Next:  the USER commits the kickoff and rules section 9;  then s1 (~/Documents/glue-lang-M16-s1-PROMPT.md).
