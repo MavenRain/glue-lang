@@ -1695,9 +1695,24 @@ prints `ok` or gives one refusal. It accepts k up to 16.
 
   T1 removes only the CONST rows that the memo shares over all hashes,
   so the rows of a level do not change.  Under T2 a depth-20 tree fits
-  the pinned SRS (k 15), but the Merkle depth stays 4 (M12 ruling (e)).
+  the pinned SRS (k 15).  M12 ruling (e) kept the Merkle depth at 4.
+  M13 (USER ruling (b) of docs/M13-PLAN.md, 2026-10-20) reverses M12
+  ruling (e):  the Merkle depth of `kycMerkle` is 20 (section 4).  M13
+  changes no IR form.  The measured values of M13 (slices s1 and s1-b;
+  the row `memo + T2` of the depth table, exact):
+
+  | Measured, M13 | Value |
+  |---|---|
+  | kycMerkle (depth 20) | 21922 rows, k 15, 37662 copies |
+  | verifier (contracts/src/verifiers/kycMerkle.sol) | 49890 B (58 `mstore` lines change) |
+  | proof (contracts/test/fixtures/kycMerkle.proof.json) | 8466 B |
+  | keygen (`--dev-srs`), max RSS | 139 MB, 19.7 s |
+  | prove, max RSS | 273 MB, 17.0 s |
+  | `make -B check` | 463 s |
+
   At the M12 close O24 stays OPEN for form (ii) only (the degree-5 gate,
-  M12 ruling (g)).
+  M12 ruling (g)).  At the M13 close O24 stays OPEN for form (ii) only
+  (M13 ruling (j)).  O23 stays a USER item.
 
 ## 10. Milestones
 

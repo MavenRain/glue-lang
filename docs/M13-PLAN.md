@@ -2,6 +2,10 @@
 
 ## Status
 
+CLOSED 2026-10-20 (s2);  s1 79fe06d (USER;  the gates GREEN in s1-b);
+s2 the close, DONE 2026-10-20 (docs only;  docs/STATUS.md `### s2:
+close`).
+
 DRAFT 2026-10-20 (the M13 kickoff, claude4);  RULED 2026-10-20 (USER:  each question of section 9, (a) to (k), takes its recommendation).  Topic (ii) of the M13 kickoff (USER, RULED 2026-10-20):  a Merkle depth change for the circuit `kycMerkle`.  The topic text:  "under T2 depth 20 = 21922 rows, k 15, fits the pinned SRS;  the circuit, its e2e row and SPEC.md 8 change;  reverses M12 ruling (e)".  The USER ruled section 9, (a) to (k), on 2026-10-20:  the recommendations.  This file, the docs/PLAN.md M13 row and the docs/STATUS.md M13 `### kickoff` section go with the s1 commit.  Probe:  ~/Documents/glue-lang-M13-kickoff-probe/ (run.sh, the log run.out, REPORT.md, scratch/).
 
 ## 1. Sources
