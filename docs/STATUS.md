@@ -5824,3 +5824,24 @@ is in its section).
 - The measured facts (s1-b):  the `verifyProof` gas goes up by 5,793 (poseidon), 5,794 (transfer), 13,785 (kyc) and 13,780 (kycMerkle);  the deployment gas goes down for poseidon and transfer and goes up for kyc and kycMerkle.  The kycMerkle keygen RSS (139 to 188 MB) and prove time (17.0 to 27.5 s) are more than the D8 MODEL (no growth);  the keygen time (19.7 to 20.1 s) and the prove RSS (273 to 202 MB) agree with it.  One sample each;  far below the 4 GB limit.
 - Open after M14:  O24 is CLOSED (ruling (h);  the forms (i) to (iv) are DONE).  O23 stays open (the deployment target, the target fields with the literal word VALUE, the PPoT check of the ceremony file:  USER items).  The hint-row form (kycMerkle 14,882 rows, k 14) and a k 14 goal for kycMerkle are not open items;  each needs a USER request (rulings (h) and (j)).  The other open items of section 9 do not change.
 - Next:  the USER commits s2;  then the USER picks M15 (O23 USER fields and the PPoT check, k 14 or the hint-row form, or another topic):  ~/Documents/glue-lang-M15-kickoff-PROMPT.md.
+
+## M15
+
+### kickoff (2026-10-21)
+
+- Start condition MET:  HEAD 8a09680 (the M14 close), git status empty.
+- Topic (USER pick, 2026-10-21):  k 14 for kycMerkle.  The Merkle depth stays 20 (M13).
+- Plan:  docs/M15-PLAN.md, DRAFT 2026-10-21.
+- Probe (~/Documents/glue-lang-M15-kickoff-probe/, read only;  no src/ change, no build):  the census of the 4 pow5 circuits from the goldens and the sources, the designs (MODEL), the soundness and the code sites with line anchors (REPORT.md).
+- The answer:  at HEAD kycMerkle has 16,642 rows (k 15);  k 14 needs 16,368 rows or fewer.  6,112 of its 6,160 input rows are hint rows;  1,760 hints have a pow5 row as their only check.  The hint merge (H1) puts each such hint in the c cell of its pow5 row:  14,882 rows, k 14, 23,582 copies (MODEL).  H1 adds no gate, no column and no IR form;  it changes the lowering rule D14 (SPEC.md 7.1 item 1).
+- The variants (MODEL;  kycMerkle rows and k, then the max depth at k 14):  now 16,642, 15, 19;  H1 14,882, 14, 22;  H2 (the pow5 gate on the hint row, a new gate form) 14,882, 14, 22;  H1-mds 12,352, 14, 27;  H1g (each hint) 10,530, 14, 32 (poseidon, transfer and kyc change k too).  Under H1:  poseidon 750 to 670 rows, transfer 1,499 to 1,339, kyc 1,502 to 1,342, with the same k.  No lowering without a rule change gives k 14.
+- The pinned SRS (k 15) serves k 14 (halo2/src/backend.rs, `sized` and `downsized`).  The proof sizes do not change (MODEL).
+- Questions:  docs/M15-PLAN.md section 9, (a) to (k);  (b) is the ruling on the lowering rule D14.
+- Gates:  none ran;  the M14 close counts stay (circuit refusals 26, satcheck 6, examples 69, circuits 9, same-ir 19, forge test 100, e2e 9 rows).
+- Next:  the USER commits the kickoff and rules section 9;  then s1 (~/Documents/glue-lang-M15-s1-PROMPT.md).
+
+### staged review (2026-10-21)
+
+- Fixed M15-PLAN.md D3 (5):  every active row use of a merged hint must be strictly after its producing pow5 row.  The producing row itself must not read the hint.
+- Reproducer:  `hint t := 1` checked by `sbox5 t == t` passes check, witness generation and satcheck at HEAD.  A C reproducer using fill_advice gives the pow5 output 1 before the merge and 0 after a self-read merge.
+- The plan now requires the selfHint regression in the existing test/circuit-regressions.c (9 to 10 native circuit regressions), plus mutant m5 for the inclusive row-order guard.
