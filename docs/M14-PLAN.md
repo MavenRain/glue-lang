@@ -2,7 +2,7 @@
 
 ## Status
 
-IN PROGRESS 2026-10-20.  The USER accepted all recommendations in section 9, (a) to (k), on 2026-10-20;  this includes the explicit IR ruling in (b).  The selected variant is (ii-b), emitted per circuit.  s1 is complete;  s1-b gates and s2 close remain.  The kickoff commit is 122b00f, on parent 5bf112c.  Probe:  ~/Documents/glue-lang-M14-kickoff-probe/ (run.sh, run.out, rows.jq, model.py, REPORT.md).
+IN PROGRESS 2026-10-20.  The USER accepted all recommendations in section 9, (a) to (k), on 2026-10-20;  this includes the explicit IR ruling in (b).  The selected variant is (ii-b), emitted per circuit.  s1 and s1-b are complete;  the s2 close remains.  The kickoff commit is 122b00f, on parent 5bf112c.  Probe:  ~/Documents/glue-lang-M14-kickoff-probe/ (run.sh, run.out, rows.jq, model.py, REPORT.md).
 
 ## 1. Sources
 

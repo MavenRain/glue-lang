@@ -5,11 +5,11 @@ pragma solidity ^0.8.0;
 contract Halo2Verifier {
     uint256 internal constant    PROOF_LEN_CPTR = 0x44;
     uint256 internal constant        PROOF_CPTR = 0x64;
-    uint256 internal constant NUM_INSTANCE_CPTR = 0x0664;
-    uint256 internal constant     INSTANCE_CPTR = 0x0684;
+    uint256 internal constant NUM_INSTANCE_CPTR = 0x05a4;
+    uint256 internal constant     INSTANCE_CPTR = 0x05c4;
 
-    uint256 internal constant FIRST_QUOTIENT_X_CPTR = 0x0264;
-    uint256 internal constant  LAST_QUOTIENT_X_CPTR = 0x02a4;
+    uint256 internal constant FIRST_QUOTIENT_X_CPTR = 0x01e4;
+    uint256 internal constant  LAST_QUOTIENT_X_CPTR = 0x0264;
 
     uint256 internal constant                VK_MPTR = 0x0480;
     uint256 internal constant         VK_DIGEST_MPTR = 0x0480;
@@ -34,35 +34,35 @@ contract Halo2Verifier {
     uint256 internal constant      NEG_S_G2_Y_1_MPTR = 0x06e0;
     uint256 internal constant      NEG_S_G2_Y_2_MPTR = 0x0700;
 
-    uint256 internal constant CHALLENGE_MPTR = 0x09e0;
+    uint256 internal constant CHALLENGE_MPTR = 0x0a60;
 
-    uint256 internal constant THETA_MPTR = 0x09e0;
-    uint256 internal constant  BETA_MPTR = 0x0a00;
-    uint256 internal constant GAMMA_MPTR = 0x0a20;
-    uint256 internal constant     Y_MPTR = 0x0a40;
-    uint256 internal constant     X_MPTR = 0x0a60;
-    uint256 internal constant  ZETA_MPTR = 0x0a80;
-    uint256 internal constant    NU_MPTR = 0x0aa0;
-    uint256 internal constant    MU_MPTR = 0x0ac0;
+    uint256 internal constant THETA_MPTR = 0x0a60;
+    uint256 internal constant  BETA_MPTR = 0x0a80;
+    uint256 internal constant GAMMA_MPTR = 0x0aa0;
+    uint256 internal constant     Y_MPTR = 0x0ac0;
+    uint256 internal constant     X_MPTR = 0x0ae0;
+    uint256 internal constant  ZETA_MPTR = 0x0b00;
+    uint256 internal constant    NU_MPTR = 0x0b20;
+    uint256 internal constant    MU_MPTR = 0x0b40;
 
-    uint256 internal constant       ACC_LHS_X_MPTR = 0x0ae0;
-    uint256 internal constant       ACC_LHS_Y_MPTR = 0x0b00;
-    uint256 internal constant       ACC_RHS_X_MPTR = 0x0b20;
-    uint256 internal constant       ACC_RHS_Y_MPTR = 0x0b40;
-    uint256 internal constant             X_N_MPTR = 0x0b60;
-    uint256 internal constant X_N_MINUS_1_INV_MPTR = 0x0b80;
-    uint256 internal constant          L_LAST_MPTR = 0x0ba0;
-    uint256 internal constant         L_BLIND_MPTR = 0x0bc0;
-    uint256 internal constant             L_0_MPTR = 0x0be0;
-    uint256 internal constant   INSTANCE_EVAL_MPTR = 0x0c00;
-    uint256 internal constant   QUOTIENT_EVAL_MPTR = 0x0c20;
-    uint256 internal constant      QUOTIENT_X_MPTR = 0x0c40;
-    uint256 internal constant      QUOTIENT_Y_MPTR = 0x0c60;
-    uint256 internal constant       G1_SCALAR_MPTR = 0x0c80;
-    uint256 internal constant   PAIRING_LHS_X_MPTR = 0x0ca0;
-    uint256 internal constant   PAIRING_LHS_Y_MPTR = 0x0cc0;
-    uint256 internal constant   PAIRING_RHS_X_MPTR = 0x0ce0;
-    uint256 internal constant   PAIRING_RHS_Y_MPTR = 0x0d00;
+    uint256 internal constant       ACC_LHS_X_MPTR = 0x0b60;
+    uint256 internal constant       ACC_LHS_Y_MPTR = 0x0b80;
+    uint256 internal constant       ACC_RHS_X_MPTR = 0x0ba0;
+    uint256 internal constant       ACC_RHS_Y_MPTR = 0x0bc0;
+    uint256 internal constant             X_N_MPTR = 0x0be0;
+    uint256 internal constant X_N_MINUS_1_INV_MPTR = 0x0c00;
+    uint256 internal constant          L_LAST_MPTR = 0x0c20;
+    uint256 internal constant         L_BLIND_MPTR = 0x0c40;
+    uint256 internal constant             L_0_MPTR = 0x0c60;
+    uint256 internal constant   INSTANCE_EVAL_MPTR = 0x0c80;
+    uint256 internal constant   QUOTIENT_EVAL_MPTR = 0x0ca0;
+    uint256 internal constant      QUOTIENT_X_MPTR = 0x0cc0;
+    uint256 internal constant      QUOTIENT_Y_MPTR = 0x0ce0;
+    uint256 internal constant       G1_SCALAR_MPTR = 0x0d00;
+    uint256 internal constant   PAIRING_LHS_X_MPTR = 0x0d20;
+    uint256 internal constant   PAIRING_LHS_Y_MPTR = 0x0d40;
+    uint256 internal constant   PAIRING_RHS_X_MPTR = 0x0d60;
+    uint256 internal constant   PAIRING_RHS_Y_MPTR = 0x0d80;
 
     function verifyProof(
         bytes calldata proof,
@@ -216,11 +216,11 @@ contract Halo2Verifier {
 
             {
                 // Load vk_digest and num_instances of vk into memory
-                mstore(0x0480, 0x230cfa8d720e34474643e25067b02b7426a0c1b01984440e718b63323eebab57) // vk_digest
+                mstore(0x0480, 0x243242a702454994f1817b9016352b92c9706e022ddd8e3f0a1179f15475a21c) // vk_digest
                 mstore(0x04a0, 0x0000000000000000000000000000000000000000000000000000000000000001) // num_instances
 
                 // Check valid length of proof
-                success := and(success, eq(0x0600, calldataload(PROOF_LEN_CPTR)))
+                success := and(success, eq(0x0540, calldataload(PROOF_LEN_CPTR)))
 
                 // Check valid length of instances
                 let num_instances := mload(NUM_INSTANCES_MPTR)
@@ -262,7 +262,7 @@ contract Halo2Verifier {
 
                 // Phase 2
                 for
-                    { let proof_cptr_end := add(proof_cptr, 0x0140) }
+                    { let proof_cptr_end := add(proof_cptr, 0xc0) }
                     lt(proof_cptr, proof_cptr_end)
                     {}
                 {
@@ -273,7 +273,7 @@ contract Halo2Verifier {
 
                 // Phase 3
                 for
-                    { let proof_cptr_end := add(proof_cptr, 0x80) }
+                    { let proof_cptr_end := add(proof_cptr, 0xc0) }
                     lt(proof_cptr, proof_cptr_end)
                     {}
                 {
@@ -284,7 +284,7 @@ contract Halo2Verifier {
 
                 // Read evaluations
                 for
-                    { let proof_cptr_end := add(proof_cptr, 0x0300) }
+                    { let proof_cptr_end := add(proof_cptr, 0x0280) }
                     lt(proof_cptr, proof_cptr_end)
                     {}
                 {
@@ -306,7 +306,7 @@ contract Halo2Verifier {
                 success, proof_cptr, hash_mptr := read_ec_point(success, proof_cptr, hash_mptr, q) // W'
 
                 // Load full vk into memory
-                mstore(0x0480, 0x230cfa8d720e34474643e25067b02b7426a0c1b01984440e718b63323eebab57) // vk_digest
+                mstore(0x0480, 0x243242a702454994f1817b9016352b92c9706e022ddd8e3f0a1179f15475a21c) // vk_digest
                 mstore(0x04a0, 0x0000000000000000000000000000000000000000000000000000000000000001) // num_instances
                 mstore(0x04c0, 0x000000000000000000000000000000000000000000000000000000000000000a) // k
                 mstore(0x04e0, 0x3058355f447953c1ade231a513e0f80710e9db4e679b02351f90fd168b040001) // n_inv
@@ -327,28 +327,32 @@ contract Halo2Verifier {
                 mstore(0x06c0, 0x2ddd402475c42d9fefd024c4c9e5bd7e8873a6ad37f5f7c3520b115f123b4978) // neg_s_g2_x_2
                 mstore(0x06e0, 0x2f91419b2a631b79224064b4dfef9494d1b7093060bfbbf44ab65eff4bf14872) // neg_s_g2_y_1
                 mstore(0x0700, 0x2d69369afcc3c7e411f1ad7e0de8accf8e2ba0606d95c33a95b7f6980db6d5d0) // neg_s_g2_y_2
-                mstore(0x0720, 0x22d1a2e34b494dafd6838b7b4558c6234677893b574d39004c072cf21331206b) // fixed_comms[0].x
-                mstore(0x0740, 0x1942bed5391b21f7cf0308221a5019301f19bdc24c2b870a21e6775111b40045) // fixed_comms[0].y
-                mstore(0x0760, 0x22006bebc6b6b48b2a75e893f1f03f4367bff2b803e000d9dcaa283d40addb20) // fixed_comms[1].x
-                mstore(0x0780, 0x12f6f66447c9a64f9144d78a1973d294397ff52be0882a5d71c63bcf1a61bf08) // fixed_comms[1].y
-                mstore(0x07a0, 0x0b18408f9427ec515aa715797535cbc93c24b110ffbbe20ba977553dc124c6d6) // fixed_comms[2].x
-                mstore(0x07c0, 0x2e3b1e99eeec184fa369e786002b8b0430a70c23fecad7f8b426798041660923) // fixed_comms[2].y
-                mstore(0x07e0, 0x05ab62a4c786c44e9b0ce087ee4c746fac9e01067561af80731e43d608c9619e) // fixed_comms[3].x
-                mstore(0x0800, 0x2a674111964b4fc0f99b42015b3e98f1c2a0426ce430639ed5c52b1ae0ab6c89) // fixed_comms[3].y
-                mstore(0x0820, 0x22ca477575747aeb2ed7dae5b59af7ebf474e6a93aa3f5c3ce360c8591760c13) // fixed_comms[4].x
-                mstore(0x0840, 0x188d43bf905d39a7f4a7fe928bbe2a9fc9e884f5dae580971a0aa3e7d483c6c2) // fixed_comms[4].y
+                mstore(0x0720, 0x1ec150e4ec9ead77943e65bb900dca4a0ece5f48e59cebf4ad60f6b4c9e42949) // fixed_comms[0].x
+                mstore(0x0740, 0x17df3cfee4533089b863da6e01bc4cead90195690ea86143a09f737a754a800a) // fixed_comms[0].y
+                mstore(0x0760, 0x1ba671a4b2bd22a28d1dfdfa4bb0c1ea1727e8999e598b6146809521142598ce) // fixed_comms[1].x
+                mstore(0x0780, 0x103781d4bab6540a8164013af7eeea9a18ae4ccff7c87d82c9fe4c1ce7e943e9) // fixed_comms[1].y
+                mstore(0x07a0, 0x17b16396b7eef08e68b027ef518ad56061e96de8d98fc014fee619938c8dc9a9) // fixed_comms[2].x
+                mstore(0x07c0, 0x0ee892c40fe88b1e400ea45dde24f26dcc1f159d03e9c9afbb9a947d4f40afa0) // fixed_comms[2].y
+                mstore(0x07e0, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[3].x
+                mstore(0x0800, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[3].y
+                mstore(0x0820, 0x0fbee3e537fd80997e1e56d538ce03418592d8cf38aac3a9d43607caac110b35) // fixed_comms[4].x
+                mstore(0x0840, 0x13093693b27e53ae6d78581fc80b7971a8f671366cca19da5ed49223af69d62f) // fixed_comms[4].y
                 mstore(0x0860, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[5].x
                 mstore(0x0880, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[5].y
                 mstore(0x08a0, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[6].x
                 mstore(0x08c0, 0x0000000000000000000000000000000000000000000000000000000000000000) // fixed_comms[6].y
-                mstore(0x08e0, 0x1208ef4c871b7e7c551b72138d9afcaf33300d60029057f7a65cac16781790ba) // permutation_comms[0].x
-                mstore(0x0900, 0x1bddb9bb6ff281d005220abf05e470c9d0bec3a92b9b65ef5a46356db9b360ff) // permutation_comms[0].y
-                mstore(0x0920, 0x2a2a52725725163b04e4df5426cda3a5b2ef4916da871189cfe819855a9c7212) // permutation_comms[1].x
-                mstore(0x0940, 0x15ea20dbd38ee1d0e9a582030db5aabf2e96d10576d530450a43690722c9f4bb) // permutation_comms[1].y
-                mstore(0x0960, 0x04b33cf7cc8958f99a88d63a0502559966e6224b11314373be2b62e6529b0c22) // permutation_comms[2].x
-                mstore(0x0980, 0x14132af06c678c042cb727660d5732c159b27314406698c6f7d0cd819bcd84fd) // permutation_comms[2].y
-                mstore(0x09a0, 0x099bfe433fb1a3a0bde560504c5573b28739d23076c97fa238ba7a69949498ab) // permutation_comms[3].x
-                mstore(0x09c0, 0x15de771ab9d6e9d4ae6704b9d50b2a9091c0fe30133117fe3fd0906253aaeeca) // permutation_comms[3].y
+                mstore(0x08e0, 0x22564f6aeb4b909ab51718cccb700ace1d8ac57e75bc286ea59c2185885e0f67) // fixed_comms[7].x
+                mstore(0x0900, 0x2db3c57284eb205fd8f96314797b0913488318c39eb1091d9232862b21cecdcf) // fixed_comms[7].y
+                mstore(0x0920, 0x0eea1c42597caa6f40b22600bf43ffef0bf5fce4c8e4510a12450e22e24454e4) // fixed_comms[8].x
+                mstore(0x0940, 0x165e44cc5c74385dc16db29497083ba4c241e437108446c9ec226ec4ed260cc7) // fixed_comms[8].y
+                mstore(0x0960, 0x1983d23e7ec2464c08b4da9735c21688d5d51c7f2dccbb4ac2963ef28a46a973) // permutation_comms[0].x
+                mstore(0x0980, 0x2dab51597a5103e660db8ff0c1e5f3f5e286e9c2f772af6dc6e24543b6f0d4bd) // permutation_comms[0].y
+                mstore(0x09a0, 0x0398509e166db1ec427e7f7be8d45797ca92ac1672fda15bf80325ae29181447) // permutation_comms[1].x
+                mstore(0x09c0, 0x144176cb0dbab88c4c5d64aaf4b672087aaa8b1a71027ec0eaebbd3132961ed0) // permutation_comms[1].y
+                mstore(0x09e0, 0x25b95eef94f7204206c43ccfadc111a59f2a910341d9127285cbbfc390c246f0) // permutation_comms[2].x
+                mstore(0x0a00, 0x1251d93c4e5f900697ded258afb7402ffd0bc04ef45052263ef5f45caa9f135f) // permutation_comms[2].y
+                mstore(0x0a20, 0x099bfe433fb1a3a0bde560504c5573b28739d23076c97fa238ba7a69949498ab) // permutation_comms[3].x
+                mstore(0x0a40, 0x15de771ab9d6e9d4ae6704b9d50b2a9091c0fe30133117fe3fd0906253aaeeca) // permutation_comms[3].y
 
                 // Read accumulator from instances
                 if mload(HAS_ACCUMULATOR_MPTR) {
@@ -484,25 +488,51 @@ contract Halo2Verifier {
                 let delta := 4131629893567559867359510883348571134090853742863529169391034518566172092834
                 let y := mload(Y_MPTR)
                 {
-                    let f_0 := calldataload(0x0344)
-                    let a_0 := calldataload(0x02e4)
+                    let f_0 := calldataload(0x0304)
+                    let a_0 := calldataload(0x02a4)
                     let var0 := mulmod(f_0, a_0, r)
-                    let f_1 := calldataload(0x0364)
-                    let a_1 := calldataload(0x0304)
+                    let f_1 := calldataload(0x0324)
+                    let a_1 := calldataload(0x02c4)
                     let var1 := mulmod(f_1, a_1, r)
                     let var2 := addmod(var0, var1, r)
-                    let f_3 := calldataload(0x0384)
+                    let f_3 := calldataload(0x0344)
                     let var3 := mulmod(f_3, a_0, r)
                     let var4 := mulmod(var3, a_1, r)
                     let var5 := addmod(var2, var4, r)
-                    let f_4 := calldataload(0x03a4)
+                    let f_4 := calldataload(0x0364)
                     let var6 := addmod(var5, f_4, r)
-                    let f_2 := calldataload(0x03c4)
-                    let a_2 := calldataload(0x0324)
+                    let f_2 := calldataload(0x0384)
+                    let a_2 := calldataload(0x02e4)
                     let var7 := mulmod(f_2, a_2, r)
                     let var8 := sub(r, var7)
                     let var9 := addmod(var6, var8, r)
                     quotient_eval_numer := var9
+                }
+                {
+                    let f_7 := calldataload(0x03a4)
+                    let a_1 := calldataload(0x02c4)
+                    let a_0 := calldataload(0x02a4)
+                    let f_8 := calldataload(0x03c4)
+                    let var0 := addmod(a_0, f_8, r)
+                    let var1 := mulmod(var0, var0, r)
+                    let var2 := sub(r, var1)
+                    let var3 := addmod(a_1, var2, r)
+                    let var4 := mulmod(f_7, var3, r)
+                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), var4, r)
+                }
+                {
+                    let f_7 := calldataload(0x03a4)
+                    let a_2 := calldataload(0x02e4)
+                    let a_1 := calldataload(0x02c4)
+                    let var0 := mulmod(a_1, a_1, r)
+                    let a_0 := calldataload(0x02a4)
+                    let f_8 := calldataload(0x03c4)
+                    let var1 := addmod(a_0, f_8, r)
+                    let var2 := mulmod(var0, var1, r)
+                    let var3 := sub(r, var2)
+                    let var4 := addmod(a_2, var3, r)
+                    let var5 := mulmod(f_7, var4, r)
+                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), var5, r)
                 }
                 {
                     let l_0 := mload(L_0_MPTR)
@@ -510,7 +540,7 @@ contract Halo2Verifier {
                     quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
                 }
                 {
-                    let perm_z_last := calldataload(0x05a4)
+                    let perm_z_last := calldataload(0x04e4)
                     let eval := mulmod(mload(L_LAST_MPTR), addmod(mulmod(perm_z_last, perm_z_last, r), sub(r, perm_z_last), r), r)
                     quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
                 }
@@ -519,21 +549,16 @@ contract Halo2Verifier {
                     quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
                 }
                 {
-                    let eval := mulmod(mload(L_0_MPTR), addmod(calldataload(0x0544), sub(r, calldataload(0x0524)), r), r)
-                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
-                }
-                {
-                    let eval := mulmod(mload(L_0_MPTR), addmod(calldataload(0x05a4), sub(r, calldataload(0x0584)), r), r)
-                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
-                }
-                {
                     let gamma := mload(GAMMA_MPTR)
                     let beta := mload(BETA_MPTR)
                     let lhs := calldataload(0x04a4)
                     let rhs := calldataload(0x0484)
-                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x02e4), mulmod(beta, calldataload(0x0404), r), r), gamma, r), r)
+                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x02a4), mulmod(beta, calldataload(0x0404), r), r), gamma, r), r)
+                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x02c4), mulmod(beta, calldataload(0x0424), r), r), gamma, r), r)
                     mstore(0x00, mulmod(beta, mload(X_MPTR), r))
-                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x02e4), mload(0x00), r), gamma, r), r)
+                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x02a4), mload(0x00), r), gamma, r), r)
+                    mstore(0x00, mulmod(mload(0x00), delta, r))
+                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x02c4), mload(0x00), r), gamma, r), r)
                     mstore(0x00, mulmod(mload(0x00), delta, r))
                     let left_sub_right := addmod(lhs, sub(r, rhs), r)
                     let eval := addmod(left_sub_right, sub(r, mulmod(left_sub_right, addmod(mload(L_LAST_MPTR), mload(L_BLIND_MPTR), r), r)), r)
@@ -544,31 +569,10 @@ contract Halo2Verifier {
                     let beta := mload(BETA_MPTR)
                     let lhs := calldataload(0x0504)
                     let rhs := calldataload(0x04e4)
-                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x0304), mulmod(beta, calldataload(0x0424), r), r), gamma, r), r)
-                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x0304), mload(0x00), r), gamma, r), r)
-                    mstore(0x00, mulmod(mload(0x00), delta, r))
-                    let left_sub_right := addmod(lhs, sub(r, rhs), r)
-                    let eval := addmod(left_sub_right, sub(r, mulmod(left_sub_right, addmod(mload(L_LAST_MPTR), mload(L_BLIND_MPTR), r), r)), r)
-                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
-                }
-                {
-                    let gamma := mload(GAMMA_MPTR)
-                    let beta := mload(BETA_MPTR)
-                    let lhs := calldataload(0x0564)
-                    let rhs := calldataload(0x0544)
-                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x0324), mulmod(beta, calldataload(0x0444), r), r), gamma, r), r)
-                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x0324), mload(0x00), r), gamma, r), r)
-                    mstore(0x00, mulmod(mload(0x00), delta, r))
-                    let left_sub_right := addmod(lhs, sub(r, rhs), r)
-                    let eval := addmod(left_sub_right, sub(r, mulmod(left_sub_right, addmod(mload(L_LAST_MPTR), mload(L_BLIND_MPTR), r), r)), r)
-                    quotient_eval_numer := addmod(mulmod(quotient_eval_numer, y, r), eval, r)
-                }
-                {
-                    let gamma := mload(GAMMA_MPTR)
-                    let beta := mload(BETA_MPTR)
-                    let lhs := calldataload(0x05c4)
-                    let rhs := calldataload(0x05a4)
+                    lhs := mulmod(lhs, addmod(addmod(calldataload(0x02e4), mulmod(beta, calldataload(0x0444), r), r), gamma, r), r)
                     lhs := mulmod(lhs, addmod(addmod(mload(INSTANCE_EVAL_MPTR), mulmod(beta, calldataload(0x0464), r), r), gamma, r), r)
+                    rhs := mulmod(rhs, addmod(addmod(calldataload(0x02e4), mload(0x00), r), gamma, r), r)
+                    mstore(0x00, mulmod(mload(0x00), delta, r))
                     rhs := mulmod(rhs, addmod(addmod(mload(INSTANCE_EVAL_MPTR), mload(0x00), r), gamma, r), r)
                     let left_sub_right := addmod(lhs, sub(r, rhs), r)
                     let eval := addmod(left_sub_right, sub(r, mulmod(left_sub_right, addmod(mload(L_LAST_MPTR), mload(L_BLIND_MPTR), r), r)), r)
@@ -720,7 +724,7 @@ contract Halo2Verifier {
                     for
                         {
                             let cptr := 0x03c4
-                            let cptr_end := 0x02c4
+                            let cptr_end := 0x0284
                         }
                         lt(cptr_end, cptr)
                         { cptr := sub(cptr, 0x20) }
@@ -732,14 +736,6 @@ contract Halo2Verifier {
                 {
                     let zeta := mload(ZETA_MPTR)
                     let r_eval
-                    r_eval := addmod(r_eval, mulmod(mload(0x40), calldataload(0x0584), r), r)
-                    r_eval := addmod(r_eval, mulmod(mload(0x60), calldataload(0x0544), r), r)
-                    r_eval := addmod(r_eval, mulmod(mload(0x80), calldataload(0x0564), r), r)
-                    r_eval := mulmod(r_eval, zeta, r)
-                    r_eval := addmod(r_eval, mulmod(mload(0x40), calldataload(0x0524), r), r)
-                    r_eval := addmod(r_eval, mulmod(mload(0x60), calldataload(0x04e4), r), r)
-                    r_eval := addmod(r_eval, mulmod(mload(0x80), calldataload(0x0504), r), r)
-                    r_eval := mulmod(r_eval, zeta, r)
                     r_eval := addmod(r_eval, mulmod(mload(0x40), calldataload(0x04c4), r), r)
                     r_eval := addmod(r_eval, mulmod(mload(0x60), calldataload(0x0484), r), r)
                     r_eval := addmod(r_eval, mulmod(mload(0x80), calldataload(0x04a4), r), r)
@@ -749,8 +745,8 @@ contract Halo2Verifier {
                 {
                     let zeta := mload(ZETA_MPTR)
                     let r_eval
-                    r_eval := addmod(r_eval, mulmod(mload(0xa0), calldataload(0x05a4), r), r)
-                    r_eval := addmod(r_eval, mulmod(mload(0xc0), calldataload(0x05c4), r), r)
+                    r_eval := addmod(r_eval, mulmod(mload(0xa0), calldataload(0x04e4), r), r)
+                    r_eval := addmod(r_eval, mulmod(mload(0xc0), calldataload(0x0504), r), r)
                     r_eval := mulmod(r_eval, mload(0x03a0), r)
                     mstore(0x0400, r_eval)
                 }
@@ -806,13 +802,13 @@ contract Halo2Verifier {
                 {
                     let zeta := mload(ZETA_MPTR)
                     let nu := mload(NU_MPTR)
-                    mstore(0x00, calldataload(0x0224))
-                    mstore(0x20, calldataload(0x0244))
+                    mstore(0x00, calldataload(0x01a4))
+                    mstore(0x20, calldataload(0x01c4))
                     success := ec_mul_acc(success, zeta)
                     success := ec_add_acc(success, mload(QUOTIENT_X_MPTR), mload(QUOTIENT_Y_MPTR))
                     for
                         {
-                            let ptr := 0x09a0
+                            let ptr := 0x0a20
                             let ptr_end := 0x08a0
                         }
                         lt(ptr_end, ptr)
@@ -842,35 +838,31 @@ contract Halo2Verifier {
                         success := ec_mul_acc(success, zeta)
                         success := ec_add_acc(success, calldataload(ptr), calldataload(add(ptr, 0x20)))
                     }
-                    mstore(0x80, calldataload(0x01a4))
-                    mstore(0xa0, calldataload(0x01c4))
-                    success := ec_mul_tmp(success, zeta)
-                    success := ec_add_tmp(success, calldataload(0x0164), calldataload(0x0184))
-                    success := ec_mul_tmp(success, zeta)
-                    success := ec_add_tmp(success, calldataload(0x0124), calldataload(0x0144))
+                    mstore(0x80, calldataload(0x0124))
+                    mstore(0xa0, calldataload(0x0144))
                     success := ec_mul_tmp(success, mulmod(nu, mload(0x0380), r))
                     success := ec_add_acc(success, mload(0x80), mload(0xa0))
                     nu := mulmod(nu, mload(NU_MPTR), r)
-                    mstore(0x80, calldataload(0x01e4))
-                    mstore(0xa0, calldataload(0x0204))
+                    mstore(0x80, calldataload(0x0164))
+                    mstore(0xa0, calldataload(0x0184))
                     success := ec_mul_tmp(success, mulmod(nu, mload(0x03a0), r))
                     success := ec_add_acc(success, mload(0x80), mload(0xa0))
                     mstore(0x80, mload(G1_X_MPTR))
                     mstore(0xa0, mload(G1_Y_MPTR))
                     success := ec_mul_tmp(success, mload(G1_SCALAR_MPTR))
                     success := ec_add_acc(success, mload(0x80), mload(0xa0))
-                    mstore(0x80, calldataload(0x05e4))
-                    mstore(0xa0, calldataload(0x0604))
+                    mstore(0x80, calldataload(0x0524))
+                    mstore(0xa0, calldataload(0x0544))
                     success := ec_mul_tmp(success, sub(r, mload(0x0340)))
                     success := ec_add_acc(success, mload(0x80), mload(0xa0))
-                    mstore(0x80, calldataload(0x0624))
-                    mstore(0xa0, calldataload(0x0644))
+                    mstore(0x80, calldataload(0x0564))
+                    mstore(0xa0, calldataload(0x0584))
                     success := ec_mul_tmp(success, mload(MU_MPTR))
                     success := ec_add_acc(success, mload(0x80), mload(0xa0))
                     mstore(PAIRING_LHS_X_MPTR, mload(0x00))
                     mstore(PAIRING_LHS_Y_MPTR, mload(0x20))
-                    mstore(PAIRING_RHS_X_MPTR, calldataload(0x0624))
-                    mstore(PAIRING_RHS_Y_MPTR, calldataload(0x0644))
+                    mstore(PAIRING_RHS_X_MPTR, calldataload(0x0564))
+                    mstore(PAIRING_RHS_Y_MPTR, calldataload(0x0584))
                 }
             }
 
