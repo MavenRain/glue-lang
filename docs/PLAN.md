@@ -56,6 +56,7 @@ reads a ceremony SRS file.
 | M10 | The sender binding (O22): the fifth public binder `sender` of kyc and kycMerkle, the gate check, the operations scripts and the runbook. The `kycNullifier` name ruling. The Poseidon forms (ii) and (iii) as an estimate. | DONE 2026-10-20 (s1 54cc43b with the plan, s2 6a17d6f, s3 and s4 c4b79d1 (one docs commit), s5 close; O22 CLOSED; the deployment target and the ceremony file check stay O23; the Poseidon forms (ii) and (iii) are O24, open, no milestone named) |
 | M11 | The Poseidon forms (O24):  form (iii), a memo in the lowering, if the USER rules it;  forms (ii) and (iv) stay open. | DONE 2026-10-20 (s1 d0b78f1 with the plan, s2 close;  form (iii) DONE;  forms (ii) and (iv) stay O24, open, no milestone named) |
 | M12 | The literal fold (O24 form (iv)):  T1, a literal operand into the coefficients ql, qr, qm, qc of its row, and T2, the affine fold, if the USER rules them;  form (ii) stays open. | DONE 2026-10-20 (RULED 2026-10-20, (a) to (h) = the recommendations of docs/M12-PLAN.md section 9;  s1 (T1) 152c6d4 with the plan, s2 (T2) 54cda59, s3 close;  form (iv) DONE;  form (ii) stays O24, open, no milestone named) |
+| M13 | The kycMerkle depth (topic (ii), RULED 2026-10-20):  depth 4 to depth 20 (21,922 rows, k 15, the pinned SRS);  reverses M12 ruling (e);  no IR change. | IN PROGRESS (docs/M13-PLAN.md RULED 2026-10-20:  section 9 (a) to (k), the recommendations;  s1 built, the gates GREEN in s1-b) |
 
 ## Lowering rules (all milestones)
 
