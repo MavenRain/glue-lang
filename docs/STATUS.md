@@ -5748,3 +5748,13 @@ is in its section).
 - The measured values (s1 and s1-b):  kycMerkle depth 20, 21,922 rows, k 15, 37,662 copies;  the verifier 49,890 B;  the proof 8,466 B;  keygen `--dev-srs` 139 MB max RSS, 19.7 s;  prove 273 MB max RSS, 17.0 s;  `make -B check` 463 s in s1-b and 278 s in s2 (M12:  40 s).
 - Open after M13:  O24 (form (ii), the degree-5 gate:  it needs a new IR form, the pow5 gate, and a USER ruling first;  no milestone named);  O23 (the deployment target and the target fields, the literal word VALUE:  USER items);  the contracts/README.md rows of kyc, range, poseidon and transfer do not agree with the s1-b gas report (~/Documents/glue-lang-M13-s1-b/gas-report.log;  `verifyProof` max kyc 316,319, range 296,819, poseidon 277,741, transfer 278,462;  the README:  316,454, 313,566, 277,871, 278,592):  a USER item (the recommendation:  refresh the 8 rows from one `forge test --root contracts --gas-report` in a separate slice after M13).  The other open items of section 9 do not change.
 - Next:  the USER commits s2;  then the USER picks the next milestone (O24 form (ii), the README rows, O23, or another topic).
+
+### readme rows (2026-10-20)
+
+- Start condition MET:  HEAD e305568 `M13 s2: close` (USER) on 79fe06d;  `git status --short` empty.
+- USER ruling:  refresh all 8 rows of contracts/README.md from one gas report.
+- Gate (~/Documents/glue-lang-M13-readme/gates.sh, the sandbox off):  `forge test --root contracts --gas-report` exit 0, 100 passed (9 suites);  `git status --short` is empty before and after.  The log:  ~/Documents/glue-lang-M13-readme/gas-report.log.
+- The rows (~/Documents/glue-lang-M13-readme/rows.awk on the log;  the runtime size = Deployment Size minus 32;  the deployment gas = Deployment Cost;  `verifyProof` = the max column, the valid proof):  5 rows change.  range 6,217 | 1,395,783 | 313,566 to 5,646 | 1,272,518 | 296,819;  poly 5,802 | 1,306,103 to 5,801 | 1,305,875 (`verifyProof` 278,072 does not change);  poseidon 1,305,911 | 277,871 to 1,305,851 | 277,741 (the size 5,801 does not change);  transfer 5,802 | 1,306,127 | 278,592 to 5,801 | 1,305,899 | 278,462;  kyc 6,280 | 1,409,440 | 316,454 to 6,222 | 1,396,899 | 316,319.  The square, nonzero and kycMerkle rows do not change (kycMerkle `6,222 | 1,396,935 | 316,579`, as in s1-b).
+- The new `verifyProof` values of kyc, range, poseidon and transfer are the values of the s1-b gas report.  This closes the README item of `### s2: close`.
+- Only contracts/README.md and this file change.  No code, verifier, fixture or IR change.
+- Next:  the USER commits;  then the USER picks the next milestone (O24 form (ii), O23, or another topic).

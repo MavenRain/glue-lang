@@ -49,12 +49,12 @@ layout emitted by the CLI and rejects redirected argument offsets.
 | Circuit | Runtime size (B) | Deployment (gas) | `verifyProof`, valid proof (gas) |
 |---|---|---|---|
 | square | 5,615 | 1,265,575 | 277,416 |
-| range | 6,217 | 1,395,783 | 313,566 |
-| poly | 5,802 | 1,306,103 | 278,072 |
+| range | 5,646 | 1,272,518 | 296,819 |
+| poly | 5,801 | 1,305,875 | 278,072 |
 | nonzero | 5,387 | 1,216,448 | 262,661 |
-| poseidon | 5,801 | 1,305,911 | 277,871 |
-| transfer | 5,802 | 1,306,127 | 278,592 |
-| kyc | 6,280 | 1,409,440 | 316,454 |
+| poseidon | 5,801 | 1,305,851 | 277,741 |
+| transfer | 5,801 | 1,305,899 | 278,462 |
+| kyc | 6,222 | 1,396,899 | 316,319 |
 | kycMerkle | 6,222 | 1,396,935 | 316,579 |
 
 The EIP-170 limit is 24,576 bytes. The gas is from `forge test
