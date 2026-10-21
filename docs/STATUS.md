@@ -5758,3 +5758,17 @@ is in its section).
 - The new `verifyProof` values of kyc, range, poseidon and transfer are the values of the s1-b gas report.  This closes the README item of `### s2: close`.
 - Only contracts/README.md and this file change.  No code, verifier, fixture or IR change.
 - Next:  the USER commits;  then the USER picks the next milestone (O24 form (ii), O23, or another topic).
+
+## M14
+
+### kickoff (2026-10-20)
+
+- Start condition MET:  HEAD 5bf112c `M13 readme: refresh the 8 gas rows` (USER), its parent e305568, HEAD^{tree} 7fd4bb88, status empty.
+- Topic:  O24 form (ii), the degree-5 S-box gate (pow5).  The kickoff text came with the pick placeholder;  the USER answer (AskUserQuestion):  "O24 form (ii) pow5".
+- Plan:  docs/M14-PLAN.md DRAFT (sections 1 to 10).  At the USER request, the draft plan, the docs/PLAN.md M14 row and this section go in a separate kickoff commit before the section 9 rulings.
+- Probe (~/Documents/glue-lang-M14-kickoff-probe/run.sh, the log run.out, rows.jq, model.py, REPORT.md;  one read-only agent;  no build, no make;  status empty before and after):  the halo2_proofs v0.3.0 degree rules, jq on the goldens, a proof-size model.
+- The answer:  the S-box is 4 arith rows and 9 copies now (poseidon rows 280 to 283);  each hash has 80 S-boxes on binders;  kycMerkle has 1,760 (7,040 of its 21,922 rows).  The degree is 3 for square, nonzero, poly, poseidon and transfer, and 5 for range, kyc and kycMerkle (the lookup).  The proof model gives the proof size of each of the 8 fixtures exactly.
+- The variants (MODEL;  kycMerkle rows, k, copies;  the degree):  (ii-a) 16,642, 15, 25,342, degree 6;  (ii-b) 16,642, 15, 25,342, degree 5 (poseidon and transfer 4);  (ii-c) 18,402, 15, 27,102, degree 6.  No variant changes k.  The halo2 back end and the verifier generator need no code change;  per-circuit emission changes 4 verifiers.
+- Questions:  docs/M14-PLAN.md section 9, (a) to (k) (the variant, the IR ruling, the emission, the verifiers, the lowering pattern, the refuse rows, the doc sites, the O24 status, the fixtures and the README, the open items, the slices).
+- Gates:  none ran;  the M13 close counts stay (examples 69, circuit refusals 24, forge test 100, e2e 9 rows).
+- Next:  the USER rules section 9, then ~/Documents/glue-lang-M14-s1-PROMPT.md.
