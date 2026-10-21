@@ -1388,6 +1388,39 @@ as variables. Then it lowers the normal form:
    source of truth for the cell.  This is a lowering rule, with no IR form
    and no conv rule change.
 
+The measured values of M15 (slices s1 e23bc92 and s1-b 8192f9d;  the M14
+value in parentheses;  the rows, k, copies and proof sizes are the MODEL
+of docs/M15-PLAN.md section 6 and D5, exact;  the runtime size and the
+gas from one `forge test --root contracts --gas-report`;  the RSS from
+`/usr/bin/time -l`, the sandbox off, one sample each):
+
+| Measured, M15 | poseidon | transfer | kyc | kycMerkle (depth 20) |
+|---|---|---|---|---|
+| merged hints | 80 | 160 | 160 | 1760 |
+| rows, k, copies | 670, 10, 1058 (750, 10, 1138) | 1339, 11, 2116 (1499, 11, 2276) | 1342, 11, 2122 (1502, 11, 2282) | 14882, 14, 23582 (16642, 15, 25342) |
+| max degree | 4 (4) | 4 (4) | 5 (5) | 5 (5) |
+| proof (B) | 1344 (1344) | 1344 (1344) | 1824 (1824) | 1824 (1824) |
+| verifier runtime (B) | 5643 (5643) | 5644 (5644) | 6609 (6610) | 6614 (6612) |
+| deployment (gas) | 1271822 (1271834) | 1272038 (1272062) | 1480548 (1480728) | 1481688 (1481220) |
+| `verifyProof` (gas) | 283534 (283534) | 284256 (284256) | 330104 (330104) | 330294 (330359) |
+| keygen (`--dev-srs`), max RSS | not measured | not measured | not measured | 127 MB, 4.9 s (188 MB, 20.1 s) |
+| prove, max RSS | not measured | not measured | not measured | 167 MB, 6.6 s (202 MB, 27.5 s) |
+
+Each merged hint removes 1 row and 1 copy.  `kycMerkle` goes from k 15
+to k 14 (14882 rows;  the limit at k 14 is 16368 rows).  The other 3
+circuits keep k.  The pinned k 15 SRS serves the k 14 circuit:  halo2/
+and halo2/ceremony.sha256 do not change.  The `verifyProof` gas does
+not change for poseidon, transfer and kyc, and goes down by 65 for
+kycMerkle.  The deployment gas changes by -12, -24, -180 and +468, and
+the runtime size by 0, 0, -1 and +2 B (the bytes of the new VK
+constants).  The verifier cost does not depend on the row count:  the
+hint merge helps the prover, not the verifier.  The D8 MODEL of
+docs/M15-PLAN.md expects the kycMerkle keygen and prove RSS and time to
+go down by about half (the extended domain goes from 2^17 to 2^16).
+Measured:  the time goes down by 75 % (keygen) and 76 % (prove), more
+than the MODEL;  the RSS goes down by 32 % (keygen) and 17 % (prove),
+less than the MODEL.  All values are far below the 4 GB limit.
+
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an
 earlier constant row that has the same value, and an arith row (item 3)
@@ -1786,7 +1819,13 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   DONE.  The hint-row form of the M14 probe (kycMerkle 14882 rows, k 14)
   is a new input-row form;  it becomes a new open item only if the USER
   asks for it.  A k 14 goal for `kycMerkle` is not in M14 (ruling (j)).
-  O23 stays a USER item.
+  O23 stays a USER item.  M15 (USER pick and rulings (a) to (k) of
+  docs/M15-PLAN.md section 9, 2026-10-21;  ruling (b) changes the
+  lowering rule D14) builds the hint-row form as the hint merge H1
+  (section 7.1 item 7):  a pow5-checked hint has no input row.
+  `kycMerkle` (depth 20) goes to k 14 with 14882 rows;  the table
+  `Measured, M15` of section 7.1 gives the values.  M15 adds no IR form
+  and no open item.
 
 ## 10. Milestones
 

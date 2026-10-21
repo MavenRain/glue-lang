@@ -2,7 +2,7 @@
 
 ## Status
 
-IN PROGRESS 2026-10-21 (s1).  RULED 2026-10-21:  the USER accepts the recommendations (a) to (k) of section 9.  The USER picked the topic on 2026-10-21:  k 14 for kycMerkle.  The Merkle depth stays 20 (M13).  The USER rules section 9, (a) to (k);  question (b) is the ruling on the lowering rule.  Kickoff:  this plan, the docs/PLAN.md M15 row and docs/STATUS.md M15 `### kickoff`, on parent 8a09680.  Probe:  ~/Documents/glue-lang-M15-kickoff-probe/ (run.sh, run.out, census.py, census.json, gluecensus.py, rows.jq, model.py, REPORT.md).
+DONE 2026-10-21 (s1 e23bc92, s1-b 8192f9d, s2 close).  RULED 2026-10-21:  the USER accepts the recommendations (a) to (k) of section 9.  The USER picked the topic on 2026-10-21:  k 14 for kycMerkle.  The Merkle depth stays 20 (M13).  The USER rules section 9, (a) to (k);  question (b) is the ruling on the lowering rule.  Kickoff:  this plan, the docs/PLAN.md M15 row and docs/STATUS.md M15 `### kickoff`, on parent 8a09680.  Probe:  ~/Documents/glue-lang-M15-kickoff-probe/ (run.sh, run.out, census.py, census.json, gluecensus.py, rows.jq, model.py, REPORT.md).
 
 ## 1. Sources
 
