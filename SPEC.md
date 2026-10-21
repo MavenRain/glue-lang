@@ -1622,8 +1622,9 @@ prints `ok` or gives one refusal. It accepts k up to 16.
   file against the Perpetual Powers of Tau response (a USER item).
   The pinned SRS supports circuits with k <= 15. A circuit requiring
   k > 15 needs a larger SRS file and a new pin (halo2/ceremony.sha256).
-- O24. New in M10 (slice s4).  The Poseidon forms (ii) and (iii) of
-  docs/M8-PLAN.md D4 (M10 ruling (g):  an estimate, no code).  The
+- O24. Closed in M14 (slices s1 and s1-b).  New in M10 (slice s4).
+  The Poseidon forms (ii) and (iii) of docs/M8-PLAN.md D4 (M10 ruling
+  (g):  an estimate, no code).  The
   count (docs/STATUS.md M10 `### s4`, from the lowering rules of
   section 7.1 and the golden test/circuit/poseidon.circuit.json):  the
   S-box `sbox5 (s + rc)` of form (i) is 14 rows, because the lowering
@@ -1726,7 +1727,52 @@ prints `ok` or gives one refusal. It accepts k up to 16.
 
   At the M12 close O24 stays OPEN for form (ii) only (the degree-5 gate,
   M12 ruling (g)).  At the M13 close O24 stays OPEN for form (ii) only
-  (M13 ruling (j)).  O23 stays a USER item.
+  (M13 ruling (j)).  M14 (USER rulings (a) to (k) of docs/M14-PLAN.md
+  section 9, 2026-10-20;  ruling (b) is the IR ruling) builds form (ii)
+  as the variant (ii-b), per circuit:  the gate `pow5` with 2 polys,
+  `q5 * (b - (a + c5)^2)` (degree 3) and `q5 * (c - b^2 * (a + c5))`
+  (degree 4), the row kind `ROW_POW5` and the fixed columns q5 and c5
+  (docs/IR.md section 4).  Each S-box `sbox5 (s + rc)` is one pow5 row
+  (section 7.1 item 6), not 4 arith rows and 9 copies.  Only a circuit
+  with a pow5 row has the gate and the 2 columns:  `square`, `nonzero`,
+  `poly` and `range` do not change (their goldens, verifiers and
+  fixtures stay byte for byte).  Form (ii) is DONE (M14 s1 083b93d and
+  s1-b 00155c7).  The measured values of M14 (the M13 value in
+  parentheses;  the rows, k, copies and proof sizes are the MODEL of
+  docs/M14-PLAN.md section 6 and D5, exact;  the runtime size and the
+  gas from one `forge test --root contracts --gas-report`;  the RSS from
+  `/usr/bin/time -l`, the sandbox off, one sample each):
+
+  | Measured, M14 | poseidon | transfer | kyc | kycMerkle (depth 20) |
+  |---|---|---|---|---|
+  | rows, k, copies | 750, 10, 1138 (990, 10, 1698) | 1499, 11, 2276 (1979, 11, 3396) | 1502, 11, 2282 (1982, 11, 3402) | 16642, 15, 25342 (21922, 15, 37662) |
+  | max degree | 4 (3) | 4 (3) | 5 (5) | 5 (5) |
+  | proof (B) | 1344 (1536) | 1344 (1536) | 1824 (1760) | 1824 (1760) |
+  | verifier runtime (B) | 5643 (5801) | 5644 (5801) | 6610 (6222) | 6612 (6222) |
+  | deployment (gas) | 1271834 (1305851) | 1272062 (1305899) | 1480728 (1396899) | 1481220 (1396935) |
+  | `verifyProof` (gas) | 283534 (277741) | 284256 (278462) | 330104 (316319) | 330359 (316579) |
+  | keygen (`--dev-srs`), max RSS | not measured | not measured | not measured | 188 MB, 20.1 s (139 MB, 19.7 s) |
+  | prove, max RSS | not measured | not measured | not measured | 202 MB, 27.5 s (273 MB, 17.0 s) |
+
+  The `verifyProof` gas goes up in each of the 4 circuits:  poseidon
+  +5793, transfer +5794, kyc +13785, kycMerkle +13780.  The verifier
+  cost does not depend on the row count;  the pow5 gate adds 2 polys and
+  2 fixed columns, and poseidon and transfer get a third quotient chunk.
+  The deployment gas goes down for poseidon (-34017) and transfer
+  (-33837) and goes up for kyc (+83829) and kycMerkle (+84285).  The D8
+  MODEL of docs/M14-PLAN.md expects no growth of the kycMerkle keygen
+  and prove, because the extended domain does not change.  Measured:
+  the keygen RSS goes up by 49 MB (139 to 188 MB) and the prove time
+  goes up by 10.5 s (17.0 to 27.5 s);  these two values do not agree
+  with the MODEL.  The keygen time (19.7 to 20.1 s) and the prove RSS
+  (273 to 202 MB) agree with it.  All values are far below the 4 GB
+  limit.  k does not change in the 4 circuits:  `kycMerkle` stays at
+  k 15 (k 14 needs 16368 rows or fewer;  M14 is 274 rows over).  At the
+  M14 close O24 is CLOSED (M14 ruling (h)):  the forms (i) to (iv) are
+  DONE.  The hint-row form of the M14 probe (kycMerkle 14882 rows, k 14)
+  is a new input-row form;  it becomes a new open item only if the USER
+  asks for it.  A k 14 goal for `kycMerkle` is not in M14 (ruling (j)).
+  O23 stays a USER item.
 
 ## 10. Milestones
 
