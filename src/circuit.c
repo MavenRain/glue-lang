@@ -6,7 +6,8 @@
 #include "circuit.h"
 #include "front/fr.h"
 
-/* docs/IR.md section 4: advice a, b, c; fixed ql, qr, qo, qm, qc, qrange, t. */
+/* docs/IR.md section 4: advice a, b, c; fixed ql, qr, qo, qm, qc, qrange, t;
+   circuits with a pow5 row also have q5 and c5. */
 #define COL_A 0u
 #define COL_B 1u
 #define COL_C 2u
@@ -19,6 +20,9 @@
 #define FIX_QRANGE 5u
 #define FIX_T 6u
 #define FIXED_COUNT 7u
+#define FIX_Q5 7u
+#define FIX_C5 8u
+#define POW5_FIXED_COUNT 9u
 #define RANGE8_SIZE 256u
 #define BLINDING_ROWS 16u
 #define LOWER_DEPTH_LIMIT 2000u
@@ -42,7 +46,8 @@ typedef enum {
   ROW_INPUT, /* a = binder */
   ROW_CONST, /* qc = k, qo = 1: c = k */
   ROW_ARITH, /* a = x, b = y, c = ql*a + qr*b + qm*a*b + qc */
-  ROW_RANGE  /* a = x, qrange = 1 */
+  ROW_RANGE, /* a = x, qrange = 1 */
+  ROW_POW5   /* a = x, b = (a + c5)^2, c = b^2 * (a + c5) */
 } RowKind;
 
 /* M12 D5 (ruling (c) (r1)): an ARITH row holds the coefficients of the arith
@@ -56,6 +61,7 @@ typedef struct {
   Fr qr;
   Fr qm;
   Fr qc;
+  Fr c5;
   Cell x;
   Cell y;
   int range; /* qrange is 1 on this row */
@@ -144,7 +150,7 @@ static int add_row(Lower *l, const Row *row, Cell *out) {
     l->row_cap = cap;
   }
   l->rows[l->row_count] = *row;
-  out->col = row->kind == ROW_CONST || row->kind == ROW_ARITH ? COL_C : COL_A;
+  out->col = row->kind == ROW_CONST || row->kind == ROW_ARITH || row->kind == ROW_POW5 ? COL_C : COL_A;
   out->row = l->row_count++;
   return 1;
 }
@@ -158,7 +164,7 @@ static int is_zero(const Fr *x) {
 /* M12 D5: the operands of a row.  A cell that is not an operand has no copy
    and no place in the memo key. */
 static int uses_a(const Row *r) {
-  return r->kind == ROW_ARITH && !(is_zero(&r->ql) && is_zero(&r->qm));
+  return r->kind == ROW_POW5 || (r->kind == ROW_ARITH && !(is_zero(&r->ql) && is_zero(&r->qm)));
 }
 
 static int uses_b(const Row *r) {
@@ -170,7 +176,8 @@ static int uses_b(const Row *r) {
    order (no commutative normal form;  a cell that is not an operand is 0).
    The arith gate fixes the output cell of a row from the coefficients and the
    operand cells, so two rows with one key hold one value in each satisfying
-   witness.  INPUT and RANGE rows have no key. */
+    witness.  A POW5 key holds c5 and x;  its b cell is an intermediate
+    value, not an operand.  INPUT and RANGE rows have no key. */
 #define MEMO_KEY_WORDS (1u + 4u * FR_LIMBS + 4u)
 
 static void memo_key(const Row *r, uint32_t *key) {
@@ -191,6 +198,11 @@ static void memo_key(const Row *r, uint32_t *key) {
         cells[2] = r->y.col;
         cells[3] = r->y.row;
       }
+      break;
+    case ROW_POW5:
+      memcpy(&key[1], r->c5.w, sizeof r->c5.w);
+      cells[0] = r->x.col;
+      cells[1] = r->x.row;
       break;
     case ROW_INPUT:
     case ROW_RANGE:
@@ -219,7 +231,7 @@ static uint32_t memo_slot(const Lower *l, const uint32_t *key) {
   return i;
 }
 
-/* A CONST or an ARITH row through the memo: OUT gets the cell of the row with
+/* A CONST, ARITH or POW5 row through the memo: OUT gets the cell of the row with
    the key of ROW, else the cell of a new row. */
 static int memo_row(Lower *l, const Row *row, Cell *out) {
   uint32_t key[MEMO_KEY_WORDS];
@@ -299,6 +311,56 @@ static int lower_operand(Lower *l, const Value *v, Cell *out, Fr *s, Fr *c) {
   return lit ? field_literal(l, v, c) : lower_value(l, v, out);
 }
 
+/* M14 D3: an affine operand s + c5 with one binder cell s.  This match
+   compares Field syntax and values;  it adds no conversion rule. */
+static const Value *pow5_operand(const Value *v, Fr *c5) {
+  const Value *base, *lit;
+  int negative = 0;
+  fr_from_u64(c5, 0);
+  if (v == NULL) return NULL;
+  if (v->kind == VAL_VAR) return v;
+  if (v->kind != VAL_STUCK || v->argc != 2) return NULL;
+  if (v->op != OP_FIELD_ADD && v->op != OP_FIELD_SUB) return NULL;
+  base = v->args[0];
+  lit = v->args[1];
+  if (v->op == OP_FIELD_ADD && base->kind == VAL_OP) {
+    base = v->args[1];
+    lit = v->args[0];
+  } else negative = v->op == OP_FIELD_SUB;
+  if (base->kind != VAL_VAR || lit->kind != VAL_OP || lit->op != OP_FIELD_LIT || lit->name == NULL) return NULL;
+  if (!fr_parse(lit->name, strlen(lit->name), c5)) return NULL;
+  if (negative) {
+    Fr zero;
+    fr_from_u64(&zero, 0);
+    fr_sub(c5, &zero, c5);
+  }
+  return base;
+}
+
+/* Exactly the left-associated normal form x * x * x * x * x.  Each
+   occurrence must name the same binder and the same affine constant. */
+static const Value *pow5_pattern(const Value *v, Fr *c5) {
+  const Value *base = NULL;
+  uint32_t i;
+  for (i = 0; i < 5u; i++) {
+    const Value *term = v;
+    const Value *next;
+    Fr offset;
+    if (i < 4u) {
+      if (v == NULL || v->kind != VAL_STUCK || v->op != OP_FIELD_MUL || v->argc != 2) return NULL;
+      term = v->args[1];
+      v = v->args[0];
+    }
+    next = pow5_operand(term, &offset);
+    if (next == NULL) return NULL;
+    if (base == NULL) {
+      base = next;
+      *c5 = offset;
+    } else if (base->nat != next->nat || !fr_eq(c5, &offset)) return NULL;
+  }
+  return base;
+}
+
 /* V is a normal form of type Field. OUT gets the wire that holds its value. */
 static int lower_value(Lower *l, const Value *v, Cell *out) {
   Row row;
@@ -321,6 +383,15 @@ static int lower_value(Lower *l, const Value *v, Cell *out) {
       int arith = v->op == OP_FIELD_ADD || v->op == OP_FIELD_SUB || v->op == OP_FIELD_MUL;
       Fr sx, cx, sy, cy;
       if (!arith || v->argc != 2) return no_circuit_form(l, "a stuck operation that is not + - *");
+      const Value *base = v->op == OP_FIELD_MUL ? pow5_pattern(v, &row.c5) : NULL;
+      if (base != NULL) {
+        l->depth++;
+        int ok = lower_value(l, base, &row.x);
+        l->depth--;
+        if (!ok) return 0;
+        row.kind = ROW_POW5;
+        return memo_row(l, &row, out);
+      }
       l->depth++;
       int ok = lower_operand(l, v->args[0], &row.x, &sx, &cx) && lower_operand(l, v->args[1], &row.y, &sy, &cy);
       l->depth--;
@@ -521,13 +592,13 @@ static int fold_affine(Lower *l) {
   pin = use + n;
   took = pin + n;
   at = took + n;
-  /* The uses:  the ARITH operands (USE);  the range rows and the sides of the
-     checks (PIN;  the instance copies go to the binder rows). */
+  /* The uses:  the ARITH operands (USE);  the range and pow5 operands and the
+     sides of the checks (PIN;  the instance copies go to the binder rows). */
   for (i = 0; i < n; i++) {
     const Row *r = &l->rows[i];
     if (uses_a(r)) use[r->x.row]++;
     if (uses_b(r)) use[r->y.row]++;
-    if (r->kind == ROW_RANGE) pin[r->x.row]++;
+    if (r->kind == ROW_RANGE || r->kind == ROW_POW5) pin[r->x.row]++;
   }
   for (i = 0; i < l->check_count; i++) {
     pin[l->checks[i].lhs.row]++;
@@ -536,6 +607,7 @@ static int fold_affine(Lower *l) {
   for (i = 0; i < n; i++) {
     Row *r = &l->rows[i];
     Row next;
+    if (r->kind != ROW_ARITH) continue;
     int a = uses_a(r) && foldable(l, use, pin, r->x.row);
     int b = uses_b(r) && foldable(l, use, pin, r->y.row);
     for (t = 0; t < 3u; t++)
@@ -637,6 +709,8 @@ static void fixed_at(const Lower *l, uint32_t col, uint32_t row, Fr *out) {
     case FIX_QC: if (gate) *out = r->qc; return;
     case FIX_QRANGE: one = r != NULL && r->range; break;
     case FIX_T: one = 0; if (l->ranged && row < RANGE8_SIZE) fr_from_u64(out, row); return;
+    case FIX_Q5: one = r != NULL && r->kind == ROW_POW5; break;
+    case FIX_C5: if (r != NULL && r->kind == ROW_POW5) *out = r->c5; return;
     default: break;
   }
   fr_from_u64(out, one);
@@ -674,17 +748,23 @@ static int put_copies(Buf *b, const Lower *l) {
 }
 
 int circuit_document(Machine *m, const char *name, const char **text, size_t *len) {
+  const char pow5_gate[] =
+    ",{\"name\":\"pow5\",\"polys\":[{\"*\":[{\"f\":[7,0]},{\"+\":[{\"a\":[1,0]},{\"-\":{\"*\":[{\"+\":[{\"a\":[0,0]},{\"f\":[8,0]}]},{\"+\":[{\"a\":[0,0]},{\"f\":[8,0]}]}]}}]}]},{\"*\":[{\"f\":[7,0]},{\"+\":[{\"a\":[2,0]},{\"-\":{\"*\":[{\"*\":[{\"a\":[1,0]},{\"a\":[1,0]}]},{\"+\":[{\"a\":[0,0]},{\"f\":[8,0]}]}]}}]}]}]}";
   Buf b = {m->arena, m->diag, NULL, 0, 0};
   Lower l;
   const CircuitInfo *ci = find_circuit(m, name);
-  uint32_t col;
+  uint32_t col, i, fixed_count;
+  int pow5 = 0;
   if (ci == NULL || !lower_circuit(m, ci, &l)) return 0;
+  for (i = 0; i < l.row_count; i++)
+    if (l.rows[i].kind == ROW_POW5) pow5 = 1;
+  fixed_count = pow5 ? POW5_FIXED_COUNT : FIXED_COUNT;
   int ok = putf(&b, "{\"glue-lang-plonkish\":1,\n\"name\":\"%s\",\n\"field\":\"bn254-fr\",\n\"k\":%u,\n\"rows\":%u,\n", ci->name, pick_k(&l), l.row_count)
-           && putf(&b, "\"advice\":%u,\n\"fixed\":%u,\n\"instance\":1,\n", ADVICE_COUNT, FIXED_COUNT)
-           && putf(&b, "\"gates\":[{\"name\":\"arith\",\"polys\":[%s]}],\n", ARITH_POLY)
+           && putf(&b, "\"advice\":%u,\n\"fixed\":%u,\n\"instance\":1,\n", ADVICE_COUNT, fixed_count)
+           && putf(&b, "\"gates\":[{\"name\":\"arith\",\"polys\":[%s]}%s],\n", ARITH_POLY, pow5 ? pow5_gate : "")
            && putf(&b, "\"lookups\":[%s],\n", l.ranged ? RANGE8_LOOKUP : "")
            && put_copies(&b, &l) && putf(&b, "\"fixed_values\":[");
-  for (col = 0; ok && col < FIXED_COUNT; col++) {
+  for (col = 0; ok && col < fixed_count; col++) {
     uint32_t count = col == FIX_T && l.ranged && l.row_count < RANGE8_SIZE ? RANGE8_SIZE : l.row_count;
     uint32_t row;
     ok = putf(&b, "%s\n[", col == 0 ? "" : ",");
@@ -749,6 +829,16 @@ static void fill_advice(const Lower *l, const Fr *inputs, Fr *cells) {
       case ROW_INPUT: *cell_at(cells, rows, a) = inputs[r->binder]; break;
       case ROW_CONST: *cell_at(cells, rows, c) = r->qc; break;
       case ROW_RANGE: *cell_at(cells, rows, a) = *cell_at(cells, rows, r->x); break;
+      case ROW_POW5: {
+        Fr x, square, fourth;
+        *cell_at(cells, rows, a) = *cell_at(cells, rows, r->x);
+        fr_add(&x, cell_at(cells, rows, a), &r->c5);
+        fr_mul(&square, &x, &x);
+        *cell_at(cells, rows, bc) = square;
+        fr_mul(&fourth, &square, &square);
+        fr_mul(cell_at(cells, rows, c), &fourth, &x);
+        break;
+      }
       case ROW_ARITH: {
         /* M12 D5: c = ql*a + qr*b + qm*a*b + qc;  a cell that is not an
            operand holds 0. */

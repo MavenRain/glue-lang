@@ -1331,7 +1331,8 @@ from its term (section 2.2). docs/IR.md is the contract for the
 two documents. M1 uses the gate set of docs/IR.md section 4: advice a, b, c;
 fixed ql, qr, qo, qm, qc, qrange, t; instance column 0; gate `arith` with
 ql*a + qr*b + qm*a*b + qc - qo*c = 0; lookup `range8` with input qrange*a and
-table t.
+table t.  M14 adds the per-circuit pow5 gate and fixed columns q5 and c5
+when item 6 applies;  advice and instance columns keep their forms.
 
 The compiler evaluates each constraint side to a normal form, with the binders
 as variables. Then it lowers the normal form:
@@ -1343,7 +1344,8 @@ as variables. Then it lowers the normal form:
 2. A Field literal k that is a constraint side is a constant row: qc = k,
    qo = 1. The value is in c.  A Field literal that is an operand of `+`,
    `-` or `*` has no row (item 3).
-3. Each `+`, `-` or `*` is an arith row with qo = 1. The value is in c.
+3. Each `+`, `-` or `*`, except the pattern of item 6, is an arith row
+   with qo = 1.  The value is in c.
    The literal fold (M12 s1, O24 form (iv) T1):  each operand is
    S * cell + C, with S = 1, C = 0 for a wire and S = 0, C = k for a Field
    literal k.  `x + y` sets ql = Sx, qr = Sy, qc = Cx + Cy.  `x - y` sets
@@ -1359,6 +1361,18 @@ as variables. Then it lowers the normal form:
 5. `range8 e` on a binder sets qrange = 1 on the input row of the binder.
    On any other wire, it adds a range row: a copy of the wire in a, and
    qrange = 1.
+
+6. The S-box pattern (M14, O24 form (ii-b)) is the left-associated normal
+   form `x * x * x * x * x` of one affine operand x = s + c5, with s
+   a binder cell and c5 a Field literal (0 for x = s).  Addition in either
+   order and s minus a literal give this affine form.  Each occurrence
+   must have the same s and c5;  other multiplication chains stay arith.
+   One ROW_POW5 row has q5 = 1, a copied from s, b = (a + c5)^2 and
+   c = b^2 * (a + c5).  The two gate polynomials of docs/IR.md section 4
+   constrain b and c;  the arith selectors and qrange are 0 on this row.
+   b has no operand copy, and the result wire is c.  The memo key holds
+   the row kind, c5 and the cell of s.  The affine fold does not fold
+   into a pow5 row.  This is a lowering rule, with no conv rule change.
 
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an
@@ -1389,8 +1403,8 @@ consumer, with the form of the row in place of its cell, still fits the
 gate:  at most two cells, degree 2 at most, and no square of one cell
 when two cells occur.  A consumer takes both of its operand rows when
 the form fits, else the row of x, else the row of y.  The row goes when
-each consumer takes it.  A range row (item 5) and each side of a check
-(item 4) also use a row, thus such a row stays.  The compiler then gives
+each consumer takes it.  A range row (item 5), a pow5 operand (item 6)
+and each side of a check (item 4) also use a row, thus such a row stays.  The compiler then gives
 new numbers to the rows after the input rows, and to the cells of the
 copies and the checks.  Thus `m0 * t0 + m1 * t1` with m0 and m1 Field
 literals is one row (ql = m0, qr = m1), `(s + rc) * (s + rc)` is one row
@@ -1407,7 +1421,7 @@ CIRCUIT_LOWER. A closed `inv k` computes to a literal before the lowering,
 thus `x * inv 1 == x` lowers (examples/nonzero.glue, circuit invOne).
 
 The copies are in this order: instance(0, i) to advice(a, i) for each public
-binder i; for each row, a then b (each operand cell only, item 3); then the
+binder i; for each row, a then b (each operand cell only, items 3 and 6); then the
 `==` copies.
 
 The t column holds 0 to 255 when the circuit uses `range8`. Otherwise t is

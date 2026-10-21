@@ -201,11 +201,43 @@ mkdir -p "$tmp/cwd"
 
 # Each line of test/circuit/refuse.txt is `STATUS CODE COMMAND PROG NAME [ARGS]`.
 # The command must exit STATUS, print `langc: CODE: ...` and write no file.
+# For satcheck, PROG names a golden, NAME is b or c, and ARGS is a row;
+# the runner adds 1 to that advice cell in a scratch witness.
 refused=0
 while read -r want_status code command prog name args; do
   refused=$((refused + 1))
   status=0
-  build/langc "$command" "examples/$prog.glue" "$name" $args -o "$tmp/no.json" 2>"$tmp/err" >/dev/null || status=$?
+  if [ "$command" = satcheck ]; then
+    case "$name" in
+      b) column=1 ;;
+      c) column=2 ;;
+      *) echo "FAIL refusal table: unknown advice column $name"; fail=$((fail + 1)); continue ;;
+    esac
+    awk -v column="$column" -v row="$args" '
+      function increment(value, result, carry, i, digit) {
+        result = ""; carry = 1
+        for (i = length(value); i > 0; i--) {
+          digit = substr(value, i, 1) + carry
+          carry = digit > 9
+          result = (digit % 10) result
+        }
+        return (carry ? "1" : "") result
+      }
+      /^\["/ && advice++ == column {
+        n = split($0, cells, ","); at = row + 1
+        if (!match(cells[at], /"[0-9]+"/)) exit 2
+        value = substr(cells[at], RSTART + 1, RLENGTH - 2)
+        sub(/"[0-9]+"/, "\"" increment(value) "\"", cells[at])
+        for (i = 1; i <= n; i++) printf "%s%s", (i == 1 ? "" : ","), cells[i]
+        printf "\n"
+        next
+      }
+      { print }
+    ' "test/circuit/$prog.witness.json" >"$tmp/refuse.witness.json"
+    build/langc satcheck "test/circuit/$prog.circuit.json" "$tmp/refuse.witness.json" 2>"$tmp/err" >/dev/null || status=$?
+  else
+    build/langc "$command" "examples/$prog.glue" "$name" $args -o "$tmp/no.json" 2>"$tmp/err" >/dev/null || status=$?
+  fi
   case "$status:$(head -n 1 "$tmp/err")" in
     "$want_status:langc: $code: "*) ;;
     *) echo "FAIL $command $name $args: want exit $want_status and $code, got exit $status"; fail=$((fail + 1)) ;;

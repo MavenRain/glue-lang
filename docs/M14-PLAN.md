@@ -2,7 +2,7 @@
 
 ## Status
 
-DRAFT 2026-10-20 (the M14 kickoff, claude4).  Topic (USER, RULED 2026-10-20, the kickoff question):  O24 form (ii), the degree-5 S-box gate ("pow5").  It is a new IR form:  the USER rules section 9, (a) to (k), before s1, and question (b) is the IR ruling.  At the USER request, this file, the docs/PLAN.md M14 row and the docs/STATUS.md M14 `### kickoff` section go in a separate kickoff commit before the section 9 rulings.  Probe:  ~/Documents/glue-lang-M14-kickoff-probe/ (run.sh, the log run.out, rows.jq, model.py, REPORT.md).
+IN PROGRESS 2026-10-20.  The USER accepted all recommendations in section 9, (a) to (k), on 2026-10-20;  this includes the explicit IR ruling in (b).  The selected variant is (ii-b), emitted per circuit.  s1 is complete;  s1-b gates and s2 close remain.  The kickoff commit is 122b00f, on parent 5bf112c.  Probe:  ~/Documents/glue-lang-M14-kickoff-probe/ (run.sh, run.out, rows.jq, model.py, REPORT.md).
 
 ## 1. Sources
 
@@ -54,7 +54,7 @@ None.  A bad pow5 row fails the gate check of the satcheck (the current code;  s
 
 ## 8. Guest tests per slice
 
-- s1:  the goldens of the 4 circuits (same-ir and the circuit check);  test/circuit/refuse.txt, 2 new rows (question (f)):  a pow5 output c + 1 and, for (ii-b), a bad b (each fails the gate check).  expect.txt does not change (the values stay).
+- s1:  the goldens of the 4 circuits (same-ir and the circuit check);  test/circuit/refuse.txt, 2 new rows (question (f)), with the existing test/gate.sh route extended (USER approved 2026-10-20):  a pow5 output c + 1 and, for (ii-b), a bad b (each fails the gate check).  expect.txt does not change (the values stay).
 - s1 mutants (on a scratch copy of src/circuit.c, restored after each;  `make -B` for each rebuild;  each must give FAIL lines in `make -B check`, count them before KILLED):
   - m1:  c5 not written (c5 = 0 on each pow5 row;  expected:  killed by the goldens).
   - m2:  c5 removed from the memo key (two S-boxes with a different rc share one row;  expected:  killed by the goldens).
@@ -64,20 +64,20 @@ None.  A bad pow5 row fails the gate check of the satcheck (the current code;  s
 
 ## 9. Questions for the USER
 
-- (a) The variant is (ii-b), the 2-poly pow5 gate (D1).  Recommendation:  (ii-b).  Reasons:  the row and copy gain of (ii-a) (kycMerkle 16,642 rows, 25,342 copies);  the max degree stays 5, so kyc and kycMerkle keep their extended domain and quotient count, and poseidon and transfer go only to degree 4;  no new advice column.  (ii-a):  one poly, degree 6 in the 4 circuits, extended_k - k 3, keygen and prove can about double (MODEL).  (ii-c):  degree 6 and 1,760 rows more than (ii-b).
-- (b) The IR ruling:  M14 adds the IR form of D2 (the gate pow5, `ROW_POW5`, the fixed columns q5 and c5).  Recommendation:  yes.  Reasons:  O24 form (ii) is a new IR form (M9 ruling (h), the M13 COMMON rule);  the gate arith, the lookup and the columns stay;  the halo2 back end and the verifier generator are generic (no code change).
-- (c) The emission is per circuit (D4).  Recommendation:  yes.  Reasons:  4 verifiers change, not 8;  square, nonzero, poly and range stay byte for byte.
-- (d) The 4 new verifiers come from the current generator (D6):  only the VK constants, the quotient and permutation code and the gate expression change.  Recommendation:  yes.  Reasons:  no generator code change;  s1-b STOPs if a diff has other lines or a Forge test fails.
-- (e) The lowering pattern (D3):  only `x * x * x * x * x` of one affine operand cell lowers to pow5;  the memo key holds c5 and the cell;  T2 does not fold into pow5.  Recommendation:  yes.  Reasons:  the pattern is a lowering rule, not a conv rule (no proof irrelevance);  the other mul chains (the bit checks, the selects) stay arith.
-- (f) 2 new refuse rows (a bad pow5 output;  a bad b).  Recommendation:  yes.  Reasons:  no current row refuses a bad S-box cell;  circuit refusals 24 to 26.
-- (g) The doc sites (D7):  docs/IR.md section 4, SPEC.md 7.1, SPEC.md 9 O24.  Recommendation:  yes.
-- (h) At the M14 close O24 is CLOSED:  the forms (i) to (iv) are DONE.  Recommendation:  yes.  Reasons:  each form of docs/M8-PLAN.md D4 and of M11 is built;  the hint-row note of REPORT (c) (kycMerkle 14,882 rows, k 14) is a new input-row form and goes to a new open item only if the USER asks for it.
-- (i) The fixtures and the README:  `make e2e` writes all 8 fixtures;  stage the 4 fixtures of the changed circuits and `git restore` the other 4;  the README rows of the 4 circuits come from one gas report.  Recommendation:  yes.
-- (j) The open items:  O23 (the USER target fields, the PPoT check of the ceremony file) stays a USER item;  a k 14 goal for kycMerkle is not in M14 (no variant of form (ii) gets it).  Recommendation:  yes.
-- (k) The slices of section 10.  Recommendation:  as listed.
+- (a) RULED 2026-10-20:  accepted as recommended.  The variant is (ii-b), the 2-poly pow5 gate (D1).  Recommendation:  (ii-b).  Reasons:  the row and copy gain of (ii-a) (kycMerkle 16,642 rows, 25,342 copies);  the max degree stays 5, so kyc and kycMerkle keep their extended domain and quotient count, and poseidon and transfer go only to degree 4;  no new advice column.  (ii-a):  one poly, degree 6 in the 4 circuits, extended_k - k 3, keygen and prove can about double (MODEL).  (ii-c):  degree 6 and 1,760 rows more than (ii-b).
+- (b) RULED 2026-10-20:  accepted as recommended.  The IR ruling:  M14 adds the IR form of D2 (the gate pow5, `ROW_POW5`, the fixed columns q5 and c5).  Recommendation:  yes.  Reasons:  O24 form (ii) is a new IR form (M9 ruling (h), the M13 COMMON rule);  the gate arith, the lookup and the columns stay;  the halo2 back end and the verifier generator are generic (no code change).
+- (c) RULED 2026-10-20:  accepted as recommended.  The emission is per circuit (D4).  Recommendation:  yes.  Reasons:  4 verifiers change, not 8;  square, nonzero, poly and range stay byte for byte.
+- (d) RULED 2026-10-20:  accepted as recommended.  The 4 new verifiers come from the current generator (D6):  only the VK constants, the quotient and permutation code and the gate expression change.  Recommendation:  yes.  Reasons:  no generator code change;  s1-b STOPs if a diff has other lines or a Forge test fails.
+- (e) RULED 2026-10-20:  accepted as recommended.  The lowering pattern (D3):  only `x * x * x * x * x` of one affine operand cell lowers to pow5;  the memo key holds c5 and the cell;  T2 does not fold into pow5.  Recommendation:  yes.  Reasons:  the pattern is a lowering rule, not a conv rule (no proof irrelevance);  the other mul chains (the bit checks, the selects) stay arith.
+- (f) RULED 2026-10-20:  accepted as recommended.  2 new refuse rows (a bad pow5 output;  a bad b).  Recommendation:  yes.  Reasons:  no current row refuses a bad S-box cell;  circuit refusals 24 to 26.
+- (g) RULED 2026-10-20:  accepted as recommended.  The doc sites (D7):  docs/IR.md section 4, SPEC.md 7.1, SPEC.md 9 O24.  Recommendation:  yes.
+- (h) RULED 2026-10-20:  accepted as recommended.  At the M14 close O24 is CLOSED:  the forms (i) to (iv) are DONE.  Recommendation:  yes.  Reasons:  each form of docs/M8-PLAN.md D4 and of M11 is built;  the hint-row note of REPORT (c) (kycMerkle 14,882 rows, k 14) is a new input-row form and goes to a new open item only if the USER asks for it.
+- (i) RULED 2026-10-20:  accepted as recommended.  The fixtures and the README:  `make e2e` writes all 8 fixtures;  stage the 4 fixtures of the changed circuits and `git restore` the other 4;  the README rows of the 4 circuits come from one gas report.  Recommendation:  yes.
+- (j) RULED 2026-10-20:  accepted as recommended.  The open items:  O23 (the USER target fields, the PPoT check of the ceremony file) stays a USER item;  a k 14 goal for kycMerkle is not in M14 (no variant of form (ii) gets it).  Recommendation:  yes.
+- (k) RULED 2026-10-20:  accepted as recommended.  The slices of section 10.  Recommendation:  as listed.
 
 ## 10. Slices
 
-- s1 (build):  src/circuit.c (D2 to D4), docs/IR.md section 4, SPEC.md 7.1;  the goldens of the 4 circuits;  refuse.txt (if (f));  the mutants m1 to m4.  Gate delta:  `make -B check` rc 0;  examples 69, circuits 9, same-ir 19 (no change);  circuit refusals 24 to 26 (if (f));  the other counts as the M13 close.  The rows, k and copies of the 4 goldens = section 6 exactly, else STOP.  The index against HEAD names only src/circuit.c (and src/circuit.h if its line-5 comment changes), the 8 goldens of the 4 circuits, refuse.txt, docs/IR.md, SPEC.md and the 3 M14 docs.
+- s1 (build):  src/circuit.c (D2 to D4), docs/IR.md section 4, SPEC.md 7.1;  the goldens of the 4 circuits;  refuse.txt (if (f));  the mutants m1 to m4.  Gate delta:  `make -B check` rc 0;  examples 69, circuits 9, same-ir 19 (no change);  circuit refusals 24 to 26 (if (f));  the other counts as the M13 close.  The rows, k and copies of the 4 goldens = section 6 exactly, else STOP.  The USER approved an extension of the existing test/gate.sh refusal route on 2026-10-20;  it adds no new harness.  The index against HEAD names only test/gate.sh, src/circuit.c (and src/circuit.h if its line-5 comment changes), the 8 goldens of the 4 circuits, refuse.txt, docs/IR.md, SPEC.md and the 3 M14 docs.
 - s1-b (gates):  `make -B check`, `make check-clang`, `forge build --root contracts --sizes`, `make e2e` LAST (sandbox off);  the IR check:  after e2e only the 4 verifiers and the 4 fixtures of section 6 change, and the proof sizes = D5;  `git restore` the other 4 fixtures;  `forge test --root contracts` 100 passed;  `make e2e-ceremony` 9 rows;  `make rehearsal`;  `make deployment-test`;  the RSS of keygen and prove (sandbox off);  the contracts/README.md rows of the 4 circuits.  Gate delta:  forge test 100;  e2e 9 rows;  e2e-ceremony 9 rows.
 - s2 (close):  SPEC.md 9 O24 (form (ii) DONE, the measured table, the O24 status of (h));  docs/PLAN.md M14 DONE;  docs/STATUS.md `### s2: close`.  Gate delta:  `make -B check` rc 0 (the control), no count change.

@@ -5772,3 +5772,27 @@ is in its section).
 - Questions:  docs/M14-PLAN.md section 9, (a) to (k) (the variant, the IR ruling, the emission, the verifiers, the lowering pattern, the refuse rows, the doc sites, the O24 status, the fixtures and the README, the open items, the slices).
 - Gates:  none ran;  the M13 close counts stay (examples 69, circuit refusals 24, forge test 100, e2e 9 rows).
 - Next:  the USER rules section 9, then ~/Documents/glue-lang-M14-s1-PROMPT.md.
+
+
+### s1 (2026-10-20)
+
+- Complete: the USER accepted section 9(a) to (k), including IR ruling
+  (b);  variant (ii-b), emitted per circuit.  The USER also approved the
+  existing test/gate.sh extension;  the plan records that file-list change.
+- Built src/circuit.c and regenerated four circuit/witness pairs.
+  Model rows/k/copies: poseidon 750/10/1,138;  transfer 1,499/11/2,276;
+  kyc 1,502/11/2,282;  kycMerkle 16,642/15/25,342.  All matched.
+  The four other circuit/witness pairs match HEAD byte for byte.
+- Smoke check, keygen with --dev-srs, prove and verify all exited 0 for
+  poseidon and kycMerkle;  proofs matched 1,344 B and 1,824 B.
+- Added two SAT_GATE refusals for c + 1 and b + 1 on a pow5 row, through
+  the existing runner and guest table.  No new harness was added.
+- make -B check exited 0;  circuit refusals 26, satcheck refusals 6,
+  examples 69, circuits 9, same-ir 19, all other M13 counts unchanged.
+- Final mutants, each with 26 circuit refusals: m1 KILLED (4 FAIL lines);  m2 KILLED (4 FAIL lines);  m3 KILLED (4 FAIL lines);  m4 KILLED (25 FAIL lines).
+  The good source was restored and make -B exited 0.
+- Evidence: ~/Documents/glue-lang-M14-s1-probe/REPORT.md, model.json,
+  smoke.json, refusals.json, check.log, run.sh, run.out and mutants.tsv.
+  No Halo2 source, verifier, fixture, commit or push changed.
+- Next: ~/Documents/glue-lang-M14-s1-b-PROMPT.md for the remaining gates;
+  M14 is still IN PROGRESS, with O24 close assigned to s2.

@@ -75,16 +75,30 @@ has one array for each instance column; column 0 has `public` values. The
 back end fills the other rows with zero. The names in the two documents
 must be equal.
 
-## 4. The M1 gate set
+## 4. The gate set
 
-The M1 compiler emits one gate and one lookup. The back end does not
-depend on this: it builds any document that section 2 allows.
+The compiler emits the gate arith and emits the lookup range8 when a
+circuit uses it.  M14 adds the gate pow5 when a circuit has a pow5 row;
+the back end builds any document that section 2 allows.
 
-Advice columns `a`, `b`, `c` (0, 1, 2). Fixed columns `ql`, `qr`, `qo`,
-`qm`, `qc`, `qrange`, `t` (0 to 6).
+Advice columns are a, b and c (0, 1 and 2).  The instance column is 0.
+Fixed columns are ql, qr, qo, qm, qc, qrange and t (0 to 6).
+A circuit with a pow5 row also has q5 and c5 (7 and 8).
 
     arith:  ql*a + qr*b + qm*a*b + qc - qo*c = 0
     range8: (qrange * a) in t,  t = 0, 1, ..., 255
+    pow5:   q5 * (b - (a + c5)^2) = 0
+            q5 * (c - b^2 * (a + c5)) = 0
+
+The lowering row kind ROW_POW5 has a = s, c5 = the affine constant,
+b = (s + c5)^2 and c = (s + c5)^5.  q5 is 1 on this row;
+ql, qr, qo, qm, qc and qrange are 0.  A copy ties a to s.
+The b cell is an intermediate witness value and has no operand copy.
+The result wire is c.  q5 and c5 are 0 on other rows.
+
+The two pow5 polynomials have degree 3 and 4.  The arith gate and the
+range8 lookup keep their forms;  no advice column or rotation is added.
+Circuits without a pow5 row keep 7 fixed columns and omit the pow5 gate.
 
 ## 5. Solidity interface
 
