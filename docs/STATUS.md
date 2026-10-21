@@ -5902,3 +5902,15 @@ is in its section).
 - Questions:  docs/M16-PLAN.md section 9, (a) to (k);  (a) is the depth (recommendation 22).
 - Gates:  none ran;  the M15 close counts stay (native circuit 11, examples 70, circuit refusals 27, satcheck 6, circuits 9, same-ir 19, forge test 100, e2e 9 rows).
 - Next:  the USER commits the kickoff and rules section 9;  then s1 (~/Documents/glue-lang-M16-s1-PROMPT.md).
+
+### s1 (2026-10-21)
+
+- Start condition MET:  HEAD 0e7efcb `M16 kickoff: plan depth-22 kycMerkle at k 14` (USER), its parent 81af21c, git status empty.  RULED 2026-10-21:  the USER accepts the recommendations (a) to (k) of docs/M16-PLAN.md section 9 (depth 22;  the name stays kycMerkle;  b20 = 0, b21 = 1, s20 = 231, s21 = 242;  Verifiers.t.sol in s1-b).
+- The generator (D4):  ~/Documents/glue-lang-M16-s1-probe/run.sh, a port of the M13 generator, outside the repository.  The level-3 templates end at `hint l4` and at `b4 * b4 == b4`;  the root reference goes from level 19 to level 21.  The control:  the output at depth 20 equals examples/kycMerkle.glue of HEAD byte for byte (no header difference);  the same commands give the 2 goldens and the rows expect 9, refuse 20 and refuse 26 of HEAD again.
+- examples/kycMerkle.glue at depth 22:  228 lines, 962,418 B (was 881,808 B);  line 228 has 940,525 chars (was 859,915, +9.4 %).  The header (lines 1, 2, 4, 9, 10, 14 and 21) names depth 22, b0 to b21, s0 to s21, the hash of level 21 and the M16 generator.  The private binders go from 43 to 47.
+- Measured:  16,236 rows, k 14, 25,728 copies (= the MODEL of D1;  132 rows under the limit 16,368).  The advice, fixed and instance columns, the gates and the lookup are the same as at HEAD (D2).  langc check 15.5 s, circuit 15.0 s, witness 15.4 s, satcheck 2.0 s.  The new root is 18921323889410538904106118131460191082618624758723655813111215981830139585700.
+- Installed:  the 2 goldens (circuit 4,438,959 B, witness 3,122,072 B), expect.txt row 9, refuse.txt rows 20 (root + 1) and 26 (b7 = 2), SPEC.md section 4 (one M16 sentence).  By hand, row 20 gives WITNESS_FAIL at the root constraint (228:940465) and row 26 at the bit constraint of b7 (228:647350).
+- Mutants (section 10):  n1 (the generator stops at depth 21) KILLED (4 FAIL lines);  n2 (the children of level 21 swap) KILLED (2);  n3 (the bit constraint of level 21 goes) KILLED (2).  After each mutant the good file came back (SHA-256 = good).
+- make -B check exit 0 (117 s):  native circuit 11, path 46, face 35, HIT 44;  examples 70, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 27, satcheck refusals 6;  node regressions 6, printer 2.  make check-clang exit 0.  Gate delta:  none.
+- Evidence:  ~/Documents/glue-lang-M16-s1-probe/ (REPORT.md, run.sh, run.m13.sh, gates.sh, patch.py, run.out, gates.out, mutants.tsv, counts.txt, good.glue and its SHA-256).  No forge, e2e, verifier, fixture or Verifiers.t.sol change (s1-b, ruling (g)).
+- Next:  ~/Documents/glue-lang-M16-s1-b-PROMPT.md (the gates).

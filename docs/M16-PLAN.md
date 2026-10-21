@@ -1,6 +1,6 @@
 # M16 plan:  a deeper Merkle tree for kycMerkle at k 14
 
-Status:  DRAFT 2026-10-21 (the M16 kickoff, claude4).  The USER rules section 9, (a) to (k).
+Status:  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  s1 staged 2026-10-21 (claude4):  depth 22, 16,236 rows, k 14, 25,728 copies (= D1).
 
 Topic (USER pick, 2026-10-21):  a deeper Merkle tree for the circuit `kycMerkle` at k 14 (the max depth 22, the MODEL of docs/M15-PLAN.md D5).  At the M15 close (81af21c) `kycMerkle` has depth 20 at k 14 with 14,882 rows.
 
@@ -77,6 +77,8 @@ The depth table (MODEL;  the limit at k 14 is 16,368 rows):
 - The ported generator may not give the HEAD text (the D4 control).  Record intended header changes separately;  a difference in line 228 is a STOP.  The depth-20 control must pass before generating depth 22 or installing files.
 
 ## 9. Questions for the USER
+
+RULED 2026-10-21:  the USER accepts the recommendation of each question, (a) to (k).  Thus the depth is 22, the name stays `kycMerkle`, the generator stays outside the repository, b20 = 0, b21 = 1, s20 = 231 and s21 = 242, and Verifiers.t.sol changes in s1-b.
 
 - (a) The depth (D1).  Recommendation:  22.  Reasons:  the USER pick names the max depth 22;  4,194,304 leaves;  k 14 stays;  the model was exact at M13 and M15;  s1 measures before it writes a golden.  Depth 21:  809 rows of margin and 2,097,152 leaves.  Depth 23 or more:  k 15 (the pinned SRS covers it, but the k 14 gain of M15 goes).
 - (b) The name stays `kycMerkle`, and the depth-20 circuit goes (no `kycMerkle20` next to it).  Recommendation:  yes.  Reasons:  KycGate, the deploy scripts, the rehearsal and the README name kycMerkle;  e2e stays 9 rows, with 8 verifiers and 8 fixtures (M13 ruling (d)).
