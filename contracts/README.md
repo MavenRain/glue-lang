@@ -55,7 +55,7 @@ layout emitted by the CLI and rejects redirected argument offsets.
 | poseidon | 5,643 | 1,271,822 | 283,534 |
 | transfer | 5,644 | 1,272,038 | 284,256 |
 | kyc | 6,609 | 1,480,548 | 330,104 |
-| kycMerkle | 6,614 | 1,481,688 | 330,294 |
+| kycMerkle | 6,612 | 1,481,232 | 330,294 |
 
 The EIP-170 limit is 24,576 bytes. The gas is from `forge test
 --gas-report`. `forge build --sizes` shows one
