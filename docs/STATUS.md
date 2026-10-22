@@ -5996,3 +5996,18 @@ is in its section).
 - The measured facts (s1-b, one sample each):  the `verifyProof` gas goes up by 65 (330,294 to 330,359 = the D8 MODEL, the M14 value at k 15);  the deployment gas goes up by 432 and the runtime size by 2 B.  The keygen RSS goes up by 47 % (127 to 187 MB) and the keygen time by 134 % (5.53 s to 12.92 s);  the prove RSS goes up by 59 % (150 to 239 MB) and the prove time by 95 % (8.39 s to 16.33 s).  Against the D8 MODEL (M14 at k 15:  188 MB, 20.1 s;  202 MB, 27.5 s):  the keygen RSS agrees, the prove RSS is about 18 % above it, both times are below it.  The unrounded values of the rss logs (~/Documents/glue-lang-M17-s1-b-probe/ and ~/Documents/glue-lang-M16-s1-b-probe/) give the same percentages as `### s1-b`.  The machine load is not controlled;  all values are far below the 4 GB limit.
 - Open after M17:  M17 adds no open item.  O23 stays open (the deployment target, the target fields with the literal word VALUE, the PPoT check of the ceremony file:  USER items).  The max Merkle depth of kycMerkle at k 15 is 46 (32,484 rows, MODEL, docs/M17-PLAN.md section 6;  268 rows below the limit 32,752);  depth 47 needs k 16 and a new ceremony file (a USER fact).  The other open items of SPEC.md section 9 do not change.
 - Next:  the USER commits s2;  then the USER picks M18 (the O23 USER fields and the PPoT check, a deeper tree at k 15 (depth 24 to 46, docs/M17-PLAN.md section 6), or another topic).
+
+## M18
+
+### kickoff (2026-10-22)
+
+- Start condition MET:  HEAD d1d2f22 `M17 s2: close M17 (depth 23 for kycMerkle at k 15)` (USER), its parent 1e8a0da, tree 8f64a399, git status empty.
+- Topic (USER pick, 2026-10-22):  first "Are we done adding features?  If so, let's stop here" (the answer:  the design scope of M0 to M10 is done;  M11 to M17 changed the cost and the scale;  O3 and O23 stay open);  then "Let's do O23 and O3 and then conclude".  M18 is the last milestone.
+- Plan:  docs/M18-PLAN.md, DRAFT 2026-10-22.
+- Probes (~/Documents/glue-lang-M18-kickoff-probe/o3/ and o23/, read only;  no src/ change, no build in the repository):  REPORT.md, run.sh and run.out each;  o3/ also probe.sh, probe.out and the probe circuits.
+- The answer (O3):  CIRCUIT_UNCONSTRAINED (src/circuit.c lines 759 to 762) counts a binder as constrained when the lowering reaches it.  The forms `w == w`, `w - w == 0`, `w * 0 == 0`, `w + 1 == w + 1` and the hint form `v == v` each pass check, circuit, witness and satcheck (exit 0), and the proof does not constrain w or v.  The native test check_reflexive_copy accepts `x == x`.
+- The answer (O23):  no repository file holds a USER fact (the runbook placeholders, contracts/README.md lines 152 to 156);  the KycGate values issuer, scope, min and anchor are USER values too.  The ceremony file is the Axiom copy of the PPoT challenge 0085 (4,194,564 B);  its only checks are the SHA-256 pin and k.
+- The decisions (MODEL):  D1 to D9;  s1 O3, s2 the PPoT check, s3 the deployment (the USER broadcasts), s4 the close.
+- Questions:  docs/M18-PLAN.md section 9, (a) to (l).
+- Gate (the control, the log ~/Documents/glue-lang-M18-kickoff-probe/check.log):  `make -B check` exit 0, 243 s (M17 s2:  161 s):  native circuit 11, path 46, face 35, HIT 44;  examples 70, parse refusals 18, check refusals 157, evals 290, json 42 builds, build refusals 8, circuits 9, same-ir 19, circuit refusals 27, satcheck refusals 6;  node regressions 6, printer 2.  These are the M17 close counts (the count lines of check.log = the count lines of the M17 s2 control log).  No forge or e2e ran (docs only).
+- Next:  the USER commits the kickoff and rules section 9;  then s1 (~/Documents/glue-lang-M18-s1-PROMPT.md).
