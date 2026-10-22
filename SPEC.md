@@ -1237,7 +1237,8 @@ the host form of each former.
   docs/M9-PLAN.md: `cm = pos2 attr sk`, `nf = pos2 sk scope`, `d + min
   == attr` with `range8 d`; 7290 rows, k 13) and the Merkle credential
   circuit `kycMerkle` (D2: a public issuer root, depth 20; k 15. M16
-  s1 (docs/M16-PLAN.md D1): depth 22, 16236 rows, k 14); the
+  s1 (docs/M16-PLAN.md D1): depth 22, 16236 rows, k 14. M17 s1
+  (docs/M17-PLAN.md D1): depth 23, 16913 rows, k 15); the
   specification HIT `KycSpec` (D3) with its fold `KycSat` into `Type 0`
   and the laws `kycLaw`, `discLaw` and `kycLawH` (examples/kycSpec.lang);
   the law for all inputs `transferSatH` (D4, O21). The halo2 back end

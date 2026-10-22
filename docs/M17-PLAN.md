@@ -1,6 +1,6 @@
 # M17 plan:  depth 23 for kycMerkle at k 15
 
-Status:  DRAFT 2026-10-21 (the M17 kickoff, claude4).  The USER rules section 9, (a) to (k), before s1.
+Status:  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  s1 staged 2026-10-21 (claude4):  depth 23, 16,913 rows, k 15, 26,801 copies (= D1).
 
 Topic (USER pick, 2026-10-21, the answer to a question of the kickoff session):  depth 23 for the circuit `kycMerkle` at k 15 (16,913 rows, the MODEL of docs/M16-PLAN.md D5).  At the M16 close (1210e0a) `kycMerkle` has depth 22 at k 14 with 16,236 rows.  M16 ruling (k) says "a depth above 22 needs k 15 and a new USER request";  this pick is that request.
 
@@ -96,6 +96,8 @@ The depth table (MODEL;  the limit at k 15 is 32,752 rows):
 - (i) The IR check of s1-b (D5).  Recommendation:  the phase1.sh scope check accepts the VK lines and exactly the 5 domain lines, and compares each new domain line with the line of e23bc92;  any other line is a STOP.  Reasons:  M16 had only VK lines (k stayed);  M15 had the 5 domain lines (k 15 to 14);  the comparison with e23bc92 tests the k 15 domain without a new harness.
 - (j) The cost (D8).  Recommendation:  s1-b measures the keygen and prove RSS and time of kycMerkle (one sample each, the sandbox off), and one gas report gives the README row;  s2 puts them in `Measured, M17` with the M16 values in parentheses.  Reasons:  the 4 GB rule;  the form of M15 and M16.
 - (k) The docs sites and the open items.  Recommendation:  as D7;  the M16 texts stay as records;  no new open item;  O23 stays a USER item;  a depth above 46 or a kycMerkle above 32,752 rows needs k 16 and a new ceremony file (a USER fact).  Reasons:  M17 adds no IR form and no rule.
+
+RULED 2026-10-21:  the USER accepts the recommendation of each question, (a) to (k).  Thus the depth is 23, kycMerkle has k 15, the name stays `kycMerkle`, the generator stays outside the repository, b22 = 1 and s22 = 253, and Verifiers.t.sol changes in s1-b.
 
 ## 10. Slices
 
