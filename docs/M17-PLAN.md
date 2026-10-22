@@ -1,6 +1,6 @@
 # M17 plan:  depth 23 for kycMerkle at k 15
 
-Status:  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  s1 staged 2026-10-21 (claude4):  depth 23, 16,913 rows, k 15, 26,801 copies (= D1).
+Status:  DONE 2026-10-22 (s1 6c333a7, s1-b 1e8a0da, s2 close).  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  Depth 23, 16,913 rows, k 15, 26,801 copies (= D1);  proof 1,824 B (= D5);  `verifyProof` 330,359 gas (= D8).
 
 Topic (USER pick, 2026-10-21, the answer to a question of the kickoff session):  depth 23 for the circuit `kycMerkle` at k 15 (16,913 rows, the MODEL of docs/M16-PLAN.md D5).  At the M16 close (1210e0a) `kycMerkle` has depth 22 at k 14 with 16,236 rows.  M16 ruling (k) says "a depth above 22 needs k 15 and a new USER request";  this pick is that request.
 

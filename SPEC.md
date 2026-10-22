@@ -1457,6 +1457,49 @@ and 28 % (prove, 6.56 s to 8.39 s), more than the MODEL.  One sample
 each;  the machine load is not controlled.  All values are far below
 the 4 GB limit.
 
+The measured values of M17 (slices s1 6c333a7 and s1-b 1e8a0da;  the
+M16 value in parentheses;  the rows, k, copies and proof size are the
+MODEL of docs/M17-PLAN.md D1 and D5, exact;  the runtime size and the
+gas from one `forge test --root contracts --gas-report`;  the RSS from
+`/usr/bin/time -l`, the sandbox off, one sample each).  M17 changes
+only `kycMerkle`:  the Merkle depth goes from 22 to 23 and k goes from
+14 to 15.
+
+| Measured, M17 | kycMerkle (depth 23) |
+|---|---|
+| rows, k, copies | 16913, 15, 26801 (16236, 14, 25728) |
+| max degree | 5 (5) |
+| proof (B) | 1824 (1824) |
+| verifier runtime (B) | 6614 (6612) |
+| deployment (gas) | 1481664 (1481232) |
+| `verifyProof` (gas) | 330359 (330294) |
+| keygen (`--dev-srs`), max RSS | 187 MB, 12.9 s (127 MB, 5.5 s) |
+| prove, max RSS | 239 MB, 16.3 s (150 MB, 8.4 s) |
+
+One level adds 677 rows and 1073 copies.  `kycMerkle` goes from k 14
+to k 15 (16913 rows;  the limit at k 14 is 16368 rows and the limit at
+k 15 is 32752 rows).  Thus the max depth at k 15 is 46 (32484 rows,
+MODEL);  depth 47 needs k 16 and a new ceremony file.  The pinned k 15
+SRS serves the k 15 circuit as it is (no downsize):  halo2/ and
+halo2/ceremony.sha256 do not change.  The other 7 circuits do not
+change.  The max degree does not change:  the gates, lookups, advice
+and instance of the golden are the same at 1210e0a and at 1e8a0da.
+The proof size does not change:  it depends on the columns and the
+degree, not on the rows or k.  Measured (one sample):  the
+`verifyProof` gas goes up by 65 (the D8 MODEL, the M14 value at k 15).
+The change follows k, not the row count (M15, k 15 to 14:  65 gas
+less).  The deployment gas goes up by 432 and the runtime size by 2 B
+(the new VK and domain constants).  The D8 MODEL (the M14 values at
+k 15:  keygen 188 MB, 20.1 s;  prove 202 MB, 27.5 s) expects the time
+to go up about 3.7 times (keygen) and 3.3 times (prove), and the RSS
+about 1.5 and 1.35 times, because the domain and the extended domain
+double.  Measured:  the RSS goes up by 47 % (keygen) and 59 % (prove);
+the time goes up by 134 % (keygen, 5.53 s to 12.92 s) and 95 % (prove,
+8.39 s to 16.33 s), less than the MODEL.  The keygen RSS agrees with
+the MODEL;  the prove RSS is about 18 % above it.  One sample each;
+the machine load is not controlled.  All values are far below the 4 GB
+limit.
+
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an
 earlier constant row that has the same value, and an arith row (item 3)
