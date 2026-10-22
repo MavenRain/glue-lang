@@ -1,6 +1,6 @@
 # M16 plan:  a deeper Merkle tree for kycMerkle at k 14
 
-Status:  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  s1 staged 2026-10-21 (claude4):  depth 22, 16,236 rows, k 14, 25,728 copies (= D1).
+Status:  DONE 2026-10-21 (s1 3a1676c, s1-b 0625a5d, s2 close).  RULED 2026-10-21 (the USER accepts the recommendations (a) to (k) of section 9).  Depth 22, 16,236 rows, k 14, 25,728 copies (= D1);  proof 1,824 B (= D5);  `verifyProof` 330,294 gas (= D8).
 
 Topic (USER pick, 2026-10-21):  a deeper Merkle tree for the circuit `kycMerkle` at k 14 (the max depth 22, the MODEL of docs/M15-PLAN.md D5).  At the M15 close (81af21c) `kycMerkle` has depth 20 at k 14 with 14,882 rows.
 

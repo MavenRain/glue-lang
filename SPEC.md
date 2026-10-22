@@ -1422,6 +1422,40 @@ Measured:  the time goes down by 75 % (keygen) and 76 % (prove), more
 than the MODEL;  the RSS goes down by 32 % (keygen) and 17 % (prove),
 less than the MODEL.  All values are far below the 4 GB limit.
 
+The measured values of M16 (slices s1 3a1676c and s1-b 0625a5d;  the
+M15 value in parentheses;  the rows, k, copies and proof size are the
+MODEL of docs/M16-PLAN.md D1 and D5, exact;  the runtime size and the
+gas from one `forge test --root contracts --gas-report`;  the RSS from
+`/usr/bin/time -l`, the sandbox off, one sample each).  M16 changes
+only `kycMerkle`:  the Merkle depth goes from 20 to 22.
+
+| Measured, M16 | kycMerkle (depth 22) |
+|---|---|
+| rows, k, copies | 16236, 14, 25728 (14882, 14, 23582) |
+| max degree | 5 (5) |
+| proof (B) | 1824 (1824) |
+| verifier runtime (B) | 6612 (6614) |
+| deployment (gas) | 1481232 (1481688) |
+| `verifyProof` (gas) | 330294 (330294) |
+| keygen (`--dev-srs`), max RSS | 127 MB, 5.5 s (127 MB, 4.9 s) |
+| prove, max RSS | 150 MB, 8.4 s (167 MB, 6.6 s) |
+
+Each level adds 677 rows and 1073 copies (2 levels:  1354 rows and
+2146 copies).  `kycMerkle` keeps k 14 (16236 rows;  the limit at k 14
+is 16368 rows).  Thus 22 is the max depth at k 14;  depth 23 needs
+k 15 (16913 rows, MODEL).  The other 7 circuits do not change.  The
+proof size does not change:  it depends on the columns and the degree,
+not on the rows.  The `verifyProof` gas does not change (the D8 MODEL):
+the verifier cost does not depend on the row count.  The deployment gas
+goes down by 456 and the runtime size by 2 B (the bytes of the new VK
+constants).  The D8 MODEL expects the keygen and prove RSS and time to
+stay near the M15 values, because k and the extended domain do not
+change.  Measured:  the keygen RSS does not change and the prove RSS
+goes down by 10 %;  the time goes up by 12 % (keygen, 4.93 s to 5.53 s)
+and 28 % (prove, 6.56 s to 8.39 s), more than the MODEL.  One sample
+each;  the machine load is not controlled.  All values are far below
+the 4 GB limit.
+
 The memo (M11 s1).  The lowering keeps one memo table for each circuit,
 across all of its constraints.  It shares a constant row (item 2) with an
 earlier constant row that has the same value, and an arith row (item 3)
