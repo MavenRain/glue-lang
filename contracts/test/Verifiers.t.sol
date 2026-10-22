@@ -286,12 +286,12 @@ contract KycVerifierTest is VerifierCase {
 }
 
 /// examples/kycMerkle.glue with attr=30 sk=5 d=12 at scope=9 min=18, the
-/// path bits b0 to b21 = 0 1 1 0 1 0 0 1 1 0 1 0 1 1 0 0 1 0 1 0 0 1 and the
-/// siblings si = 11 * (i + 1), s0=11 to s21=242 (test/circuit/expect.txt).
-/// The public inputs are the root of the depth 22 Merkle tree over the leaf
+/// path bits b0 to b22 = 0 1 1 0 1 0 0 1 1 0 1 0 1 1 0 0 1 0 1 0 0 1 1 and the
+/// siblings si = 11 * (i + 1), s0=11 to s22=253 (test/circuit/expect.txt).
+/// The public inputs are the root of the depth 23 Merkle tree over the leaf
 /// cm = poseidon([attr, sk]), nf = poseidon([sk, scope]), then scope, min and
 /// the sender address (docs/M9-PLAN.md D2, docs/M10-PLAN.md D1,
-/// docs/M13-PLAN.md D1, docs/M16-PLAN.md D1).
+/// docs/M13-PLAN.md D1, docs/M16-PLAN.md D1, docs/M17-PLAN.md D1).
 contract KycMerkleVerifierTest is VerifierCase {
     function name() internal pure override returns (string memory) {
         return "kycMerkle";
@@ -304,12 +304,12 @@ contract KycMerkleVerifierTest is VerifierCase {
     function testThePublicInputsAreTheRootAndTheNullifier() public view {
         require(
             instances.length == 5
-                && instances[0] == 18921323889410538904106118131460191082618624758723655813111215981830139585700
+                && instances[0] == 12661914156047747742876314299753485993805909389025127701260922047708481251586
                 && instances[1] == 2046061026757605145648934375530781408765546393983200800628234446163090055163
                 && instances[2] == 9
                 && instances[3] == 18
                 && instances[4] == uint256(uint160(SENDER)),
-            "the public inputs of kycMerkle are not the root of the depth 22 tree, poseidon([5, 9]), 9, 18 and the sender"
+            "the public inputs of kycMerkle are not the root of the depth 23 tree, poseidon([5, 9]), 9, 18 and the sender"
         );
     }
 }
